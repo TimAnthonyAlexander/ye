@@ -1,0 +1,27 @@
+{
+  "name": "ye",
+  "version": "0.0.1",
+  "description": "Ye CLI",
+  "type": "module",
+  "module": "src/cli.tsx",
+  "bin": {
+    "ye": "./src/cli.tsx"
+  },
+  "scripts": {
+    "start": "bun run src/cli.tsx",
+    "dev": "bun --watch run src/cli.tsx",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ink": "^5.1.0",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.13",
+    "@types/react": "^18.3.12",
+    "typescript": "^5.6.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
