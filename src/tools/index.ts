@@ -12,4 +12,8 @@ export {
 } from "./types.ts";
 export { validateArgs } from "./validate.ts";
 export { isRequestModeFlip, type RequestModeFlipResult } from "./exitPlanMode/index.ts";
-export { isUserQuestion, type UserQuestionResult } from "./askUserQuestion/index.ts";
+export {
+    isUserQuestion,
+    type UserQuestionOption,
+    type UserQuestionResult,
+} from "./askUserQuestion/index.ts";

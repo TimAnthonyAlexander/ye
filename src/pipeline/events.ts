@@ -1,9 +1,9 @@
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
-import type { ToolResult } from "../tools/index.ts";
+import type { ToolResult, UserQuestionOption } from "../tools/index.ts";
 
 export interface UserQuestionPayload {
     readonly question: string;
-    readonly options: readonly string[];
+    readonly options: readonly UserQuestionOption[];
     readonly multiSelect: boolean;
 }
 
