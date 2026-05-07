@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { getProjectSessionsDir } from "./paths.ts";
+import { getProjectSessionsDir, getSidechainSessionsDir } from "./paths.ts";
 
 export interface SessionEvent {
     readonly type: string;
@@ -14,9 +14,8 @@ export interface SessionHandle {
     close(): Promise<void>;
 }
 
-export const openSession = async (projectId: string): Promise<SessionHandle> => {
+const openSessionInDir = async (dir: string): Promise<SessionHandle> => {
     const sessionId = crypto.randomUUID();
-    const dir = getProjectSessionsDir(projectId);
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${sessionId}.jsonl`);
     // Touch the file so consumers can stat it before any event is appended.
@@ -37,3 +36,11 @@ export const openSession = async (projectId: string): Promise<SessionHandle> => 
         },
     };
 };
+
+export const openSession = (projectId: string): Promise<SessionHandle> =>
+    openSessionInDir(getProjectSessionsDir(projectId));
+
+export const openSidechainSession = (
+    projectId: string,
+    parentSessionId: string,
+): Promise<SessionHandle> => openSessionInDir(getSidechainSessionsDir(projectId, parentSessionId));

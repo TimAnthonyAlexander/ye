@@ -1,6 +1,12 @@
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
 import type { ToolResult } from "../tools/index.ts";
 
+export interface UserQuestionPayload {
+    readonly question: string;
+    readonly options: readonly string[];
+    readonly multiSelect: boolean;
+}
+
 export type StopReason =
     | "end_turn"
     | "max_turns"
@@ -37,6 +43,12 @@ export type Event =
           readonly result: ToolResult;
       }
     | { readonly type: "mode.changed"; readonly mode: string }
+    | {
+          readonly type: "userQuestion.prompt";
+          readonly id: string;
+          readonly payload: UserQuestionPayload;
+          respond(answer: string): void;
+      }
     | { readonly type: "turn.end"; readonly stopReason: StopReason; readonly error?: string };
 
 // A subset of Event that's safe to persist to the JSONL transcript (no callbacks).
@@ -48,6 +60,9 @@ export interface TranscriptEvent {
 export const transcriptable = (event: Event): TranscriptEvent => {
     if (event.type === "permission.prompt") {
         return { type: event.type, payload: event.payload };
+    }
+    if (event.type === "userQuestion.prompt") {
+        return { type: event.type, id: event.id, payload: event.payload };
     }
     return event as unknown as TranscriptEvent;
 };

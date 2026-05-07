@@ -18,3 +18,5 @@ export const getProjectPlansDir = (projectId: string): string =>
     join(getProjectDir(projectId), "plans");
 export const getProjectMemoryDir = (projectId: string): string =>
     join(getProjectDir(projectId), "memory");
+export const getSidechainSessionsDir = (projectId: string, parentSessionId: string): string =>
+    join(getProjectSessionsDir(projectId), parentSessionId, "sidechains");

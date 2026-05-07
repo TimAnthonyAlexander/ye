@@ -23,9 +23,17 @@ export interface AssembleInput {
 }
 
 // Step 3: build the messages array sent to the model.
-//   system prompt (full) + project notes hierarchy + auto-memory selection
-//   → one system message, then conversation history.
+// Parent: full system prompt + project notes hierarchy + auto-memory selection.
+// Subagent: honor `systemPromptOverride` exactly (no notes, no memory) so the
+// subagent gets exactly the role/tool framing its kind specifies.
 export const assemble = async ({ state, model }: AssembleInput): Promise<Message[]> => {
+    if (state.systemPromptOverride) {
+        return [
+            { role: "system", content: state.systemPromptOverride },
+            ...state.history,
+        ];
+    }
+
     const systemBody = buildSystemPrompt({
         cwd: state.projectRoot,
         mode: state.mode,

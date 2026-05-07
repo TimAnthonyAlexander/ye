@@ -1,4 +1,5 @@
-import type { ToolDefinition } from "../providers/index.ts";
+import type { Config } from "../config/index.ts";
+import type { Provider, ToolDefinition } from "../providers/index.ts";
 
 export type ToolResult<T = unknown> =
     | { readonly ok: true; readonly value: T }
@@ -17,12 +18,25 @@ export interface TurnState {
     todos: TodoItem[];
 }
 
+// Tools that spawn subagents (currently: Task) need access to the parent's
+// provider, config, project info, and session id. Set by the pipeline only on
+// the parent's tool calls — subagents see this as undefined (recursion guard).
+export interface SubagentToolContext {
+    readonly projectId: string;
+    readonly projectRoot: string;
+    readonly parentSessionId: string;
+    readonly contextWindow: number;
+    readonly provider: Provider;
+    readonly config: Config;
+}
+
 export interface ToolContext {
     readonly cwd: string;
     readonly signal: AbortSignal;
     readonly sessionId: string;
     readonly projectId: string;
     readonly turnState: TurnState;
+    readonly subagentContext?: SubagentToolContext;
     log(msg: string): void;
 }
 

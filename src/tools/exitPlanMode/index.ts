@@ -9,12 +9,12 @@ interface ExitPlanModeArgs {
 }
 
 // Pipeline-recognized result shape. When the pipeline sees `kind === "request_mode_flip"`
-// in a tool result, it fires a separate permission prompt with reason "exit_plan_mode"
-// instead of routing through the regular gate.
+// in a tool result, it fires a separate permission prompt instead of routing through
+// the regular gate. `target` is the mode the user is being asked to switch INTO.
 export interface RequestModeFlipResult {
     readonly kind: "request_mode_flip";
-    readonly planPath: string;
-    readonly target: "NORMAL";
+    readonly target: "NORMAL" | "PLAN";
+    readonly planPath?: string;
 }
 
 const execute = async (

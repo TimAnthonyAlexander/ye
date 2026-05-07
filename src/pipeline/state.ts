@@ -28,6 +28,11 @@ export interface SessionState {
     // Auto-memory cache: populated lazily on first turn that has a user query.
     // null = not yet selected; [] = no memory available; non-empty = active.
     selectedMemory: readonly SelectedMemoryEntry[] | null;
+    // Subagent fields. Set only when this state belongs to a subagent run.
+    // The pipeline reads them to narrow the tool pool and override the system prompt.
+    parentSessionId?: string;
+    allowedTools?: readonly string[];
+    systemPromptOverride?: string;
 }
 
 export const newTurnState = (): TurnState => ({

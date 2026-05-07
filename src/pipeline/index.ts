@@ -50,6 +50,8 @@ export interface QueryLoopInput {
     readonly session: SessionHandle;
     readonly userPrompt: string;
     readonly signal?: AbortSignal;
+    // Override the per-loop turn budget (subagents pass their own narrower limit).
+    readonly maxTurnsOverride?: number;
 }
 
 // Drives turns until a terminal stop reason fires. Yields all turn events
@@ -59,7 +61,7 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
     input.state.history.push(userMessage);
     await input.session.appendEvent({ type: "user.message", content: input.userPrompt });
 
-    const maxTurns = input.config.maxTurns?.master ?? 100;
+    const maxTurns = input.maxTurnsOverride ?? input.config.maxTurns?.master ?? 100;
     const signal = input.signal ?? new AbortController().signal;
 
     // Turn-local state (readFiles, todos) spans the whole query: the model

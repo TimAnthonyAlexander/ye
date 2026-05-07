@@ -1,13 +1,20 @@
 import type { Config } from "../config/index.ts";
 import { ensureSelectedMemory } from "../memory/index.ts";
 import { decide, USER_DENIED } from "../permissions/index.ts";
-import type { PermissionPromptPayload, PromptResponse, ToolCall } from "../permissions/index.ts";
+import type {
+    PermissionPromptPayload,
+    PromptReason,
+    PromptResponse,
+    ToolCall,
+} from "../permissions/index.ts";
 import type { Message, Provider, ToolCallRequest } from "../providers/index.ts";
 import type { SessionHandle } from "../storage/index.ts";
 import {
     assembleToolPool,
     getTool,
     isRequestModeFlip,
+    isUserQuestion,
+    type SubagentToolContext,
     type ToolContext,
     type ToolResult,
     type TurnState,
@@ -104,6 +111,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     const tools = assembleToolPool({
         mode: state.mode,
         rules: [...(config.permissions?.rules ?? []), ...state.sessionRules],
+        ...(state.allowedTools ? { allowedTools: state.allowedTools } : {}),
     });
     const streamGen = streamFromProvider(provider, {
         model: config.defaultModel.model,
@@ -256,6 +264,18 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         yield startEvent;
         await session.appendEvent(transcriptable(startEvent));
 
+        const subagentContext: SubagentToolContext | undefined =
+            state.parentSessionId === undefined
+                ? {
+                      projectId: state.projectId,
+                      projectRoot: state.projectRoot,
+                      parentSessionId: state.sessionId,
+                      contextWindow: state.contextWindow,
+                      provider,
+                      config,
+                  }
+                : undefined;
+
         const toolCtx: ToolContext = {
             cwd: state.projectRoot,
             signal,
@@ -263,26 +283,61 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             projectId: state.projectId,
             turnState,
             log: () => {},
+            ...(subagentContext ? { subagentContext } : {}),
         };
         const result = await tool.execute(call.args, toolCtx);
 
-        const endEvent: Event = { type: "tool.end", id: call.id, name: call.name, result };
+        // AskUserQuestion: surface the question to the UI, replace the tool's
+        // payload-shaped result with the user's answer string before pushing it
+        // into history. The model only sees the answer.
+        let finalResult: ToolResult = result;
+        if (result.ok && isUserQuestion(result.value)) {
+            const d = deferred<string>();
+            const qEvent: Event = {
+                type: "userQuestion.prompt",
+                id: call.id,
+                payload: {
+                    question: result.value.question,
+                    options: result.value.options,
+                    multiSelect: result.value.multiSelect,
+                },
+                respond: (answer) => d.resolve(answer),
+            };
+            yield qEvent;
+            await session.appendEvent(transcriptable(qEvent));
+            const answer = await d.promise;
+            finalResult = { ok: true, value: answer };
+        }
+
+        const endEvent: Event = {
+            type: "tool.end",
+            id: call.id,
+            name: call.name,
+            result: finalResult,
+        };
         yield endEvent;
         await session.appendEvent(transcriptable(endEvent));
         state.history.push({
             role: "tool",
             tool_call_id: call.id,
-            content: renderToolResult(result),
+            content: renderToolResult(finalResult),
         });
 
-        // ExitPlanMode special-case: result shape signals a mode-flip prompt.
+        // ExitPlanMode / EnterPlanMode special-case: result shape signals a mode-flip prompt.
         if (result.ok && isRequestModeFlip(result.value)) {
+            // No-op when already in the target mode: skip the prompt entirely.
+            if (state.mode === result.value.target) {
+                if (state.mode === "PLAN") resetDenialTrail(state);
+                continue;
+            }
             const d = deferred<PromptResponse>();
+            const reason: PromptReason =
+                result.value.target === "PLAN" ? "enter_plan_mode" : "exit_plan_mode";
             const flipPayload: PermissionPromptPayload = {
-                reason: "exit_plan_mode",
+                reason,
                 toolCall,
-                planPath: result.value.planPath,
                 target: result.value.target,
+                ...(result.value.planPath ? { planPath: result.value.planPath } : {}),
             };
             const flipEvent: Event = {
                 type: "permission.prompt",

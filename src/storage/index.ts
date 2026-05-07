@@ -11,7 +11,13 @@ export {
     getProjectMetaPath,
     getProjectPlansDir,
     getProjectSessionsDir,
+    getSidechainSessionsDir,
 } from "./paths.ts";
 export { _resetProjectCache, getProjectId, type ProjectId } from "./project.ts";
-export { openSession, type SessionEvent, type SessionHandle } from "./session.ts";
+export {
+    openSession,
+    openSidechainSession,
+    type SessionEvent,
+    type SessionHandle,
+} from "./session.ts";
 export { randomPlanName } from "./wordlist.ts";

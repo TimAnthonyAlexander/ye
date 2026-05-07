@@ -21,6 +21,7 @@ import { SlashPicker } from "./slashPicker.tsx";
 import { StatusBar } from "./statusBar.tsx";
 import { TodoPanel } from "./todoPanel.tsx";
 import type { ToolCallEntry } from "./toolCall.tsx";
+import { UserQuestion, type UserQuestionPayload } from "./userQuestion.tsx";
 
 interface AppProps {
     readonly config: LoadResult;
@@ -29,6 +30,11 @@ interface AppProps {
 interface PendingPrompt {
     readonly payload: PermissionPromptPayload;
     readonly respond: (r: PromptResponse) => void;
+}
+
+interface PendingUserQuestion {
+    readonly payload: UserQuestionPayload;
+    readonly respond: (answer: string) => void;
 }
 
 const prettyCwd = (): string => {
@@ -45,6 +51,8 @@ export const App = ({ config }: AppProps) => {
     const [streamingText, setStreamingText] = useState("");
     const [streaming, setStreaming] = useState(false);
     const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
+    const [pendingUserQuestion, setPendingUserQuestion] =
+        useState<PendingUserQuestion | null>(null);
     const [todos, setTodos] = useState<readonly TodoItem[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [bootError, setBootError] = useState<string | null>(null);
@@ -233,6 +241,19 @@ export const App = ({ config }: AppProps) => {
                         });
                         break;
                     }
+                    case "userQuestion.prompt": {
+                        await new Promise<void>((resolve) => {
+                            setPendingUserQuestion({
+                                payload: evt.payload,
+                                respond: (answer) => {
+                                    evt.respond(answer);
+                                    setPendingUserQuestion(null);
+                                    resolve();
+                                },
+                            });
+                        });
+                        break;
+                    }
                     case "mode.changed": {
                         setMode(evt.mode as PermissionMode);
                         break;
@@ -298,7 +319,7 @@ export const App = ({ config }: AppProps) => {
             <Chat
                 items={items}
                 streamingText={streamingText}
-                streaming={streaming && !pendingPrompt}
+                streaming={streaming && !pendingPrompt && !pendingUserQuestion}
             />
             {error !== null && (
                 <Box paddingX={1} marginBottom={1}>
@@ -310,6 +331,11 @@ export const App = ({ config }: AppProps) => {
                 <PermissionPrompt
                     payload={pendingPrompt.payload}
                     onRespond={pendingPrompt.respond}
+                />
+            ) : pendingUserQuestion ? (
+                <UserQuestion
+                    payload={pendingUserQuestion.payload}
+                    onRespond={pendingUserQuestion.respond}
                 />
             ) : (
                 <>

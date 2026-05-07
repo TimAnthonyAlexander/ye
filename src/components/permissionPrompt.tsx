@@ -72,6 +72,29 @@ export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) 
         );
     }
 
+    if (payload.reason === "enter_plan_mode") {
+        const reasonText =
+            (payload.toolCall.args as { reason?: string } | null)?.reason ?? "";
+        return (
+            <Box
+                flexDirection="column"
+                borderStyle="round"
+                borderColor="magenta"
+                paddingX={1}
+                marginBottom={1}
+            >
+                <Text bold color="magenta">
+                    Switch INTO PLAN mode?
+                </Text>
+                {reasonText && <Text dimColor>reason: {reasonText}</Text>}
+                <Text>
+                    PLAN restricts the agent to Read, Glob, Grep, ExitPlanMode.{" "}
+                    <Text dimColor>(y / n)</Text>
+                </Text>
+            </Box>
+        );
+    }
+
     return (
         <Box
             flexDirection="column"
