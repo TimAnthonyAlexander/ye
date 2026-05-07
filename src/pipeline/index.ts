@@ -2,7 +2,7 @@ import { FALLBACK_CONTEXT_WINDOW, type Config } from "../config/index.ts";
 import type { Message, Provider } from "../providers/index.ts";
 import { openSession, type SessionHandle } from "../storage/index.ts";
 import type { Event, StopReason } from "./events.ts";
-import type { SessionState } from "./state.ts";
+import { newTurnState, type SessionState } from "./state.ts";
 import { runTurn } from "./turn.ts";
 
 export type { Event, StopReason } from "./events.ts";
@@ -62,6 +62,11 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
     const maxTurns = input.config.maxTurns?.master ?? 100;
     const signal = input.signal ?? new AbortController().signal;
 
+    // Turn-local state (readFiles, todos) spans the whole query: the model
+    // typically Reads in one round-trip and Edits in the next, so resetting
+    // per runTurn would break the Read-then-Edit invariant.
+    const turnState = newTurnState();
+
     let turnIndex = 0;
     while (turnIndex < maxTurns) {
         const turn = runTurn({
@@ -69,6 +74,7 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
             config: input.config,
             session: input.session,
             state: input.state,
+            turnState,
             turnIndex,
             maxTurns,
             signal,

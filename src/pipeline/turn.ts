@@ -16,7 +16,7 @@ import { assemble } from "./assemble.ts";
 import { type CollectedToolCall, streamFromProvider } from "./dispatch.ts";
 import { transcriptable, type Event, type StopReason } from "./events.ts";
 import { autoCompact } from "./shapers/index.ts";
-import { newTurnState, recordDenial, resetDenialTrail, type SessionState } from "./state.ts";
+import { recordDenial, resetDenialTrail, type SessionState } from "./state.ts";
 import { evaluateStop } from "./stop.ts";
 
 export interface TurnDeps {
@@ -24,6 +24,7 @@ export interface TurnDeps {
     readonly config: Config;
     readonly session: SessionHandle;
     readonly state: SessionState;
+    readonly turnState: TurnState;
     readonly turnIndex: number;
     readonly maxTurns: number;
     readonly signal: AbortSignal;
@@ -69,11 +70,10 @@ const isToolReadOnly = (toolName: string): boolean => {
 // across turns within a session. The caller (queryLoop) drives turns until
 // turn.end fires with a non-loop stop reason.
 export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason> {
-    const { provider, config, session, state, turnIndex, maxTurns, signal } = deps;
+    const { provider, config, session, state, turnState, turnIndex, maxTurns, signal } = deps;
 
     // Reset per-turn flags.
     state.compactedThisTurn = false;
-    const turnState: TurnState = newTurnState();
 
     yield { type: "turn.start", turnIndex };
     await session.appendEvent({ type: "turn.start", turnIndex });
