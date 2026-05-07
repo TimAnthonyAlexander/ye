@@ -1,6 +1,6 @@
 import { Box, Static, Text } from "ink";
 import { memo } from "react";
-import { MessageView } from "./message.tsx";
+import { AssistantLine, MessageView } from "./message.tsx";
 import { Thinking } from "./thinking.tsx";
 import { ToolCallView, type ToolCallEntry } from "./toolCall.tsx";
 
@@ -80,12 +80,7 @@ export const Chat = ({ items, streamingText, streaming }: ChatProps) => {
                 ))}
                 {streaming &&
                     (streamingText.length > 0 ? (
-                        <Box flexDirection="column" marginBottom={1}>
-                            <Text bold color="green">
-                                ye
-                            </Text>
-                            <Text>{streamingText}</Text>
-                        </Box>
+                        <AssistantLine content={streamingText} />
                     ) : (
                         <Thinking />
                     ))}

@@ -67,6 +67,13 @@ const prettyCwd = (): string => {
     return cwd === home ? "~" : cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd;
 };
 
+const formatElapsed = (totalSec: number): string => {
+    if (totalSec < 60) return `${totalSec}s`;
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return s === 0 ? `${m}m` : `${m}m ${s}s`;
+};
+
 export const App = ({ config }: AppProps) => {
     const initialCfg = config.config;
     const { exit } = useApp();
@@ -100,6 +107,11 @@ export const App = ({ config }: AppProps) => {
     const queueRef = useRef<string[]>([]);
     const abortRef = useRef<AbortController | null>(null);
     const chatInputRef = useRef<ChatInputHandle | null>(null);
+    // Track total work time across a chain of queued sends so the
+    // "Worked for Xs" message reflects the full hand-off duration, not just
+    // the final turn.
+    const chainStartRef = useRef<number | null>(null);
+    const chainFailedRef = useRef(false);
     const [queuedCount, setQueuedCount] = useState(0);
 
     const addSystemMessage = (text: string): void => {
@@ -315,6 +327,10 @@ export const App = ({ config }: AppProps) => {
     });
 
     const sendNow = async (text: string): Promise<void> => {
+        if (chainStartRef.current === null) {
+            chainStartRef.current = Date.now();
+            chainFailedRef.current = false;
+        }
         streamingRef.current = true;
         abortRef.current = new AbortController();
         setStreaming(true);
@@ -442,7 +458,10 @@ export const App = ({ config }: AppProps) => {
                     }
                     case "turn.end": {
                         commitText();
-                        if (evt.error) setError(evt.error);
+                        if (evt.error) {
+                            setError(evt.error);
+                            chainFailedRef.current = true;
+                        }
                         break;
                     }
                 }
@@ -452,6 +471,7 @@ export const App = ({ config }: AppProps) => {
             if (!aborted) {
                 setError(e instanceof Error ? e.message : String(e));
             }
+            chainFailedRef.current = true;
         } finally {
             commitText();
             streamingRef.current = false;
@@ -465,6 +485,27 @@ export const App = ({ config }: AppProps) => {
         setQueuedCount(queueRef.current.length);
         if (next !== undefined) {
             await sendNow(next);
+            return;
+        }
+
+        // Chain complete — true hand-off back to the user. Post the elapsed
+        // time only on the clean path (no aborts, errors, or turn.end errors).
+        const startedAt = chainStartRef.current;
+        const failed = chainFailedRef.current;
+        chainStartRef.current = null;
+        chainFailedRef.current = false;
+        if (!failed && startedAt !== null) {
+            const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+            if (elapsedSec >= 1) {
+                setItems((prev) => [
+                    ...prev,
+                    {
+                        kind: "system",
+                        id: newChatItemId(),
+                        content: `Worked for ${formatElapsed(elapsedSec)}`,
+                    },
+                ]);
+            }
         }
     };
 
