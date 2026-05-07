@@ -7,7 +7,13 @@ import { ModelCommand } from "./model.ts";
 import { ProviderCommand } from "./provider.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
 
-export type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
+export type {
+    PickerOption,
+    PickerPayload,
+    SlashCommand,
+    SlashCommandContext,
+    SlashCommandResult,
+} from "./types.ts";
 
 const SLASH_PATTERN = /^\/([a-zA-Z][a-zA-Z0-9_-]*)(?:\s+([\s\S]*))?$/;
 

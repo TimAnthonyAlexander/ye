@@ -140,7 +140,7 @@ src/permissions/
 - [ ] Smoke test: ExitPlanMode in PLAN, accept flow → mode is NORMAL afterwards; deny flow → mode is PLAN, plan file still on disk
 
 ### Phase 2 — Slash command + session-scoped allows + EnterPlanMode
-- [x] `/mode <name>` slash command (NORMAL ↔ AUTO ↔ PLAN)
+- [x] `/mode [<name>]` slash command (NORMAL ↔ AUTO ↔ PLAN). Argless opens the interactive picker (filter-as-you-type, ↑↓, Enter, Esc) via `SlashCommandContext.pick`.
 - [x] "Allow for session" appends an in-memory rule that lives until process exit
 - [x] `EnterPlanMode` tool (model-initiated; symmetric to user's Shift+Tab into PLAN)
 

@@ -10,7 +10,7 @@ Steps 5–9 are the "agent loop" people talk about. Steps 1–4 set the table fo
 2. **State initialization.** Session id, transcript file handle, token counters, retry budget. Ephemeral; lives for the turn (a subset persists across turns within the session).
 3. **Context assembly.** Gather the ordered context sources (see below). Returns a flat `messages[]` array ready for the model.
 4. **Pre-model shapers.** Run sequentially, cheapest first, each fires only if needed. **v1: one shaper, `autoCompact`** — fires when `currentTokens / contextWindow >= compact.threshold` (default 0.5, configurable in `~/.ye/config.json`). Phase 4: adds Budget Reduction → Snip → Microcompact → Context Collapse *before* Auto-Compact, so cheap shapers run first.
-5. **Model call.** Send messages + tool definitions to the active provider. Stream response.
+5. **Model call.** Send messages + tool definitions to the active provider on the active model. The model id is `state.activeModel ?? config.defaultModel.model` — `/model` and `/provider` mutate `state.activeModel` mid-session. Stream response.
 6. **Tool dispatch.** Parse tool calls from the stream. Read-only tools (Phase 2) queue parallel; state-modifying tools queue sequential. v1: serialize all.
 7. **Permission gate.** For each tool call: pre-filter (denied tools never reach here), evaluate deny-first rules, route through the active permission handler (interactive prompt in `default` mode, auto-allow in `acceptAll`).
 8. **Tool execution.** Run approved tools. Errors return as tool results, not crashes.
@@ -98,14 +98,14 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 - **One turn = one transcript flush.** Append at the end of step 9. If the process crashes mid-turn, the next session loses that turn but disk state stays consistent.
 - **No retry loops without budgets.** Every retry path has an explicit max.
 - **Steps are functions, not classes.** Each step is a pure-ish function that takes turn state and returns turn state (or yields events). Easier to test in isolation, easier to reorder later if needed.
-- **Context-window size is cached per session.** `provider.getContextSize(model)` runs once at session start; the result lives in `SessionState`. The auto-compact shaper reads from the cache, never re-fetches.
+- **Context-window size is cached per session.** `provider.getContextSize(model)` runs once at session start; the result lives in `SessionState`. The auto-compact shaper reads from the cache, never re-fetches. Mid-session `/provider` or `/model` switches refetch and update the cache — different providers and models report different windows.
 - **PLAN-mode loop guard at the pipeline layer, not the permission layer.** Tracking "two consecutive same-tool denials" is turn-state, so it lives next to the stop-condition check.
 
 ## Checklist
 
 ### Phase 1 — MVP pipeline
 - [x] `events.ts` — `Event` and `StopReason` types (include `plan_loop_guard` reason)
-- [x] `state.ts` — `TurnState`, `SessionState` (SessionState carries cached `contextWindow`, current `mode`, recent denial trail for the PLAN-mode loop guard)
+- [x] `state.ts` — `TurnState`, `SessionState` (SessionState carries cached `contextWindow`, current `mode`, optional `activeModel` override for `/model`/`/provider`, recent denial trail for the PLAN-mode loop guard)
 - [x] `index.ts` — `queryLoop(input): AsyncGenerator<Event>` skeleton
 - [x] Step 1: settings resolution — read `~/.ye/config.json`, merge with project overrides if present
 - [x] Step 2: turn-local state (session id, transcript handle, retry budget = 0 for v1); on first turn of a session, call `provider.getContextSize(model)` and cache the result

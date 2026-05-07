@@ -4,6 +4,18 @@ export type SlashCommandResult =
     | { readonly kind: "ok" }
     | { readonly kind: "error"; readonly message: string };
 
+export interface PickerOption {
+    readonly id: string;
+    readonly label: string;
+    readonly description?: string;
+}
+
+export interface PickerPayload {
+    readonly title: string;
+    readonly options: readonly PickerOption[];
+    readonly initialId?: string;
+}
+
 export interface SlashCommandContext {
     readonly cwd: string;
     readonly projectRoot: string;
@@ -17,6 +29,9 @@ export interface SlashCommandContext {
     clearChat(): Promise<void>;
     exitApp(): void;
     addSystemMessage(text: string): void;
+    // Open the interactive picker. Resolves with the chosen option's `id`,
+    // or `null` if the user dismissed (Esc).
+    pick(payload: PickerPayload): Promise<string | null>;
 }
 
 export interface SlashCommand {

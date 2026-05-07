@@ -1,5 +1,32 @@
-import { listModels } from "../providers/index.ts";
-import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
+import { findModel, listModels } from "../providers/index.ts";
+import type {
+    PickerOption,
+    SlashCommand,
+    SlashCommandContext,
+    SlashCommandResult,
+} from "./types.ts";
+
+const buildOptions = (providerId: string): readonly PickerOption[] =>
+    listModels(providerId).map((m) => ({ id: m.id, label: m.label }));
+
+const applyChoice = async (
+    nextId: string,
+    ctx: SlashCommandContext,
+): Promise<SlashCommandResult> => {
+    const target = findModel(nextId);
+    const label = target?.label ?? nextId;
+    if (nextId === ctx.model) {
+        ctx.addSystemMessage(`Already using ${label}.`);
+        return { kind: "ok" };
+    }
+    try {
+        await ctx.setModel(nextId);
+        ctx.addSystemMessage(`Model → ${label}.`);
+        return { kind: "ok" };
+    } catch (e) {
+        return { kind: "error", message: e instanceof Error ? e.message : String(e) };
+    }
+};
 
 export const ModelCommand: SlashCommand = {
     name: "model",
@@ -7,37 +34,28 @@ export const ModelCommand: SlashCommand = {
     usage: "/model [<model-id>]",
     execute: async (args: string, ctx: SlashCommandContext): Promise<SlashCommandResult> => {
         const arg = args.trim();
-        const models = listModels(ctx.providerId);
-        if (models.length === 0) {
+        const options = buildOptions(ctx.providerId);
+        if (options.length === 0) {
             return {
                 kind: "error",
                 message: `No models registered for provider "${ctx.providerId}".`,
             };
         }
         if (arg.length === 0) {
-            const lines = models.map(
-                (m) => `${m.id === ctx.model ? "*" : " "} ${m.label} — ${m.id}`,
-            );
-            ctx.addSystemMessage(`Models for ${ctx.providerId}:\n${lines.join("\n")}`);
-            return { kind: "ok" };
+            const choice = await ctx.pick({
+                title: `Switch model (${ctx.providerId})`,
+                options,
+                initialId: ctx.model,
+            });
+            if (!choice) return { kind: "ok" };
+            return applyChoice(choice, ctx);
         }
-        const target = models.find((m) => m.id === arg);
-        if (!target) {
+        if (!options.some((o) => o.id === arg)) {
             return {
                 kind: "error",
-                message: `Unknown model "${arg}" for ${ctx.providerId}. Run /model to list available models.`,
+                message: `Unknown model "${arg}" for ${ctx.providerId}. Run /model to pick from the list.`,
             };
         }
-        if (target.id === ctx.model) {
-            ctx.addSystemMessage(`Already using ${target.label}.`);
-            return { kind: "ok" };
-        }
-        try {
-            await ctx.setModel(target.id);
-            ctx.addSystemMessage(`Model → ${target.label}.`);
-            return { kind: "ok" };
-        } catch (e) {
-            return { kind: "error", message: e instanceof Error ? e.message : String(e) };
-        }
+        return applyChoice(arg, ctx);
     },
 };

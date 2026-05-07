@@ -44,13 +44,14 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 - Sidechain JSONL transcripts
 - Auto-memory (LLM scan of memory-file headers, top-N)
 - 4-level CLAUDE.md hierarchy
-- Slash commands (`/mode`, `/clear`, etc.)
+- Slash commands (`/mode`, `/clear`, `/help`, `/init`, `/provider`, `/model`, `/exit`)
+- Interactive picker UI (`ctx.pick`) for any slash command needing a selection — filter-as-you-type + arrow nav + Enter/Esc
 
 ### Phase 3 — Provider parity
-- Anthropic direct (with prompt caching)
-- OpenAI
-- Tool-call format normalization layer
-- Conformance suite across all three
+- Anthropic direct (with prompt caching) — **shipped**
+- OpenAI — pending
+- Tool-call format normalization layer — present per-provider via `adapt.ts`/`stream.ts`
+- Conformance suite across all three — pending
 
 ### Phase 4 — Compaction & recovery
 - Add the four cheaper compaction shapers (Budget Reduction → Snip → Microcompact → Context Collapse) before v1's Auto-Compact, so Auto-Compact becomes the last resort instead of the only resort
@@ -114,9 +115,13 @@ Items here orchestrate across multiple subdocs or don't fit any single one. Doma
 ### Phase 2 — gating items
 - [x] Subagent demo: `Explore` returns a useful summary; parent's context size before-vs-after the subagent run is unchanged (this is the whole point of subagents)
 - [x] CLAUDE.md hierarchy + auto-memory wired into context assembly (step 3)
-- [x] At least three slash commands working: `/mode`, `/clear`, `/help`
+- [x] At least three slash commands working: `/mode`, `/clear`, `/help` (also: `/init`, `/exit`)
+- [x] Interactive picker (`Picker` component + `SlashCommandContext.pick`) — used by `/mode`, `/provider`, `/model` when called without args
 
 ### Phase 3 — gating items
+- [x] Anthropic provider shipped with prompt caching, tool_use/tool_result blocks, `event:`/`data:` SSE
+- [x] `/provider` and `/model` slash commands switch the active provider/model mid-session (refetches context window, swaps `state.activeModel`)
+- [ ] OpenAI provider
 - [ ] All three providers pass the same conformance suite: text round-trip, tool-call round-trip, multi-chunk streaming, cache-hit assertion (Anthropic only)
 
 ### Build / distribute

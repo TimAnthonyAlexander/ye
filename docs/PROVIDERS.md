@@ -1,6 +1,6 @@
 # Ye — Providers
 
-Ye talks to LLMs through a single `Provider` interface. v1 implements one — OpenRouter (OpenAI-compatible chat completions). Anthropic-direct and OpenAI come in Phase 3. Adding a fourth provider is a single new folder under `src/providers/` and a registry entry — no other code changes.
+Ye talks to LLMs through a single `Provider` interface. **v1 + Phase 3 (Anthropic) shipped:** OpenRouter and Anthropic-direct (with prompt caching). OpenAI is the remaining Phase 3 item. Adding a fourth provider is a single new folder under `src/providers/` and a registry entry — no other code changes.
 
 ## The interface
 
@@ -47,11 +47,11 @@ interface ProviderCapabilities {
 `getContextSize(model)` returns the model's max context window in tokens. Used by the pipeline's auto-compact shaper to compute the trigger threshold (`currentTokens / contextWindow >= config.compact.threshold`).
 
 - **OpenRouter:** `GET https://openrouter.ai/api/v1/models` exposes `context_length` per model.
-- **Anthropic:** hardcoded per-model lookup table (vendor doesn't expose a discovery endpoint).
+- **Anthropic:** hardcoded per-model lookup table (vendor doesn't expose a discovery endpoint). Lives in `src/providers/anthropic/models.ts`. Current values: 200K for opus 4.6/4.7 and haiku 4.5; 1M for sonnet 4.6.
 - **OpenAI:** hardcoded per-model lookup table.
 - **Fallback on any failure:** `128_000`. Logged but not surfaced to the user.
 
-The pipeline calls `getContextSize` **once per session**, on first turn, and caches the result in `SessionState.contextWindow`. No per-turn refetch.
+The pipeline calls `getContextSize` **once per session**, on first turn, and caches the result in `SessionState.contextWindow`. No per-turn refetch. **A `/provider` or `/model` switch refetches and updates the cache** — different providers report different windows for the same model, and Anthropic's table is per-model.
 
 ## Capabilities flag
 
@@ -71,13 +71,17 @@ New capabilities are added as boolean flags rather than `if (provider.id === ...
 - Tool-call format: OpenAI-compatible `tool_calls` array on assistant deltas.
 - `capabilities.promptCache = false` (varies per upstream model; conservative default).
 
-## Anthropic (Phase 3)
+## Anthropic (Phase 3 — shipped)
 
 - POST `https://api.anthropic.com/v1/messages`
-- Auth: `x-api-key` header.
-- Native tool-use blocks. Distinct `system` parameter (not a `system` message).
-- Prompt caching: `cache_control: { type: "ephemeral" }` markers placed at the system prompt's static/dynamic boundary. `capabilities.promptCache = true`.
-- Streaming: SSE with `event:` + `data:` framing.
+- Auth: `x-api-key` header. `anthropic-version: 2023-06-01` (additive features, not a version bump).
+- Native tool-use blocks. Distinct top-level `system` parameter (not a `system` message). Tools use `input_schema` (not `parameters`).
+- Streaming: SSE with `event:` + `data:` framing. The shared `sseDataLines` iterator skips the `event:` line; the `data:` payload's `type` field is sufficient to dispatch.
+- Stream events: `message_start` → `content_block_start` (text or tool_use) → `content_block_delta` (`text_delta` / `input_json_delta` / thinking deltas — last two ignored in v1) → `content_block_stop` → `message_delta` (carries `stop_reason`) → `message_stop`. Errors arrive as `event: error` mid-stream.
+- Tool-use blocks accumulate `input_json_delta` chunks per content-block index and are emitted as `tool_call` events once `stop_reason: tool_use` is seen.
+- **Prompt caching:** `capabilities.promptCache = true`. The adapter places a single `cache_control: { type: "ephemeral" }` marker on the system block — the system body is the largest stable prefix in any turn. Pipeline-side cache markers (memory blocks, tool defs) are a follow-up.
+- **Opus 4.7 sharp edges (handled in `adapt.ts`):** `temperature` is rejected on `claude-opus-4-7*` and is dropped from the request. `top_p`/`top_k` are not currently emitted by Ye.
+- **Message conversion:** Ye's canonical OpenAI-style messages → Anthropic shape. Adjacent `tool` results merge into a single `user` message with multiple `tool_result` blocks (Anthropic's required shape). Assistant turns with tool calls become content arrays of `[text?, tool_use, ...]`. `system` messages are pulled out and concatenated into the top-level `system` field.
 
 ## OpenAI (Phase 3)
 
@@ -87,21 +91,45 @@ New capabilities are added as boolean flags rather than `if (provider.id === ...
 
 ## Selection
 
-`getProvider(id)` returns the implementation; `id` defaults to `config.defaultProvider`. v1 uses the `defaultModel.provider` + `defaultModel.model` pair from config. Per-message provider override is a Phase 3 concern (e.g., a `Plan` subagent could prefer Sonnet via Anthropic even if the parent is on OpenRouter).
+`getProvider(config, id)` returns the implementation; `id` defaults to `config.defaultProvider`. The boot path uses the `defaultModel.provider` + `defaultModel.model` pair from config. **Mid-session switching** is wired through `/provider` and `/model` slash commands — App rebuilds the provider, refetches `getContextSize`, and writes `state.activeModel` so the pipeline picks up the new model on the next turn. Per-subagent provider override is still a Phase 5 concern.
+
+### Model registry
+
+`src/providers/models.ts` is the single source of truth for the user-facing model picker. Each entry is `{ provider, id, label }` — `id` is the provider-native model name passed to the API; `label` is what `/model` shows in the picker and the status bar. **No other file enumerates models.**
+
+Current entries:
+
+| Provider | id | Label |
+|---|---|---|
+| openrouter | `deepseek/deepseek-v4-pro` | DeepSeek v4 Pro |
+| anthropic | `claude-opus-4-7` | Opus 4.7 |
+| anthropic | `claude-sonnet-4-6` | Sonnet 4.6 |
+| anthropic | `claude-haiku-4-5` | Haiku 4.5 |
+
+`defaultModelFor(providerId)` returns the first entry — used by `/provider` to pick a sensible model when switching providers (don't carry a model across providers).
+
+### Config: missing-provider auto-merge
+
+`loader.ts` merges any provider entry present in `DEFAULT_CONFIG.providers` but missing from the user's on-disk config — at load time, in-memory only. The user's saved file is **not** rewritten. This means existing configs created before Anthropic existed automatically gain the Anthropic provider config without forcing a manual edit. Users who customize an existing entry keep their version verbatim.
 
 ## Files
 
 ```
 src/providers/
-├── index.ts            # registry: getProvider(id), listProviders()
+├── index.ts            # registry: getProvider(), PROVIDER_IDS, isMissingKeyError, re-exports model registry
+├── models.ts           # cross-provider model registry (id, label) + defaultModelFor()
 ├── types.ts            # Provider, ProviderInput, ProviderEvent, Message, ToolDefinition, ProviderCapabilities
 ├── sse.ts              # generic SSE line-iteration helper (reused by all providers)
 ├── openrouter/
 │   ├── index.ts        # Provider impl
 │   ├── adapt.ts        # Ye Message[] + Tools → OpenAI-compatible body
 │   └── stream.ts       # SSE chunk → ProviderEvent
-├── anthropic/          # Phase 3
-└── openai/             # Phase 3
+├── anthropic/          # Phase 3 — shipped
+│   ├── index.ts        # Provider impl, MissingAnthropicKeyError
+│   ├── adapt.ts        # Ye Message[] → Anthropic body (system split, tool_use/tool_result blocks, cache marker)
+│   ├── stream.ts       # event: + data: SSE → ProviderEvent
+│   └── models.ts       # per-model context-size table + isOpus47() guard
+└── openai/             # Phase 3 — pending
 ```
 
 ## Decisions made
@@ -112,6 +140,8 @@ src/providers/
 - **One canonical Message shape.** Adapters convert at the edges. Pipeline never sees vendor-shaped data.
 - **`provider.id` checks are forbidden outside `src/providers/`.** Capability-flag based dispatch only. Convention; reviewed manually. Promote to ESLint when contributors join.
 - **Default config is not redefined here.** Source of truth: `src/config/defaults.ts`. This doc references field names; it does not duplicate the values.
+- **Single model registry.** `src/providers/models.ts` is the only place models are listed. `/model` reads from it; the status bar reads labels from it. Adding a model is one entry, no other code changes.
+- **Loader merges missing default-provider entries in-memory, never rewrites user config.** Lets new providers (Anthropic, eventually OpenAI) appear in `/provider` without forcing migrations on existing users.
 
 ## Checklist
 
@@ -129,10 +159,14 @@ src/providers/
 - [x] Smoke test: a tool-using prompt produces a `tool_call` event with parseable args
 
 ### Phase 3 — Anthropic
-- [ ] `anthropic/adapt.ts` — system param split out, content blocks, tool_use blocks
-- [ ] `anthropic/stream.ts` — `event:` + `data:` SSE framing
-- [ ] Prompt cache markers placed at the system prompt's static/dynamic boundary
-- [ ] `capabilities.promptCache = true`; pipeline reads it and inserts markers
+- [x] `anthropic/adapt.ts` — system param split out, content blocks, tool_use/tool_result blocks, adjacent-tool-result merge, drop `temperature` on Opus 4.7
+- [x] `anthropic/stream.ts` — `event:` + `data:` SSE framing; `content_block_start/_delta/_stop` + `message_delta` + `error`; `input_json_delta` accumulator per content-block index
+- [x] `anthropic/models.ts` — per-model context-size table + `isOpus47` guard
+- [x] Prompt cache marker placed on the system block (single `cache_control: ephemeral` on the system body)
+- [x] `capabilities.promptCache = true`
+- [x] `MissingAnthropicKeyError` + `isMissingKeyError` discriminator surfaced from `providers/index.ts`
+- [x] Default-provider auto-merge in `loader.ts` so existing user configs gain the Anthropic entry without manual edits
+- [ ] Pipeline-side cache markers on additional static prefixes (notes hierarchy, tool defs) — follow-up
 - [ ] Cache-hit assertion in conformance suite
 
 ### Phase 3 — OpenAI

@@ -5,6 +5,7 @@ import {
     completeCommand,
     dispatch,
     parseSlash,
+    type PickerPayload,
     type SlashCommandContext,
 } from "../commands/index.ts";
 import type { LoadResult, PermissionMode } from "../config/index.ts";
@@ -23,6 +24,7 @@ import { cycleMode } from "../ui/keybinds.ts";
 import { Chat, type ChatItem } from "./chat.tsx";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
+import { Picker } from "./picker.tsx";
 import { SlashPicker } from "./slashPicker.tsx";
 import { StatusBar } from "./statusBar.tsx";
 import { TodoPanel } from "./todoPanel.tsx";
@@ -43,6 +45,11 @@ interface PendingUserQuestion {
     readonly respond: (answer: string) => void;
 }
 
+interface PendingPicker {
+    readonly payload: PickerPayload;
+    readonly respond: (id: string | null) => void;
+}
+
 const prettyCwd = (): string => {
     const cwd = process.cwd();
     const home = homedir();
@@ -61,6 +68,7 @@ export const App = ({ config }: AppProps) => {
     const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
     const [pendingUserQuestion, setPendingUserQuestion] =
         useState<PendingUserQuestion | null>(null);
+    const [pendingPicker, setPendingPicker] = useState<PendingPicker | null>(null);
     const [todos, setTodos] = useState<readonly TodoItem[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [bootError, setBootError] = useState<string | null>(null);
@@ -132,6 +140,18 @@ export const App = ({ config }: AppProps) => {
         setModelState(nextModel);
     };
 
+    const pick = (payload: PickerPayload): Promise<string | null> => {
+        return new Promise<string | null>((resolve) => {
+            setPendingPicker({
+                payload,
+                respond: (id) => {
+                    setPendingPicker(null);
+                    resolve(id);
+                },
+            });
+        });
+    };
+
     const runSlash = async (text: string): Promise<void> => {
         const parsed = parseSlash(text);
         if (!parsed) return;
@@ -158,6 +178,7 @@ export const App = ({ config }: AppProps) => {
             clearChat: rotateSession,
             exitApp: exit,
             addSystemMessage,
+            pick,
         };
         const result = await dispatch(parsed, ctx);
         if (result.kind === "error") {
@@ -217,7 +238,14 @@ export const App = ({ config }: AppProps) => {
             }
             return;
         }
-        if (key.tab && key.shift && stateRef.current && !pendingPrompt) {
+        if (
+            key.tab &&
+            key.shift &&
+            stateRef.current &&
+            !pendingPrompt &&
+            !pendingPicker &&
+            !pendingUserQuestion
+        ) {
             const next = cycleMode(stateRef.current.mode);
             stateRef.current.mode = next;
             stateRef.current.denialTrail = null;
@@ -392,7 +420,9 @@ export const App = ({ config }: AppProps) => {
             <Chat
                 items={items}
                 streamingText={streamingText}
-                streaming={streaming && !pendingPrompt && !pendingUserQuestion}
+                streaming={
+                    streaming && !pendingPrompt && !pendingUserQuestion && !pendingPicker
+                }
             />
             {error !== null && (
                 <Box paddingX={1} marginBottom={1}>
@@ -410,6 +440,8 @@ export const App = ({ config }: AppProps) => {
                     payload={pendingUserQuestion.payload}
                     onRespond={pendingUserQuestion.respond}
                 />
+            ) : pendingPicker ? (
+                <Picker payload={pendingPicker.payload} onRespond={pendingPicker.respond} />
             ) : (
                 <>
                     <SlashPicker input={currentInput} />
