@@ -1,6 +1,9 @@
 import { Box, Text, useApp, useInput } from "ink";
-import { homedir } from "node:os";
+import { existsSync } from "node:fs";
+import { homedir, userInfo } from "node:os";
+import { join } from "node:path";
 import { useEffect, useMemo, useRef, useState } from "react";
+import pkg from "../../package.json" with { type: "json" };
 import {
     completeCommand,
     dispatch,
@@ -14,12 +17,7 @@ import {
     matchFiles,
     type MentionOption,
 } from "../mentions/index.ts";
-import {
-    type Config,
-    type LoadResult,
-    type PermissionMode,
-    saveConfig,
-} from "../config/index.ts";
+import { type Config, type LoadResult, type PermissionMode, saveConfig } from "../config/index.ts";
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
 import { createSessionState, queryLoop, type SessionState } from "../pipeline/index.ts";
 import { estimateTokens } from "../pipeline/shapers/tokens.ts";
@@ -81,6 +79,30 @@ const prettyCwd = (): string => {
     return cwd === home ? "~" : cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd;
 };
 
+const projectHasNotes = (cwd: string): boolean =>
+    existsSync(join(cwd, "CLAUDE.md")) || existsSync(join(cwd, "YE.md"));
+
+const buildWelcomeItem = (cfg: Config): ChatItem | null => {
+    const cwd = process.cwd();
+    if (projectHasNotes(cwd)) return null;
+    let username: string | null = null;
+    try {
+        const u = userInfo().username;
+        username = u.length > 0 ? u : null;
+    } catch {
+        username = null;
+    }
+    return {
+        kind: "welcome",
+        id: newChatItemId(),
+        version: pkg.version,
+        cwd: prettyCwd(),
+        providerId: cfg.defaultProvider,
+        model: cfg.defaultModel.model,
+        username,
+    };
+};
+
 const formatElapsed = (totalSec: number): string => {
     if (totalSec < 60) return `${totalSec}s`;
     const m = Math.floor(totalSec / 60);
@@ -96,12 +118,16 @@ export const App = ({ config }: AppProps) => {
     );
     const [providerId, setProviderId] = useState<string>(initialCfg.defaultProvider);
     const [model, setModelState] = useState<string>(initialCfg.defaultModel.model);
-    const [items, setItems] = useState<ChatItem[]>([]);
+    const [items, setItems] = useState<ChatItem[]>(() => {
+        const welcome = buildWelcomeItem(initialCfg);
+        return welcome ? [welcome] : [];
+    });
     const [streamingText, setStreamingText] = useState("");
     const [streaming, setStreaming] = useState(false);
     const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
-    const [pendingUserQuestion, setPendingUserQuestion] =
-        useState<PendingUserQuestion | null>(null);
+    const [pendingUserQuestion, setPendingUserQuestion] = useState<PendingUserQuestion | null>(
+        null,
+    );
     const [pendingPicker, setPendingPicker] = useState<PendingPicker | null>(null);
     const [pendingKeyPrompt, setPendingKeyPrompt] = useState<PendingKeyPrompt | null>(null);
     const [todos, setTodos] = useState<readonly TodoItem[]>([]);
@@ -119,7 +145,7 @@ export const App = ({ config }: AppProps) => {
     // back during a streaming session so consecutive read-only tool calls
     // can fold into a single group as they arrive; advanced to items.length
     // when streaming flips off, and reset to 0 by rotateSession.
-    const [committedCount, setCommittedCount] = useState(0);
+    const [committedCount, setCommittedCount] = useState(items.length);
     // Toggled with Ctrl+O. Only affects groups in the dynamic section —
     // anything in scrollback already committed in collapsed form.
     const [groupsExpanded, setGroupsExpanded] = useState(false);
@@ -334,8 +360,7 @@ export const App = ({ config }: AppProps) => {
                 });
                 if (cancelled) return;
                 if (!built) {
-                    const env =
-                        cfgRef.current.providers[cfgRef.current.defaultProvider]?.apiKeyEnv;
+                    const env = cfgRef.current.providers[cfgRef.current.defaultProvider]?.apiKeyEnv;
                     setBootError(
                         env
                             ? `API key required. Set $${env} and relaunch, or relaunch to enter one.`
@@ -653,8 +678,7 @@ export const App = ({ config }: AppProps) => {
         () => findActiveMention(currentInput, currentCursor),
         [currentInput, currentCursor],
     );
-    const mentionEnabled =
-        activeMention !== null && dismissedMentionQuery !== activeMention.query;
+    const mentionEnabled = activeMention !== null && dismissedMentionQuery !== activeMention.query;
     const mentionMatches: readonly MentionOption[] = useMemo(() => {
         if (!mentionEnabled || activeMention === null || fileIndex.length === 0) return [];
         return matchFiles(activeMention.query, fileIndex, 8);
@@ -743,10 +767,7 @@ export const App = ({ config }: AppProps) => {
                 <>
                     <SlashPicker input={currentInput} />
                     {mentionOpen && (
-                        <MentionPicker
-                            matches={mentionMatches}
-                            activeIndex={mentionActive}
-                        />
+                        <MentionPicker matches={mentionMatches} activeIndex={mentionActive} />
                     )}
                     <ChatInput
                         ref={chatInputRef}

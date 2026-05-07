@@ -3,6 +3,7 @@ import { memo } from "react";
 import { AssistantLine, MessageView } from "./message.tsx";
 import { Thinking } from "./thinking.tsx";
 import { summarizeArgs, ToolCallView, type ToolCallEntry } from "./toolCall.tsx";
+import { Welcome } from "./welcome.tsx";
 
 export type ChatItem =
     | {
@@ -12,7 +13,16 @@ export type ChatItem =
           readonly content: string;
       }
     | { readonly kind: "system"; readonly id: string; readonly content: string }
-    | { readonly kind: "toolCall"; readonly entry: ToolCallEntry };
+    | { readonly kind: "toolCall"; readonly entry: ToolCallEntry }
+    | {
+          readonly kind: "welcome";
+          readonly id: string;
+          readonly version: string;
+          readonly cwd: string;
+          readonly providerId: string;
+          readonly model: string;
+          readonly username: string | null;
+      };
 
 interface ChatProps {
     readonly items: readonly ChatItem[];
@@ -99,6 +109,17 @@ const RenderItem = memo(({ item }: RenderItemProps) => {
             <Box marginBottom={1}>
                 <Text dimColor>{item.content}</Text>
             </Box>
+        );
+    }
+    if (item.kind === "welcome") {
+        return (
+            <Welcome
+                version={item.version}
+                cwd={item.cwd}
+                providerId={item.providerId}
+                model={item.model}
+                username={item.username}
+            />
         );
     }
     return <ToolCallView entry={item.entry} />;
