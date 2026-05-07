@@ -1,6 +1,11 @@
 import { Box, Text, useInput } from "ink";
-import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { findActiveMention } from "../mentions/index.ts";
+
+// Convert any line-ending shape to \n. Bracketed-paste content from terminals
+// can carry \r\n (CRLF) or lone \r (legacy Mac, some clipboards) — both must
+// land in the buffer as plain \n so cursor math and rendering line up.
+const normalizePaste = (s: string): string => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
 interface ChatInputProps {
     readonly onSubmit: (text: string) => void;
@@ -53,6 +58,21 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     // Saved draft we restore when user navigates back past the most-recent entry.
     const [liveBuffer, setLiveBuffer] = useState("");
 
+    // Synchronous mirrors of `value`/`cursor`. A single paste can split across
+    // multiple useInput callbacks within one tick, and React state inside the
+    // callback's closure reflects the last *render*, not previous calls in the
+    // same tick. Reading/writing through refs keeps all chunks aligned with
+    // the latest buffer. State is still the source of truth for rendering and
+    // for the onValueChange effect.
+    const valueRef = useRef("");
+    const cursorRef = useRef(0);
+    const apply = (next: string, nextCursor: number): void => {
+        valueRef.current = next;
+        cursorRef.current = nextCursor;
+        setValue(next);
+        setCursor(nextCursor);
+    };
+
     useEffect(() => {
         onValueChange?.(value, cursor);
     }, [value, cursor, onValueChange]);
@@ -61,8 +81,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         ref,
         () => ({
             clear: () => {
-                setValue("");
-                setCursor(0);
+                apply("", 0);
                 setHistoryIndex(null);
                 setLiveBuffer("");
             },
@@ -81,8 +100,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
 
     const recallEntry = (index: number): void => {
         const entry = history?.[index] ?? "";
-        setValue(entry);
-        setCursor(entry.length);
+        apply(entry, entry.length);
         setHistoryIndex(index);
     };
 
@@ -90,26 +108,46 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         if (!onMentionAccept) return false;
         const replacement = onMentionAccept();
         if (replacement === null) return false;
-        const mention = findActiveMention(value, cursor);
+        const v = valueRef.current;
+        const c = cursorRef.current;
+        const mention = findActiveMention(v, c);
         if (!mention) return false;
         const insert = `${replacement} `;
-        const next = value.slice(0, mention.start) + insert + value.slice(mention.end);
-        setValue(next);
-        setCursor(mention.start + insert.length);
+        apply(v.slice(0, mention.start) + insert + v.slice(mention.end), mention.start + insert.length);
         return true;
     };
 
     useInput((input, key) => {
         if (disabled) return;
+
+        // Paste path. Any input chunk longer than a single character is, for
+        // our purposes, a paste — humans type one character per event in raw
+        // mode. Routing here defeats two failure modes:
+        //   (1) a chunk that arrives without `key.return` but contains a \n
+        //       would otherwise fall through to the literal-input branch
+        //       below, where the closure-captured cursor is stale relative to
+        //       earlier chunks of the same paste;
+        //   (2) a chunk that *does* set `key.return` or `key.tab` because the
+        //       parser keyed on the first byte would otherwise submit or
+        //       trigger completion mid-paste.
+        // Multi-byte inputs that look like paste but are actually one
+        // codepoint (e.g. an emoji surrogate pair) flow through here too —
+        // semantics are identical to single-char insertion.
+        if (input.length > 1) {
+            const text = normalizePaste(input);
+            exitHistoryNav();
+            const v = valueRef.current;
+            const c = cursorRef.current;
+            apply(v.slice(0, c) + text + v.slice(c), c + text.length);
+            return;
+        }
+
         if (key.tab) {
             if (key.shift) return;
             if (mentionOpen && acceptMention()) return;
             if (getCompletion) {
-                const completed = getCompletion(value);
-                if (completed !== null) {
-                    setValue(completed);
-                    setCursor(completed.length);
-                }
+                const completed = getCompletion(valueRef.current);
+                if (completed !== null) apply(completed, completed.length);
             }
             return;
         }
@@ -117,35 +155,39 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         if (key.return) {
             if (key.shift || key.meta) {
                 exitHistoryNav();
-                setValue((v) => v.slice(0, cursor) + "\n" + v.slice(cursor));
-                setCursor((c) => c + 1);
+                const v = valueRef.current;
+                const c = cursorRef.current;
+                apply(v.slice(0, c) + "\n" + v.slice(c), c + 1);
                 return;
             }
             if (mentionOpen && acceptMention()) return;
-            const trimmed = value.trim();
-            if (trimmed.length === 0) return;
-            onSubmit(value);
-            setValue("");
-            setCursor(0);
+            const v = valueRef.current;
+            if (v.trim().length === 0) return;
+            onSubmit(v);
+            apply("", 0);
             setHistoryIndex(null);
             setLiveBuffer("");
             return;
         }
 
         if (key.backspace || key.delete) {
-            if (cursor === 0) return;
+            const c = cursorRef.current;
+            if (c === 0) return;
             exitHistoryNav();
-            setValue((v) => v.slice(0, cursor - 1) + v.slice(cursor));
-            setCursor((c) => c - 1);
+            const v = valueRef.current;
+            apply(v.slice(0, c - 1) + v.slice(c), c - 1);
             return;
         }
 
         if (key.leftArrow) {
-            setCursor((c) => Math.max(0, c - 1));
+            const c = cursorRef.current;
+            apply(valueRef.current, Math.max(0, c - 1));
             return;
         }
         if (key.rightArrow) {
-            setCursor((c) => Math.min(value.length, c + 1));
+            const c = cursorRef.current;
+            const v = valueRef.current;
+            apply(v, Math.min(v.length, c + 1));
             return;
         }
 
@@ -157,9 +199,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             if (!history || history.length === 0) return;
             // Don't hijack up-arrow inside a multi-line draft unless we're
             // already navigating history.
-            if (historyIndex === null && value.includes("\n")) return;
+            if (historyIndex === null && valueRef.current.includes("\n")) return;
             if (historyIndex === null) {
-                setLiveBuffer(value);
+                setLiveBuffer(valueRef.current);
                 recallEntry(0);
             } else if (historyIndex < history.length - 1) {
                 recallEntry(historyIndex + 1);
@@ -173,8 +215,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             }
             if (historyIndex === null) return;
             if (historyIndex === 0) {
-                setValue(liveBuffer);
-                setCursor(liveBuffer.length);
+                apply(liveBuffer, liveBuffer.length);
                 setHistoryIndex(null);
                 setLiveBuffer("");
             } else {
@@ -190,10 +231,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             return;
         }
 
-        if (input.length > 0) {
+        if (input.length === 1) {
             exitHistoryNav();
-            setValue((v) => v.slice(0, cursor) + input + v.slice(cursor));
-            setCursor((c) => c + input.length);
+            const v = valueRef.current;
+            const c = cursorRef.current;
+            apply(v.slice(0, c) + input + v.slice(c), c + 1);
         }
     });
 
