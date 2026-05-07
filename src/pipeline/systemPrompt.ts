@@ -172,9 +172,12 @@ Executes a shell command via \`sh -c\`.
 
 Schema:
 - \`command\` (string, required)
-- \`timeout\` (integer ms, optional, default 120000, max 600000)
+- \`timeout\` (integer ms, optional, default 120000, max 900000 / 15 min)
 
 Notes:
+- **NEVER run commands that don't return on their own.** Dev servers (\`npm run dev\`, \`vite\`, \`next dev\`, \`bun --watch\`), file watchers, REPLs, daemons, \`tail -f\`, \`docker compose up\` (without \`-d\`), \`ssh\`, interactive prompts — all of these block until killed. They will eat your full timeout (default 2 min, max 15 min), produce no useful output, and hang the user's turn. If the user wants a dev server running, **tell them to run it themselves** in a separate terminal; don't try to start it for them.
+- Backgrounding with \`&\` does NOT make this safe — the shell exits but the orphaned process keeps holding pipes open and may still hang the read.
+- The \`timeout\` arg is for genuinely-slow one-shot commands (large builds, long test suites, big data downloads). On timeout you'll get a clear error suggesting a higher value; if a command timed out at 120000 you might retry at 240000 or 480000. Never raise it just because you're hopeful — bound it to the work.
 - v1 has NO sandbox. The command runs with the user's privileges. Be cautious in AUTO mode.
 - Captures stdout and stderr; both are truncated at 32KB.
 - Avoid using Bash for \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, \`echo\`, \`grep\`, or \`find\` — use the dedicated tool (Read / Edit / Grep / Glob) or output text directly.
