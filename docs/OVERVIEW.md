@@ -110,7 +110,7 @@ Items here orchestrate across multiple subdocs or don't fit any single one. Doma
 - [ ] `bun run check` script: typecheck + tests + lint, single command
 - [x] `scripts/install.sh` builds Ye (via `bun build --compile`) and symlinks `ye` into a `$PATH` directory (macOS arm64 + x64)
 - [ ] Phase 1 acceptance: from a fresh shell, `ye` opens an Ink session, an OpenRouter call streams text, one Read + one Edit work end-to-end with a y/n prompt, the transcript lands at `~/.ye/projects/<hash>/sessions/<id>.jsonl`
-- [ ] Quickstart in repo root `README.md` (only after Phase 1 acceptance)
+- [x] Quickstart in repo root `README.md` (only after Phase 1 acceptance)
 
 ### Phase 2 — gating items
 - [x] Subagent demo: `Explore` returns a useful summary; parent's context size before-vs-after the subagent run is unchanged (this is the whole point of subagents)
