@@ -1,8 +1,8 @@
 # Ye
 
-A local, open Claude Code clone. TypeScript on Bun, Ink TUI, multi-provider, all state on disk under `~/.ye/`.
+A local, open coding agent for the terminal. TypeScript on Bun, Ink TUI, multi-provider, all state on disk under `~/.ye/`.
 
-Same shape as Claude Code — a ReAct agent loop with deny-first permissions, append-only transcripts, and pluggable tools — built so it can be extended freely and run on whatever model you want.
+An agent loop with deny-first permissions, append-only transcripts, and pluggable tools — built to be extended freely and run on whatever model you want.
 
 ## Install
 
