@@ -5,6 +5,7 @@ import { ToolCallView, type ToolCallEntry } from "./toolCall.tsx";
 
 export type ChatItem =
   | { readonly kind: "message"; readonly role: "user" | "assistant"; readonly content: string }
+  | { readonly kind: "system"; readonly content: string }
   | { readonly kind: "toolCall"; readonly entry: ToolCallEntry };
 
 interface ChatProps {
@@ -27,6 +28,13 @@ export const Chat = ({ items, streamingText, streaming }: ChatProps) => {
         if (item.kind === "message") {
           return (
             <MessageView key={key} message={{ role: item.role, content: item.content }} />
+          );
+        }
+        if (item.kind === "system") {
+          return (
+            <Box key={key} marginBottom={1}>
+              <Text dimColor>{item.content}</Text>
+            </Box>
           );
         }
         return <ToolCallView key={key} entry={item.entry} />;

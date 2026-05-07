@@ -1,11 +1,12 @@
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useApp, useInput } from "ink";
 import { homedir } from "node:os";
 import { useEffect, useRef, useState } from "react";
+import { dispatch, parseSlash, type SlashCommandContext } from "../commands/index.ts";
 import type { LoadResult, PermissionMode } from "../config/index.ts";
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
 import { createSessionState, queryLoop, type SessionState } from "../pipeline/index.ts";
 import { getProvider, MissingApiKeyError, type Provider } from "../providers/index.ts";
-import { getProjectId, type SessionHandle } from "../storage/index.ts";
+import { getProjectId, openSession, type SessionHandle } from "../storage/index.ts";
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
 import { Chat, type ChatItem } from "./chat.tsx";
@@ -32,6 +33,7 @@ const prettyCwd = (): string => {
 
 export const App = ({ config }: AppProps) => {
   const cfg = config.config;
+  const { exit } = useApp();
   const [mode, setMode] = useState<PermissionMode>(cfg.permissions?.defaultMode ?? "NORMAL");
   const [items, setItems] = useState<ChatItem[]>([]);
   const [streamingText, setStreamingText] = useState("");
@@ -45,6 +47,55 @@ export const App = ({ config }: AppProps) => {
   const sessionRef = useRef<SessionHandle | null>(null);
   const providerRef = useRef<Provider | null>(null);
   const pendingTodosRef = useRef<readonly TodoItem[] | null>(null);
+
+  const addSystemMessage = (text: string): void => {
+    setItems((prev) => [...prev, { kind: "system", content: text }]);
+  };
+
+  const rotateSession = async (): Promise<void> => {
+    const state = stateRef.current;
+    if (!state) return;
+    const oldSession = sessionRef.current;
+    const newSession = await openSession(state.projectId);
+    sessionRef.current = newSession;
+    if (oldSession) await oldSession.close().catch(() => {});
+    state.history = [];
+    state.sessionRules = [];
+    state.denialTrail = null;
+    state.compactedThisTurn = false;
+    setItems([]);
+    setTodos([]);
+    setError(null);
+  };
+
+  const runSlash = async (text: string): Promise<void> => {
+    const parsed = parseSlash(text);
+    if (!parsed) return;
+    const state = stateRef.current;
+    if (!state) {
+      setError("session not ready");
+      return;
+    }
+    setItems((prev) => [...prev, { kind: "message", role: "user", content: text }]);
+    const ctx: SlashCommandContext = {
+      cwd: process.cwd(),
+      projectRoot: state.projectRoot,
+      projectId: state.projectId,
+      mode: state.mode,
+      setMode: (next) => {
+        state.mode = next;
+        state.denialTrail = null;
+        setMode(next);
+      },
+      clearChat: rotateSession,
+      exitApp: exit,
+      addSystemMessage,
+    };
+    const result = await dispatch(parsed, ctx);
+    if (result.kind === "error") {
+      setError(result.message);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -95,6 +146,11 @@ export const App = ({ config }: AppProps) => {
       return;
     }
     setError(null);
+
+    if (parseSlash(text)) {
+      await runSlash(text);
+      return;
+    }
 
     const userItem: ChatItem = { kind: "message", role: "user", content: text };
     setItems((prev) => [...prev, userItem]);
