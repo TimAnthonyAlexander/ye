@@ -40,7 +40,7 @@ type ToolResult<T = unknown> =
 
 ## V1 tools (Phase 1)
 
-Eight tools. Enough to be useful for daily work. No subagent stuff, no web, no MCP.
+Eleven tools. Enough to be useful for daily work. Subagents and web tools shipped; MCP deferred.
 
 | Tool | readOnly | Notes |
 |------|----------|-------|
@@ -51,6 +51,8 @@ Eight tools. Enough to be useful for daily work. No subagent stuff, no web, no M
 | Grep | yes | Wraps `rg`. Modes: `content`, `files_with_matches`, `count`. |
 | Glob | yes | File pattern match. Returns paths sorted by mtime. |
 | TodoWrite | no | States: `pending`, `in_progress`, `completed`. Exactly one `in_progress` at a time. In-memory in v1; flushes via session JSONL. |
+| WebFetch | yes | Fetch a URL, HTML→markdown, small-model summarise. 15-min cache. HTTP auto-upgrades to HTTPS. Cross-host redirects fail closed. |
+| WebSearch | yes | Web search. Anthropic server-side when available, DuckDuckGo fallback. Title + URL only; follow up with WebFetch to read content. |
 | ExitPlanMode | no | Writes the proposed plan to `getProjectPlansDir(projectId)/<word>-<word>.md`, then fires a permission prompt to flip out of PLAN mode. The **only state-modifying tool allowed in PLAN mode**. |
 
 ### Notable design calls
@@ -80,9 +82,10 @@ This function is the single seam where new sources of tools get added (subagents
 
 Listed by phase so the roadmap is in one place. Checkbox items live in the per-phase checklist below.
 
-- **Phase 2:** `Task` (subagent), `TaskOutput`, `TaskStop`, `EnterPlanMode` (model-initiated mode flip; the user already has Shift+Tab from v1 — this is the symmetric path for the model), `AskUserQuestion`.
+- **Phase 2:** `Task` (subagent), `TaskOutput`, `TaskStop`, `EnterPlanMode` (model-initiated mode flip; the user already has Shift+Tab from v1 — this is the symmetric path for the model), `AskUserQuestion`. **All shipped.**
+- **Web tools (shipped early):** `WebFetch` (fetch + html→md + small-model summarize; 15-min cache; cross-host redirects fail closed), `WebSearch` (Anthropic server-side search or DuckDuckGo fallback; title+URL only). Originally Phase 6; pulled forward. PLAN mode blocks both (they make LLM calls).
 - **Phase 5:** `Skill`, `EnterWorktree`, `ExitWorktree`, `NotebookEdit`.
-- **Phase 6:** `WebFetch`, `WebSearch`, `PowerShell`, `Sleep`.
+- **Phase 6:** `PowerShell`, `Sleep`.
 - **Phase 7+:** MCP (`mcp`, `ListMcpResources`, `ReadMcpResource`, `McpAuth`), `CronCreate`/`Delete`/`List` (KAIROS), `RemoteTrigger`, `LSP`, `StructuredOutput`, `REPL`, `ToolSearch`, `SendUserFile`, `PushNotification`, `SubscribePR`.
 
 ## Files
@@ -100,6 +103,12 @@ src/tools/
 ├── grep/
 ├── glob/
 ├── todoWrite/
+├── webFetch/
+├── webSearch/
+├── webShared/          # shared: domainGate, etc.
+├── askUserQuestion/
+├── enterPlanMode/
+├── task/
 └── exitPlanMode/
 ```
 
@@ -118,6 +127,9 @@ src/tools/
 - [x] Tool: Glob (Bun.Glob; sort by mtime)
 - [x] Tool: TodoWrite (states pending/in_progress/completed; exactly one in_progress)
 - [x] Tool: ExitPlanMode (write plan to `getProjectPlansDir(projectId)/<randomPlanName()>.md` then return a result that triggers a permission prompt to flip out of PLAN mode; on denial, plan stays on disk)
+- [x] Tool: WebFetch (fetch URL, HTML→markdown, small-model summarise via configured model; 15-min cache by URL; cross-host redirects fail closed; HTTP auto-upgrades to HTTPS; domain gate with built-in + config block/allow lists)
+- [x] Tool: WebSearch (Anthropic server-side web_search when available, DuckDuckGo HTML-scrape fallback; configurable via `webTools.searchFallback`; per-call `allowed_domains`/`blocked_domains`; returns title+URL only)
+- [x] `webShared/domainGate.ts` — shared domain gate (built-in blocklist, user config allow/block, per-call allow/block overrides)
 - [x] Each tool: unit test against a tmpdir
 - [x] Smoke test: dispatcher runs Read → Edit → Bash in a single turn against a tmpdir, transcript captures all three
 - [ ] Smoke test: ExitPlanMode in PLAN mode writes a plan file, prompts, and on accept flips mode to NORMAL; on deny, mode stays PLAN and plan file remains
@@ -133,8 +145,6 @@ src/tools/
 - [ ] EnterWorktree / ExitWorktree (git-worktree-backed isolation; auto-cleanup if no changes)
 - [ ] NotebookEdit (replace/insert/delete cell modes)
 
-### Phase 6 — Web, PowerShell, Sleep
-- [ ] WebFetch (fetch + html→md + small-model summarize; 15-min cache)
-- [ ] WebSearch (provider-dependent; mandatory `Sources:` section in model output)
+### Phase 6 — PowerShell, Sleep
 - [ ] PowerShell (Windows host)
 - [ ] Sleep (rate-limit / poll)

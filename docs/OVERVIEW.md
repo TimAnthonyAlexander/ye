@@ -34,7 +34,7 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 - `~/.ye/` layout + project hash + centralized notes-file resolver + session JSONL + plans directory at `~/.ye/projects/<hash>/plans/`
 - OpenRouter provider (with `getContextSize()` for the auto-compact threshold)
 - `AUTO` + `NORMAL` + `PLAN` permission modes (Shift+Tab cycles between them)
-- 8 v1 tools (Read, Edit, Write, Bash, Grep, Glob, TodoWrite, ExitPlanMode)
+- 8 v1 tools (Read, Edit, Write, Bash, Grep, Glob, TodoWrite, ExitPlanMode) — **plus WebFetch, WebSearch (shipped early, originally Phase 6)**
 - 9-step pipeline with one shaper: auto-compact at a configurable threshold (default 50% of context window)
 - Ink UI: streaming output, tool-call display, y/n prompts, Shift+Tab mode cycler
 - `ye` installable in `$PATH`

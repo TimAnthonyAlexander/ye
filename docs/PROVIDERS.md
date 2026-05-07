@@ -1,6 +1,6 @@
 # Ye — Providers
 
-Ye talks to LLMs through a single `Provider` interface. **v1 + Phase 3 (Anthropic) shipped:** OpenRouter and Anthropic-direct (with prompt caching). OpenAI is the remaining Phase 3 item. Adding a fourth provider is a single new folder under `src/providers/` and a registry entry — no other code changes.
+Ye talks to LLMs through a single `Provider` interface. **v1 + Phase 3 (Anthropic) shipped:** OpenRouter and Anthropic-direct (with prompt caching). OpenAI is the remaining Phase 3 item. Adding a fourth provider is a single new folder under `src/providers/` and a registry entry — no other code changes. **Web tools (WebFetch/WebSearch) shipped early** — originally Phase 6, pulled forward.
 
 ## The interface
 
