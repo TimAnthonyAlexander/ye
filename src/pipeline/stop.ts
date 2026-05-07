@@ -2,10 +2,10 @@ import type { SessionState } from "./state.ts";
 import type { StopReason } from "./events.ts";
 
 export interface StopInput {
-  readonly state: SessionState;
-  readonly turnIndex: number;
-  readonly maxTurns: number;
-  readonly hadToolCalls: boolean;
+    readonly state: SessionState;
+    readonly turnIndex: number;
+    readonly maxTurns: number;
+    readonly hadToolCalls: boolean;
 }
 
 const PLAN_LOOP_GUARD_THRESHOLD = 2;
@@ -17,19 +17,19 @@ const PLAN_LOOP_GUARD_THRESHOLD = 2;
 // Other reasons (context_overflow, user_cancel, error) are decided elsewhere
 // and short-circuit before this is called.
 export const evaluateStop = ({
-  state,
-  turnIndex,
-  maxTurns,
-  hadToolCalls,
+    state,
+    turnIndex,
+    maxTurns,
+    hadToolCalls,
 }: StopInput): StopReason | null => {
-  if (
-    state.mode === "PLAN" &&
-    state.denialTrail !== null &&
-    state.denialTrail.count >= PLAN_LOOP_GUARD_THRESHOLD
-  ) {
-    return "plan_loop_guard";
-  }
-  if (!hadToolCalls) return "end_turn";
-  if (turnIndex + 1 >= maxTurns) return "max_turns";
-  return null;
+    if (
+        state.mode === "PLAN" &&
+        state.denialTrail !== null &&
+        state.denialTrail.count >= PLAN_LOOP_GUARD_THRESHOLD
+    ) {
+        return "plan_loop_guard";
+    }
+    if (!hadToolCalls) return "end_turn";
+    if (turnIndex + 1 >= maxTurns) return "max_turns";
+    return null;
 };

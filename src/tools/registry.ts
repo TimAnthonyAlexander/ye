@@ -9,14 +9,14 @@ import type { Tool } from "./types.ts";
 import { WriteTool } from "./write/index.ts";
 
 const TOOLS: readonly Tool[] = [
-  ReadTool,
-  EditTool,
-  WriteTool,
-  BashTool,
-  GrepTool,
-  GlobTool,
-  TodoWriteTool,
-  ExitPlanModeTool,
+    ReadTool,
+    EditTool,
+    WriteTool,
+    BashTool,
+    GrepTool,
+    GlobTool,
+    TodoWriteTool,
+    ExitPlanModeTool,
 ];
 
 const TOOLS_BY_NAME: ReadonlyMap<string, Tool> = new Map(TOOLS.map((t) => [t.name, t]));

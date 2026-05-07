@@ -12,10 +12,10 @@ export type { PermissionPromptPayload, PromptReason } from "./prompt.ts";
 export type { Decision, PromptResponse, ToolCall } from "./types.ts";
 
 export interface DecideContext {
-  readonly toolCall: ToolCall;
-  readonly mode: PermissionMode;
-  readonly rules: readonly PermissionRule[];
-  readonly isReadOnly: boolean;
+    readonly toolCall: ToolCall;
+    readonly mode: PermissionMode;
+    readonly rules: readonly PermissionRule[];
+    readonly isReadOnly: boolean;
 }
 
 // Evaluation order per PERMISSIONS.md §Evaluation order:
@@ -26,18 +26,18 @@ export interface DecideContext {
 //   4. Pattern allows (first match wins)
 //   5. Mode default (NORMAL prompts; AUTO allows; PLAN denies non-allowlist)
 export const decide = (ctx: DecideContext): Decision => {
-  // Step 3: pattern denies
-  const deny = matchFirst(ctx.rules, "deny", ctx.toolCall);
-  if (deny) return { kind: "deny", message: USER_DENIED };
+    // Step 3: pattern denies
+    const deny = matchFirst(ctx.rules, "deny", ctx.toolCall);
+    if (deny) return { kind: "deny", message: USER_DENIED };
 
-  // Step 4: pattern allows
-  const allow = matchFirst(ctx.rules, "allow", ctx.toolCall);
-  if (allow) return { kind: "allow" };
+    // Step 4: pattern allows
+    const allow = matchFirst(ctx.rules, "allow", ctx.toolCall);
+    if (allow) return { kind: "allow" };
 
-  // Step 5: mode default
-  return applyModeDefault({
-    mode: ctx.mode,
-    toolCall: ctx.toolCall,
-    isReadOnly: ctx.isReadOnly,
-  });
+    // Step 5: mode default
+    return applyModeDefault({
+        mode: ctx.mode,
+        toolCall: ctx.toolCall,
+        isReadOnly: ctx.isReadOnly,
+    });
 };

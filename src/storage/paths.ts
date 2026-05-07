@@ -10,10 +10,10 @@ export const USER_NOTES_FILE = join(YE_DIR, "CLAUDE.md");
 
 export const getProjectDir = (projectId: string): string => join(PROJECTS_DIR, projectId);
 export const getProjectMetaPath = (projectId: string): string =>
-  join(getProjectDir(projectId), "meta.json");
+    join(getProjectDir(projectId), "meta.json");
 export const getProjectSessionsDir = (projectId: string): string =>
-  join(getProjectDir(projectId), "sessions");
+    join(getProjectDir(projectId), "sessions");
 export const getProjectPlansDir = (projectId: string): string =>
-  join(getProjectDir(projectId), "plans");
+    join(getProjectDir(projectId), "plans");
 export const getProjectMemoryDir = (projectId: string): string =>
-  join(getProjectDir(projectId), "memory");
+    join(getProjectDir(projectId), "memory");

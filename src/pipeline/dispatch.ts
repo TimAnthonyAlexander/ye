@@ -2,48 +2,48 @@ import type { Provider, ProviderInput } from "../providers/index.ts";
 import type { Event } from "./events.ts";
 
 export interface CollectedToolCall {
-  readonly id: string;
-  readonly name: string;
-  readonly args: unknown;
+    readonly id: string;
+    readonly name: string;
+    readonly args: unknown;
 }
 
 export interface ModelStreamResult {
-  readonly text: string;
-  readonly toolCalls: readonly CollectedToolCall[];
-  readonly stopReason: "end_turn" | "tool_use" | "max_tokens" | "error" | "abort";
-  readonly error?: string;
+    readonly text: string;
+    readonly toolCalls: readonly CollectedToolCall[];
+    readonly stopReason: "end_turn" | "tool_use" | "max_tokens" | "error" | "abort";
+    readonly error?: string;
 }
 
 // Step 5 + early-step 6. Runs the model stream, yielding text deltas and
 // tool-call events as they arrive. Returns the final result for the caller
 // to use in steps 7–9.
 export async function* streamFromProvider(
-  provider: Provider,
-  input: ProviderInput,
+    provider: Provider,
+    input: ProviderInput,
 ): AsyncGenerator<Event, ModelStreamResult> {
-  let text = "";
-  const toolCalls: CollectedToolCall[] = [];
-  let stopReason: ModelStreamResult["stopReason"] = "end_turn";
-  let error: string | undefined;
+    let text = "";
+    const toolCalls: CollectedToolCall[] = [];
+    let stopReason: ModelStreamResult["stopReason"] = "end_turn";
+    let error: string | undefined;
 
-  for await (const evt of provider.stream(input)) {
-    switch (evt.type) {
-      case "text.delta":
-        text += evt.text;
-        yield { type: "model.text", delta: evt.text };
-        break;
-      case "tool_call":
-        toolCalls.push({ id: evt.id, name: evt.name, args: evt.args });
-        yield { type: "model.toolCall", id: evt.id, name: evt.name, args: evt.args };
-        break;
-      case "stop":
-        stopReason = evt.reason;
-        if (evt.error) error = evt.error;
-        break;
+    for await (const evt of provider.stream(input)) {
+        switch (evt.type) {
+            case "text.delta":
+                text += evt.text;
+                yield { type: "model.text", delta: evt.text };
+                break;
+            case "tool_call":
+                toolCalls.push({ id: evt.id, name: evt.name, args: evt.args });
+                yield { type: "model.toolCall", id: evt.id, name: evt.name, args: evt.args };
+                break;
+            case "stop":
+                stopReason = evt.reason;
+                if (evt.error) error = evt.error;
+                break;
+        }
     }
-  }
 
-  return error !== undefined
-    ? { text, toolCalls, stopReason, error }
-    : { text, toolCalls, stopReason };
+    return error !== undefined
+        ? { text, toolCalls, stopReason, error }
+        : { text, toolCalls, stopReason };
 }

@@ -5,6 +5,6 @@
 export const USER_DENIED = "User denied this action.";
 
 export const PLAN_MODE_BLOCKED =
-  "Tool blocked: PLAN mode allows Read, Glob, Grep, ExitPlanMode only. " +
-  "Either call ExitPlanMode with a proposed plan, or stop and ask the user " +
-  "to switch modes via Shift+Tab.";
+    "Tool blocked: PLAN mode allows Read, Glob, Grep, ExitPlanMode only. " +
+    "Either call ExitPlanMode with a proposed plan, or stop and ask the user " +
+    "to switch modes via Shift+Tab.";

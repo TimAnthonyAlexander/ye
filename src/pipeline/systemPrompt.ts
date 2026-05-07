@@ -1,11 +1,11 @@
 import type { PermissionMode } from "../config/index.ts";
 
 export interface SystemPromptEnv {
-  readonly cwd: string;
-  readonly mode: PermissionMode;
-  readonly model: string;
-  readonly platform: string;
-  readonly date: string;
+    readonly cwd: string;
+    readonly mode: PermissionMode;
+    readonly model: string;
+    readonly platform: string;
+    readonly date: string;
 }
 
 const HEADER = `You are Ye, a local CLI coding assistant. You run in the user's terminal as an interactive agent that helps with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
@@ -243,15 +243,15 @@ const ENV_BLOCK = (env: SystemPromptEnv): string => `# Environment
 - Today (UTC): ${env.date}`;
 
 export const buildSystemPrompt = (env: SystemPromptEnv): string =>
-  [
-    HEADER,
-    SYSTEM_BLOCK,
-    TASKS_BLOCK,
-    ACTING_CAREFULLY_BLOCK,
-    TONE_BLOCK,
-    TOOL_DISCIPLINE_BLOCK,
-    PERMISSION_MODES_BLOCK(env.mode),
-    TOOLS_BLOCK,
-    PROJECT_NOTES_BLOCK,
-    ENV_BLOCK(env),
-  ].join("\n\n");
+    [
+        HEADER,
+        SYSTEM_BLOCK,
+        TASKS_BLOCK,
+        ACTING_CAREFULLY_BLOCK,
+        TONE_BLOCK,
+        TOOL_DISCIPLINE_BLOCK,
+        PERMISSION_MODES_BLOCK(env.mode),
+        TOOLS_BLOCK,
+        PROJECT_NOTES_BLOCK,
+        ENV_BLOCK(env),
+    ].join("\n\n");
