@@ -122,21 +122,21 @@ src/permissions/
 ## Checklist
 
 ### Phase 1 — Three-mode permissions
-- [ ] `types.ts` — Mode (`"AUTO" | "NORMAL" | "PLAN"`), Rule, Decision (`allow` / `deny` / `prompt`), ToolCall (canonical shape)
-- [ ] `messages.ts` — denial-message constants (user-denied, PLAN-mode-blocked); no other file emits denial strings
-- [ ] `modes.ts` — AUTO + NORMAL + PLAN handlers; PLAN's allow-list (Read, Glob, Grep, ExitPlanMode) is data, not branches
-- [ ] `rules.ts` — deny-first evaluator with v1 pattern matching (`Tool` and `Tool(prefix:*)`)
-- [ ] `index.ts` — `decide(toolCall, ctx)` entrypoint
-- [ ] `prompt.ts` — declares the prompt event payload + `respond(decision)` response shape; UI implements rendering
-- [ ] Pipeline step 7 wired to `decide()`
-- [ ] Pipeline step 6 (tool pool assembly) drops blanket-deny tools and (in PLAN mode) tools not on PLAN's allow-list before the model sees them
-- [ ] Read-only tools (`readOnlyHint: true`) auto-allow in `NORMAL` mode
+- [x] `types.ts` — Mode (`"AUTO" | "NORMAL" | "PLAN"`), Rule, Decision (`allow` / `deny` / `prompt`), ToolCall (canonical shape)
+- [x] `messages.ts` — denial-message constants (user-denied, PLAN-mode-blocked); no other file emits denial strings
+- [x] `modes.ts` — AUTO + NORMAL + PLAN handlers; PLAN's allow-list (Read, Glob, Grep, ExitPlanMode) is data, not branches
+- [x] `rules.ts` — deny-first evaluator with v1 pattern matching (`Tool` and `Tool(prefix:*)`)
+- [x] `index.ts` — `decide(toolCall, ctx)` entrypoint
+- [x] `prompt.ts` — declares the prompt event payload + `respond(decision)` response shape; UI implements rendering
+- [x] Pipeline step 7 wired to `decide()`
+- [x] Pipeline step 6 (tool pool assembly) drops blanket-deny tools and (in PLAN mode) tools not on PLAN's allow-list before the model sees them
+- [x] Read-only tools (`readOnlyHint: true`) auto-allow in `NORMAL` mode
 - [ ] CLI flag `--mode <AUTO|NORMAL|PLAN>` passes through to session settings
-- [ ] PLAN-mode denial returns the canonical message from `messages.ts`
-- [ ] Mode flip via `ExitPlanMode` tool: writes plan → prompts → on accept, mutates session mode; on deny, mode stays PLAN
-- [ ] Shift+Tab keybind in `src/ui/keybinds.ts` cycles NORMAL → AUTO → PLAN → NORMAL
-- [ ] Smoke test: a Bash call in NORMAL prompts; allow proceeds; deny returns the canonical user-denial result
-- [ ] Smoke test: an Edit call in PLAN returns the canonical PLAN-block message; a second consecutive Edit terminates the turn (loop guard — implemented in pipeline; this test exercises the contract)
+- [x] PLAN-mode denial returns the canonical message from `messages.ts`
+- [x] Mode flip via `ExitPlanMode` tool: writes plan → prompts → on accept, mutates session mode; on deny, mode stays PLAN
+- [x] Shift+Tab keybind in `src/ui/keybinds.ts` cycles NORMAL → AUTO → PLAN → NORMAL
+- [x] Smoke test: a Bash call in NORMAL prompts; allow proceeds; deny returns the canonical user-denial result
+- [x] Smoke test: an Edit call in PLAN returns the canonical PLAN-block message; a second consecutive Edit terminates the turn (loop guard — implemented in pipeline; this test exercises the contract)
 - [ ] Smoke test: ExitPlanMode in PLAN, accept flow → mode is NORMAL afterwards; deny flow → mode is PLAN, plan file still on disk
 
 ### Phase 2 — Slash command + session-scoped allows + EnterPlanMode

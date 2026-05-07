@@ -104,10 +104,10 @@ ye/
 Items here orchestrate across multiple subdocs or don't fit any single one. Domain checklists live in their own docs.
 
 ### Phase 1 — gating items
-- [ ] Top-level repo scaffolding ready: `src/{storage,memory,providers,permissions,tools,pipeline,ui}` directories created with `index.ts` placeholders
+- [x] Top-level repo scaffolding ready: `src/{storage,memory,providers,permissions,tools,pipeline,ui}` directories created with `index.ts` placeholders
 - [ ] `bun test` runner wired (one passing smoke test in each domain)
 - [ ] `bun run check` script: typecheck + tests + lint, single command
-- [ ] `scripts/install.sh` builds Ye (via `bun build --compile`) and symlinks `ye` into a `$PATH` directory (macOS arm64 + x64)
+- [x] `scripts/install.sh` builds Ye (via `bun build --compile`) and symlinks `ye` into a `$PATH` directory (macOS arm64 + x64)
 - [ ] Phase 1 acceptance: from a fresh shell, `ye` opens an Ink session, an OpenRouter call streams text, one Read + one Edit work end-to-end with a y/n prompt, the transcript lands at `~/.ye/projects/<hash>/sessions/<id>.jsonl`
 - [ ] Quickstart in repo root `README.md` (only after Phase 1 acceptance)
 
@@ -120,8 +120,8 @@ Items here orchestrate across multiple subdocs or don't fit any single one. Doma
 - [ ] All three providers pass the same conformance suite: text round-trip, tool-call round-trip, multi-chunk streaming, cache-hit assertion (Anthropic only)
 
 ### Build / distribute
-- [ ] `bun build --compile` produces a single binary on macOS arm64
-- [ ] macOS x64 build target (Phase 1, same script)
+- [x] `bun build --compile` produces a single binary on macOS arm64
+- [x] macOS x64 build target (Phase 1, same script)
 - [ ] Linux x64 build target (Phase 6)
 - [ ] Windows x64 build target (Phase 6)
 - [ ] Versioning + release script (`scripts/release.sh`, Phase 6+)

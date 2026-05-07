@@ -116,17 +116,17 @@ src/providers/
 ## Checklist
 
 ### Phase 1 — OpenRouter
-- [ ] `types.ts` — Provider, ProviderInput, ProviderEvent, ProviderCapabilities, Message, ToolDefinition
-- [ ] `sse.ts` — generic SSE line iterator from a Response body
-- [ ] `index.ts` — `getProvider(id)` registry; reads `id` default from `config.defaultProvider`
-- [ ] OpenRouter `adapt.ts` — Ye Message[] + Tools → OpenAI-compatible body; passes `provider.order` + `allow_fallbacks` from `providerOptions`
-- [ ] OpenRouter `stream.ts` — SSE → `text.delta` / `tool_call` / `stop`; handles incremental tool-call argument streaming (chunks merge by `id`)
-- [ ] OpenRouter `index.ts` — `stream()` posts, returns async iterable
-- [ ] OpenRouter `getContextSize(model)` — `GET /models`, parse `context_length`; fallback to 128_000 on any failure
-- [ ] Reads API key from env var named in `config.providers.openrouter.apiKeyEnv`
-- [ ] Surfaces a clean error if the env var is missing (no silent failure)
-- [ ] Smoke test: a real call returns at least one `text.delta` and a `stop`
-- [ ] Smoke test: a tool-using prompt produces a `tool_call` event with parseable args
+- [x] `types.ts` — Provider, ProviderInput, ProviderEvent, ProviderCapabilities, Message, ToolDefinition
+- [x] `sse.ts` — generic SSE line iterator from a Response body
+- [x] `index.ts` — `getProvider(id)` registry; reads `id` default from `config.defaultProvider`
+- [x] OpenRouter `adapt.ts` — Ye Message[] + Tools → OpenAI-compatible body; passes `provider.order` + `allow_fallbacks` from `providerOptions`
+- [x] OpenRouter `stream.ts` — SSE → `text.delta` / `tool_call` / `stop`; handles incremental tool-call argument streaming (chunks merge by `id`)
+- [x] OpenRouter `index.ts` — `stream()` posts, returns async iterable
+- [x] OpenRouter `getContextSize(model)` — `GET /models`, parse `context_length`; fallback to 128_000 on any failure
+- [x] Reads API key from env var named in `config.providers.openrouter.apiKeyEnv`
+- [x] Surfaces a clean error if the env var is missing (no silent failure)
+- [x] Smoke test: a real call returns at least one `text.delta` and a `stop`
+- [x] Smoke test: a tool-using prompt produces a `tool_call` event with parseable args
 
 ### Phase 3 — Anthropic
 - [ ] `anthropic/adapt.ts` — system param split out, content blocks, tool_use blocks

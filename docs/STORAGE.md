@@ -134,17 +134,17 @@ src/memory/
 ## Checklist
 
 ### Phase 1 — Storage foundation
-- [ ] `paths.ts` — `~/.ye`, `~/.ye/projects`, plus per-project path builders: `getProjectMemoryDir`, `getProjectSessionsDir`, `getProjectPlansDir`, `getProjectMetaPath`
-- [ ] `project.ts` — `canonicalize(cwd)` → project root (ancestor markers `.git`/`package.json`/`composer.json`/`CLAUDE.md`/`YE.md`) → 12-char sha256 hash → folder layout. Single exported function `getProjectId()`.
-- [ ] `notesFile.ts` — `getProjectNotesFile(root)` returns `CLAUDE.md` or `YE.md` per the rule. Single source of truth. Includes `existed` and `format` fields.
-- [ ] `session.ts` — `openSession()`, `appendEvent(event)`, `closeSession()` over an append-only JSONL handle
-- [ ] `wordlist.ts` — small bundled list of nouns + adjectives; export `randomPlanName(): string` returning `<word>-<word>`
-- [ ] `getProjectPlansDir(projectId)` ensures the directory exists on first call (lazy)
-- [ ] `meta.json` written on first project visit; `last_seen_at` bumped each session
-- [ ] Smoke test: from cwd inside a temp git repo, `getProjectId()` is stable across calls; `getProjectId()` from a subdirectory returns the same id; sessions land in `~/.ye/projects/<hash>/sessions/`
-- [ ] Smoke test: `getProjectId()` resolves correctly in a `composer.json`-only directory (PHP project)
-- [ ] Smoke test: `getProjectNotesFile()` returns `CLAUDE.md` when present, `YE.md` otherwise; `existed: false` when neither exists
-- [ ] Smoke test: `randomPlanName()` produces two-word filenames; collision rate acceptable for our scale (no on-disk dedupe in v1)
+- [x] `paths.ts` — `~/.ye`, `~/.ye/projects`, plus per-project path builders: `getProjectMemoryDir`, `getProjectSessionsDir`, `getProjectPlansDir`, `getProjectMetaPath`
+- [x] `project.ts` — `canonicalize(cwd)` → project root (ancestor markers `.git`/`package.json`/`composer.json`/`CLAUDE.md`/`YE.md`) → 12-char sha256 hash → folder layout. Single exported function `getProjectId()`.
+- [x] `notesFile.ts` — `getProjectNotesFile(root)` returns `CLAUDE.md` or `YE.md` per the rule. Single source of truth. Includes `existed` and `format` fields.
+- [x] `session.ts` — `openSession()`, `appendEvent(event)`, `closeSession()` over an append-only JSONL handle
+- [x] `wordlist.ts` — small bundled list of nouns + adjectives; export `randomPlanName(): string` returning `<word>-<word>`
+- [x] `getProjectPlansDir(projectId)` ensures the directory exists on first call (lazy)
+- [x] `meta.json` written on first project visit; `last_seen_at` bumped each session
+- [x] Smoke test: from cwd inside a temp git repo, `getProjectId()` is stable across calls; `getProjectId()` from a subdirectory returns the same id; sessions land in `~/.ye/projects/<hash>/sessions/`
+- [x] Smoke test: `getProjectId()` resolves correctly in a `composer.json`-only directory (PHP project)
+- [x] Smoke test: `getProjectNotesFile()` returns `CLAUDE.md` when present, `YE.md` otherwise; `existed: false` when neither exists
+- [x] Smoke test: `randomPlanName()` produces two-word filenames; collision rate acceptable for our scale (no on-disk dedupe in v1)
 
 ### Phase 2 — Memory hierarchy
 - [ ] `hierarchy.ts` — concat managed/user/project/local notes in order, with delimiters defined in this file only

@@ -106,20 +106,20 @@ src/tools/
 ## Checklist
 
 ### Phase 1 — V1 tools
-- [ ] `types.ts` — Tool, ToolContext, ToolResult
-- [ ] `validate.ts` — JSON Schema arg validation, returns ToolResult on failure
-- [ ] `pool.ts` — `assembleToolPool()` with steps 1–3 + 5 (no MCP)
-- [ ] `index.ts` — `getTool(name)`, `listTools()`
-- [ ] Tool: Read (offset/limit, default 2000 lines, absolute paths only)
-- [ ] Tool: Edit (exact replace, `replace_all`, prior-Read invariant from turn state)
-- [ ] Tool: Write (overwrite ok, prior-Read invariant when file exists)
-- [ ] Tool: Bash (spawn with timeout, capture stdout+stderr+exit; document the no-sandbox gap in description and help)
-- [ ] Tool: Grep (shell out to `rg`; `install.sh` warns if missing; three output modes)
-- [ ] Tool: Glob (Bun.Glob; sort by mtime)
-- [ ] Tool: TodoWrite (states pending/in_progress/completed; exactly one in_progress)
-- [ ] Tool: ExitPlanMode (write plan to `getProjectPlansDir(projectId)/<randomPlanName()>.md` then return a result that triggers a permission prompt to flip out of PLAN mode; on denial, plan stays on disk)
-- [ ] Each tool: unit test against a tmpdir
-- [ ] Smoke test: dispatcher runs Read → Edit → Bash in a single turn against a tmpdir, transcript captures all three
+- [x] `types.ts` — Tool, ToolContext, ToolResult
+- [x] `validate.ts` — JSON Schema arg validation, returns ToolResult on failure
+- [x] `pool.ts` — `assembleToolPool()` with steps 1–3 + 5 (no MCP)
+- [x] `index.ts` — `getTool(name)`, `listTools()`
+- [x] Tool: Read (offset/limit, default 2000 lines, absolute paths only)
+- [x] Tool: Edit (exact replace, `replace_all`, prior-Read invariant from turn state)
+- [x] Tool: Write (overwrite ok, prior-Read invariant when file exists)
+- [x] Tool: Bash (spawn with timeout, capture stdout+stderr+exit; document the no-sandbox gap in description and help)
+- [x] Tool: Grep (shell out to `rg`; `install.sh` warns if missing; three output modes)
+- [x] Tool: Glob (Bun.Glob; sort by mtime)
+- [x] Tool: TodoWrite (states pending/in_progress/completed; exactly one in_progress)
+- [x] Tool: ExitPlanMode (write plan to `getProjectPlansDir(projectId)/<randomPlanName()>.md` then return a result that triggers a permission prompt to flip out of PLAN mode; on denial, plan stays on disk)
+- [x] Each tool: unit test against a tmpdir
+- [x] Smoke test: dispatcher runs Read → Edit → Bash in a single turn against a tmpdir, transcript captures all three
 - [ ] Smoke test: ExitPlanMode in PLAN mode writes a plan file, prompts, and on accept flips mode to NORMAL; on deny, mode stays PLAN and plan file remains
 
 ### Phase 2 — Subagent + model-side mode tools

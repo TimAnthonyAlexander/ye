@@ -104,22 +104,22 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 ## Checklist
 
 ### Phase 1 — MVP pipeline
-- [ ] `events.ts` — `Event` and `StopReason` types (include `plan_loop_guard` reason)
-- [ ] `state.ts` — `TurnState`, `SessionState` (SessionState carries cached `contextWindow`, current `mode`, recent denial trail for the PLAN-mode loop guard)
-- [ ] `index.ts` — `queryLoop(input): AsyncGenerator<Event>` skeleton
-- [ ] Step 1: settings resolution — read `~/.ye/config.json`, merge with project overrides if present
-- [ ] Step 2: turn-local state (session id, transcript handle, retry budget = 0 for v1); on first turn of a session, call `provider.getContextSize(model)` and cache the result
-- [ ] Step 3: `assemble()` — system prompt + env + resolved notes file (via `memory/notesFile.ts`) + history
-- [ ] Step 4: single shaper, `shapers/autoCompact.ts` — fires when `currentTokens / contextWindow >= config.compact.threshold` (default 0.5); at most once per turn
-- [ ] Step 5: model call via active provider; emits `model.text` and `model.toolCall`
-- [ ] Step 6: `dispatch.ts` — parse tool calls, serialize all (no parallelism in v1)
-- [ ] Step 7: route through `permissions.decide()`; emit `permission.prompt` when needed
-- [ ] Step 8: execute tool, emit `tool.start`/`tool.end`, append result to history
-- [ ] Step 9: stop conditions — no-tool-calls, max-turns (`maxTurns.master` default 100; `maxTurns.subagent` default 25), explicit cancel, PLAN-mode loop guard (two consecutive denials of the same tool in PLAN mode)
-- [ ] PLAN-mode denial trail tracked in `TurnState`; reset on mode flip
-- [ ] Transcript flush at end of each turn (append-only JSONL via storage layer)
-- [ ] Smoke test: a turn with one Read tool call completes and produces a parseable JSONL transcript
-- [ ] Smoke test: in PLAN mode, two Edit attempts in a row terminate the turn with the loop-guard reason
+- [x] `events.ts` — `Event` and `StopReason` types (include `plan_loop_guard` reason)
+- [x] `state.ts` — `TurnState`, `SessionState` (SessionState carries cached `contextWindow`, current `mode`, recent denial trail for the PLAN-mode loop guard)
+- [x] `index.ts` — `queryLoop(input): AsyncGenerator<Event>` skeleton
+- [x] Step 1: settings resolution — read `~/.ye/config.json`, merge with project overrides if present
+- [x] Step 2: turn-local state (session id, transcript handle, retry budget = 0 for v1); on first turn of a session, call `provider.getContextSize(model)` and cache the result
+- [x] Step 3: `assemble()` — system prompt + env + resolved notes file (via `memory/notesFile.ts`) + history
+- [x] Step 4: single shaper, `shapers/autoCompact.ts` — fires when `currentTokens / contextWindow >= config.compact.threshold` (default 0.5); at most once per turn
+- [x] Step 5: model call via active provider; emits `model.text` and `model.toolCall`
+- [x] Step 6: `dispatch.ts` — parse tool calls, serialize all (no parallelism in v1)
+- [x] Step 7: route through `permissions.decide()`; emit `permission.prompt` when needed
+- [x] Step 8: execute tool, emit `tool.start`/`tool.end`, append result to history
+- [x] Step 9: stop conditions — no-tool-calls, max-turns (`maxTurns.master` default 100; `maxTurns.subagent` default 25), explicit cancel, PLAN-mode loop guard (two consecutive denials of the same tool in PLAN mode)
+- [x] PLAN-mode denial trail tracked in `TurnState`; reset on mode flip
+- [x] Transcript flush at end of each turn (append-only JSONL via storage layer)
+- [x] Smoke test: a turn with one Read tool call completes and produces a parseable JSONL transcript
+- [x] Smoke test: in PLAN mode, two Edit attempts in a row terminate the turn with the loop-guard reason
 
 ### Phase 2 — Subagents in the loop
 - [ ] Step 6: classify read-only vs state-modifying via `Tool.annotations.readOnlyHint`; parallel-dispatch read-only
