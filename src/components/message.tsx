@@ -1,6 +1,7 @@
 import { Box, Text, useStdout } from "ink";
 import { memo } from "react";
 import type { Message } from "../providers/index.ts";
+import { InlineMarkdown } from "./markdown.tsx";
 
 interface MessageViewProps {
     readonly message: Message;
@@ -61,8 +62,10 @@ const UserBubble = ({ content }: { content: string }) => {
 // in chat.tsx — keep a single source of truth so the two paths can't drift.
 export const AssistantLine = ({ content }: { content: string }) => (
     <Box marginBottom={1}>
-        <Text color="green">{"● "}</Text>
-        <Text>{content}</Text>
+        <Text>
+            <Text color="green">{"● "}</Text>
+            <InlineMarkdown content={content} />
+        </Text>
     </Box>
 );
 

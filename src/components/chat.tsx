@@ -2,7 +2,7 @@ import { Box, Static, Text } from "ink";
 import { memo } from "react";
 import { AssistantLine, MessageView } from "./message.tsx";
 import { Thinking } from "./thinking.tsx";
-import { ToolCallView, type ToolCallEntry } from "./toolCall.tsx";
+import { summarizeArgs, ToolCallView, type ToolCallEntry } from "./toolCall.tsx";
 
 export type ChatItem =
     | {
@@ -18,6 +18,14 @@ interface ChatProps {
     readonly items: readonly ChatItem[];
     readonly streamingText: string;
     readonly streaming: boolean;
+    // Index up to which `items` are eligible for Static (scrollback) commit.
+    // Advanced by App when streaming ends; never shrunk except on rotateSession.
+    // Holds back commits during a streaming session so consecutive read-only
+    // tool calls can fold into a single group as they arrive.
+    readonly committedCount: number;
+    // Toggled with Ctrl+O; only affects groups in the dynamic (in-flight)
+    // section. Static-committed groups freeze in collapsed form.
+    readonly groupsExpanded: boolean;
 }
 
 // Sequence-based IDs for messages/system items. Module-level is fine because
@@ -28,6 +36,52 @@ export const newChatItemId = (): string => `c${++idSeq}`;
 
 const itemKey = (item: ChatItem): string =>
     item.kind === "toolCall" ? `t-${item.entry.id}` : `c-${item.id}`;
+
+// Tools whose runs are bundled into one row when consecutive. Exclusively
+// read-only and high-frequency — Edit/Write/Bash/Task are rare enough that
+// each call earns its own line.
+const BUNDLEABLE: ReadonlySet<string> = new Set(["Read", "Glob", "Grep"]);
+
+type RenderUnit =
+    | { readonly kind: "single"; readonly key: string; readonly item: ChatItem }
+    | {
+          readonly kind: "group";
+          readonly key: string;
+          readonly name: string;
+          readonly entries: readonly ToolCallEntry[];
+      };
+
+const groupItems = (items: readonly ChatItem[]): readonly RenderUnit[] => {
+    const units: RenderUnit[] = [];
+    for (const item of items) {
+        const bundleable =
+            item.kind === "toolCall" &&
+            BUNDLEABLE.has(item.entry.name) &&
+            item.entry.status !== "error";
+
+        if (bundleable && item.kind === "toolCall") {
+            const last = units[units.length - 1];
+            if (last && last.kind === "group" && last.name === item.entry.name) {
+                units[units.length - 1] = {
+                    kind: "group",
+                    key: last.key,
+                    name: last.name,
+                    entries: [...last.entries, item.entry],
+                };
+                continue;
+            }
+            units.push({
+                kind: "group",
+                key: `g-${item.entry.id}`,
+                name: item.entry.name,
+                entries: [item.entry],
+            });
+            continue;
+        }
+        units.push({ kind: "single", key: itemKey(item), item });
+    }
+    return units;
+};
 
 interface RenderItemProps {
     readonly item: ChatItem;
@@ -51,39 +105,127 @@ const RenderItem = memo(({ item }: RenderItemProps) => {
 });
 RenderItem.displayName = "RenderItem";
 
-export const Chat = ({ items, streamingText, streaming }: ChatProps) => {
-    // Items up to (but not including) the first still-running tool call are
-    // committed — Ink's <Static> renders them once into scrollback and never
-    // touches them again. Everything from the first running tool onward stays
-    // dynamic so its status updates can repaint. Order is preserved even if
-    // tool calls finish out of order: a later-finished tool waits for any
-    // earlier still-running tool before it can commit.
-    const firstRunning = items.findIndex(
-        (item) => item.kind === "toolCall" && item.entry.status === "running",
+const COLLAPSED_NOUN: Record<string, string> = {
+    Read: "files",
+    Glob: "patterns",
+    Grep: "patterns",
+};
+
+interface GroupViewProps {
+    readonly name: string;
+    readonly entries: readonly ToolCallEntry[];
+    readonly expanded: boolean;
+    readonly interactive: boolean;
+}
+
+const GroupView = memo(({ name, entries, expanded, interactive }: GroupViewProps) => {
+    if (entries.length === 1) {
+        // A "group" of one renders identically to a single tool call — no
+        // count, no hint, no special framing.
+        return <ToolCallView entry={entries[0]!} />;
+    }
+    if (expanded) {
+        return (
+            <Box flexDirection="column">
+                {entries.map((entry) => (
+                    <ToolCallView key={entry.id} entry={entry} />
+                ))}
+                {interactive && (
+                    <Box marginBottom={1}>
+                        <Text dimColor>↳ ctrl+o to collapse</Text>
+                    </Box>
+                )}
+            </Box>
+        );
+    }
+    const anyRunning = entries.some((e) => e.status === "running");
+    const glyph = anyRunning ? "•" : "✓";
+    const color = anyRunning ? "yellow" : "green";
+    const noun = COLLAPSED_NOUN[name] ?? "calls";
+    const last = entries[entries.length - 1]!;
+    const lastArg = summarizeArgs(name, last.args);
+    return (
+        <Box marginBottom={1}>
+            <Text color={color}>{glyph} </Text>
+            <Text bold>{name}</Text>
+            <Text dimColor>
+                {" "}
+                · {entries.length} {noun}
+            </Text>
+            {lastArg.length > 0 && (
+                <Text dimColor>
+                    {" "}
+                    · {lastArg.slice(0, 80)}
+                    {lastArg.length > 80 ? "…" : ""}
+                </Text>
+            )}
+            {interactive && <Text dimColor> (ctrl+o to expand)</Text>}
+        </Box>
     );
-    const splitAt = firstRunning === -1 ? items.length : firstRunning;
-    const committed = splitAt === items.length ? items : items.slice(0, splitAt);
-    const inFlight = splitAt === items.length ? [] : items.slice(splitAt);
+});
+GroupView.displayName = "GroupView";
+
+interface RenderUnitProps {
+    readonly unit: RenderUnit;
+    readonly expanded: boolean;
+    readonly interactive: boolean;
+}
+
+const RenderUnitView = ({ unit, expanded, interactive }: RenderUnitProps) => {
+    if (unit.kind === "single") return <RenderItem item={unit.item} />;
+    return (
+        <GroupView
+            name={unit.name}
+            entries={unit.entries}
+            expanded={expanded}
+            interactive={interactive}
+        />
+    );
+};
+
+export const Chat = ({
+    items,
+    streamingText,
+    streaming,
+    committedCount,
+    groupsExpanded,
+}: ChatProps) => {
+    // Stable commit boundary: items[0..committedCount) are eligible for Ink's
+    // <Static> (scrollback). Static is append-only — re-rendering a previously
+    // rendered item is a no-op — so we hold the boundary back until the
+    // streaming session ends. That lets consecutive Read/Glob/Grep entries
+    // continue merging into a single group as they arrive without breaking
+    // Static's invariant.
+    const committedItems = items.slice(0, committedCount);
+    const dynamicItems = items.slice(committedCount);
+
+    const committedUnits = groupItems(committedItems);
+    const dynamicUnits = groupItems(dynamicItems);
 
     // While a tool is mid-execution, its own running indicator (and progress
     // panel for Task) signals liveness — the generic Thinking spinner becomes
     // misleading and visually competes with the tool entry.
-    const hasRunningTool = inFlight.some(
+    const hasRunningTool = dynamicItems.some(
         (item) => item.kind === "toolCall" && item.entry.status === "running",
     );
 
     return (
         <>
-            <Static items={committed as ChatItem[]}>
-                {(item) => (
-                    <Box key={itemKey(item)} paddingX={1}>
-                        <RenderItem item={item} />
+            <Static items={committedUnits as RenderUnit[]}>
+                {(unit) => (
+                    <Box key={unit.key} paddingX={1}>
+                        <RenderUnitView unit={unit} expanded={false} interactive={false} />
                     </Box>
                 )}
             </Static>
             <Box flexDirection="column" paddingX={1}>
-                {inFlight.map((item) => (
-                    <RenderItem key={itemKey(item)} item={item} />
+                {dynamicUnits.map((unit) => (
+                    <RenderUnitView
+                        key={unit.key}
+                        unit={unit}
+                        expanded={groupsExpanded}
+                        interactive={true}
+                    />
                 ))}
                 {streaming &&
                     !hasRunningTool &&

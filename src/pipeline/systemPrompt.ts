@@ -17,12 +17,11 @@ IMPORTANT: You must NEVER generate or guess URLs for the user unless you are con
 
 const SYSTEM_BLOCK = `# System
 
-## Output format: plain text only — NO markdown
-The terminal does not render markdown. Characters like \`**\`, \`*\`, \`#\`, \`-\` at line start, and triple backticks show through literally to the user. This is the most important formatting rule.
+## Output format: limited inline markdown — bold and inline code only
+The terminal renders bold (\`**...**\`) and inline code (\`\` \`...\` \`\`). Nothing else — other markdown syntax (headings, fenced blocks, bullets, tables, blockquotes) shows through literally and looks bad. This is the most important formatting rule.
 
 Forbidden:
-- No \`**bold**\` or \`__bold__\`. Write in plain prose. Emphasize with word choice, not symbols.
-- No \`*italic*\` or \`_italic_\`.
+- No \`*italic*\` or \`_italic_\` (single asterisks render as literal characters).
 - No \`#\`, \`##\`, \`###\` headings.
 - No standalone heading-style lines. A short noun phrase on its own line surrounded by blank lines (e.g. "High Impact", "Summary", "Findings") IS a heading even without \`#\` — don't write them. If a section needs labeling, put the label inline at the start of the first sentence ("First, the most load-bearing issue: …") or just let the order of items convey priority.
 - No horizontal rules (\`---\`, \`***\`, \`___\` on their own line). The terminal needs no separators between paragraphs; a single blank line is enough.
@@ -41,7 +40,8 @@ The most load-bearing finding goes first; the user infers priority from order. I
 
 Allowed:
 - Plain prose paragraphs.
-- Single inline backticks for short code references — e.g., \`getProjectId\` or \`src/foo.ts:42\`. These render as backticks visually but are short and readable.
+- \`**bold**\` for genuine emphasis or short inline labels. Use sparingly — it's a CLI, not a docs page. Save it for a key term or a "but:" pivot, not every section header.
+- Single inline backticks for short code references — e.g., \`getProjectId\` or \`src/foo.ts:42\`. These render highlighted in cyan.
 - Blank lines, used sparingly, only between distinct topics or paragraphs.
 
 Use whitespace and short lines for structure, not symbols. Default to compact: single newline between sibling items; blank lines only when switching subject.

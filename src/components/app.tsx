@@ -101,6 +101,14 @@ export const App = ({ config }: AppProps) => {
     const [error, setError] = useState<string | null>(null);
     const [bootError, setBootError] = useState<string | null>(null);
     const [currentInput, setCurrentInput] = useState("");
+    // Index up to which `items` has been committed to Ink's <Static>. Held
+    // back during a streaming session so consecutive read-only tool calls
+    // can fold into a single group as they arrive; advanced to items.length
+    // when streaming flips off, and reset to 0 by rotateSession.
+    const [committedCount, setCommittedCount] = useState(0);
+    // Toggled with Ctrl+O. Only affects groups in the dynamic section —
+    // anything in scrollback already committed in collapsed form.
+    const [groupsExpanded, setGroupsExpanded] = useState(false);
 
     const stateRef = useRef<SessionState | null>(null);
     const sessionRef = useRef<SessionHandle | null>(null);
@@ -126,6 +134,15 @@ export const App = ({ config }: AppProps) => {
     // Mirror of `history` so send() can dedup against the most-recent entry
     // without re-rendering on every read.
     const historyRef = useRef<readonly string[]>([]);
+    // Mirror of `items.length` so the streaming-end effect can read the
+    // current value without re-firing on every items update.
+    const itemsLengthRef = useRef(0);
+    useEffect(() => {
+        itemsLengthRef.current = items.length;
+    }, [items.length]);
+    useEffect(() => {
+        if (!streaming) setCommittedCount(itemsLengthRef.current);
+    }, [streaming]);
 
     useEffect(() => {
         let cancelled = false;
@@ -165,6 +182,7 @@ export const App = ({ config }: AppProps) => {
         state.denialTrail = null;
         state.compactedThisTurn = false;
         setItems([]);
+        setCommittedCount(0);
         setTodos([]);
         setError(null);
         setUsedTokens(0);
@@ -359,6 +377,12 @@ export const App = ({ config }: AppProps) => {
                     { kind: "system", id: newChatItemId(), content: "(stopped)" },
                 ]);
             }
+            return;
+        }
+        if (key.ctrl && input === "o") {
+            // Ctrl+O: toggle expansion of grouped read-only tool calls in the
+            // dynamic section. Doesn't affect anything already in scrollback.
+            setGroupsExpanded((v) => !v);
             return;
         }
         if (
@@ -626,6 +650,8 @@ export const App = ({ config }: AppProps) => {
                     !pendingPicker &&
                     !pendingKeyPrompt
                 }
+                committedCount={committedCount}
+                groupsExpanded={groupsExpanded}
             />
             {error !== null && (
                 <Box paddingX={1} marginBottom={1}>

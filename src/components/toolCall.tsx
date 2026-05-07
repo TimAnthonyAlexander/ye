@@ -13,7 +13,7 @@ export interface ToolCallEntry {
     readonly progress?: readonly string[];
 }
 
-const summarizeArgs = (name: string, args: unknown): string => {
+export const summarizeArgs = (name: string, args: unknown): string => {
     if (typeof args !== "object" || args === null) return "";
     const a = args as Record<string, unknown>;
     switch (name) {
