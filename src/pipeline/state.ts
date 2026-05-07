@@ -32,6 +32,13 @@ export interface SessionState {
     // Auto-memory cache: populated lazily on first turn that has a user query.
     // null = not yet selected; [] = no memory available; non-empty = active.
     selectedMemory: readonly SelectedMemoryEntry[] | null;
+    // Persistent across user prompts within a session: Read/Edit/Write hash
+    // tracking and TodoWrite list. Confusingly named "turnState" for backwards
+    // compatibility with how tools consume it via ToolContext, but the lifetime
+    // is the whole session — Edit-after-prior-prompt-Read works as long as the
+    // file hasn't drifted on disk. Edit/Write re-hash the file before writing
+    // to catch external modification.
+    turnState: TurnState;
     // Subagent fields. Set only when this state belongs to a subagent run.
     // The pipeline reads them to narrow the tool pool and override the system prompt.
     parentSessionId?: string;

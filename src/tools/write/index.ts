@@ -29,7 +29,7 @@ const execute = async (
         if (!entry) {
             return {
                 ok: false,
-                error: `Read ${display} before overwriting it (turn-local invariant).`,
+                error: `Read ${display} before overwriting it.`,
             };
         }
         const original = await file.text();
@@ -50,7 +50,8 @@ const execute = async (
 export const WriteTool: Tool = {
     name: "Write",
     description:
-        "Create or overwrite a file. If the file already exists, prior Read in the same turn is required.",
+        "Create or overwrite a file. If the file already exists, prior Read in the same session is required. " +
+        "Drift since the last Read (external modification) rejects the call.",
     annotations: { readOnlyHint: false },
     schema: {
         type: "object",

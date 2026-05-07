@@ -91,7 +91,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<E
     if (!entry) {
         return {
             ok: false,
-            error: `Read ${display} before editing it (turn-local invariant).`,
+            error: `Read ${display} before editing it.`,
         };
     }
 
@@ -148,8 +148,9 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<E
 export const EditTool: Tool = {
     name: "Edit",
     description:
-        "Exact-string replace in a file. Requires prior Read of the same file in this turn. " +
-        "Use replace_all to replace every occurrence.",
+        "Exact-string replace in a file. Requires prior Read of the same file in this session. " +
+        "If the file was modified externally since the last Read (formatter, another process, user edit), " +
+        "the call is rejected and you must Read again. Use replace_all to replace every occurrence.",
     annotations: { readOnlyHint: false },
     schema: {
         type: "object",

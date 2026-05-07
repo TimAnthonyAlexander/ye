@@ -135,7 +135,7 @@ Schema:
 
 Notes:
 - Paths must be absolute. Relative paths return an error.
-- Reading a path sets a turn-local invariant: subsequent Edit and Write of the same path are allowed in the same turn. The invariant resets on each new turn.
+- Reading a path enables Edit/Write of the same path for the rest of the session. The invariant survives across user prompts: if the user says "Edit it" after you Read in the prior turn, just Edit — no need to Read again. Edit/Write re-hash the file before writing; if it drifted on disk (formatter, another process, external edit) the call is rejected and you'll be asked to Read again.
 - Read is read-only: auto-allows in NORMAL, allowed in PLAN, allowed in AUTO.
 
 ## Edit
@@ -149,7 +149,8 @@ Schema:
 - \`replace_all\` (boolean, optional, default false)
 
 Notes:
-- Edit FAILS if you have not Read this exact path earlier in the current turn.
+- Edit FAILS if you have not Read this exact path earlier in the current session.
+- Edit FAILS if the file has been modified on disk since your last Read (drift detection — re-Read in that case).
 - Edit FAILS if \`old_string\` is not unique in the file (and \`replace_all\` is false). To force a single replacement, expand \`old_string\` with surrounding context until it's unique.
 - Edit FAILS if \`old_string\` is not found, is empty, or equals \`new_string\`.
 - Preserve indentation and whitespace exactly when copying \`old_string\` from a Read result. Do not include the leading line-number prefix.
@@ -167,9 +168,9 @@ Schema:
 - \`content\` (string, required)
 
 Notes:
-- Write FAILS on existing files unless you have Read the path earlier in the current turn (overwrite invariant).
+- Write FAILS on existing files unless you have Read the path earlier in the session, AND the on-disk content still matches that Read's hash. External drift since the last Read rejects the call.
 - Writing a brand-new file does not require prior Read.
-- After Write, the path counts as Read for further edits in the same turn.
+- After Write, the path counts as Read for further edits in the session.
 - Prefer Edit over Write when modifying an existing file.
 - Write is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.
 

@@ -6,6 +6,7 @@ import { newTurnState, type SessionState } from "./state.ts";
 import { runTurn } from "./turn.ts";
 
 export type { Event, StopReason } from "./events.ts";
+export { newTurnState } from "./state.ts";
 export type { SessionState } from "./state.ts";
 
 export interface CreateSessionInput {
@@ -39,6 +40,7 @@ export const createSessionState = async (
         denialTrail: null,
         compactedThisTurn: false,
         selectedMemory: null,
+        turnState: newTurnState(),
     };
     return { state, session };
 };
@@ -64,10 +66,12 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
     const maxTurns = input.maxTurnsOverride ?? input.config.maxTurns?.master ?? 100;
     const signal = input.signal ?? new AbortController().signal;
 
-    // Turn-local state (readFiles, todos) spans the whole query: the model
-    // typically Reads in one round-trip and Edits in the next, so resetting
-    // per runTurn would break the Read-then-Edit invariant.
-    const turnState = newTurnState();
+    // Read/Edit/Write hash tracking and TodoWrite list live on SessionState
+    // so they persist across user prompts within a single session — the
+    // typical "Read README, then user follows up with 'Edit README'" pattern
+    // shouldn't re-Read. Edit/Write re-hash the file before writing to catch
+    // any external drift, so persistence is safe.
+    const turnState = input.state.turnState;
 
     let turnIndex = 0;
     while (turnIndex < maxTurns) {

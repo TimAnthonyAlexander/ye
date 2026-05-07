@@ -1,6 +1,6 @@
 import type { Config } from "../../config/index.ts";
 import type { Event } from "../../pipeline/events.ts";
-import { queryLoop, type SessionState } from "../../pipeline/index.ts";
+import { newTurnState, queryLoop, type SessionState } from "../../pipeline/index.ts";
 import type { Provider } from "../../providers/index.ts";
 import { openSidechainSession } from "../../storage/index.ts";
 import { SubagentError, type SubagentResult } from "../types.ts";
@@ -34,6 +34,7 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
         denialTrail: null,
         compactedThisTurn: false,
         selectedMemory: [],
+        turnState: newTurnState(),
         parentSessionId: input.parentSessionId,
         allowedTools: input.allowedTools,
         systemPromptOverride: input.systemPrompt,
