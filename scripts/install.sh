@@ -29,11 +29,16 @@ if ! command -v rg >/dev/null 2>&1; then
 fi
 
 # 3. Build.
-# --external react-devtools-core: ink ships a top-level import for it that's
-# only used in DEV mode; we don't bundle it.
+# Delegated to scripts/build.ts so we can attach a Bun plugin that stubs
+# `react-devtools-core` (Ink imports it from inside a gated branch, but
+# `bun build --compile` bundles the gated module's static imports regardless,
+# so the unresolvable react-devtools-core import crashes the binary at startup
+# without the stub). Don't replace this with `bun build --external ...` — the
+# external rewrite leaves an unresolved require in the binary and ye won't
+# start.
 mkdir -p dist
 echo "ye: building → dist/ye ($TARGET)"
-bun build --compile --target="$TARGET" --external react-devtools-core src/cli.tsx --outfile dist/ye
+bun run scripts/build.ts "$TARGET"
 
 # 4. Pick a writable PATH directory and link.
 pick_link_dir() {
