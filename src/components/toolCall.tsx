@@ -31,13 +31,8 @@ const summarizeArgs = (name: string, args: unknown): string => {
 };
 
 const summarizeResult = (result: ToolResult | undefined): string => {
-    if (!result) return "";
-    if (!result.ok) return result.error;
-    if (typeof result.value === "string") {
-        return result.value.slice(0, 200) + (result.value.length > 200 ? "…" : "");
-    }
-    const json = JSON.stringify(result.value);
-    return json.slice(0, 200) + (json.length > 200 ? "…" : "");
+    if (!result || result.ok) return "";
+    return result.error.slice(0, 200) + (result.error.length > 200 ? "…" : "");
 };
 
 const statusGlyph = (status: ToolCallStatus): { ch: string; color: string } => {
