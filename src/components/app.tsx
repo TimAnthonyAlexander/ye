@@ -1,6 +1,6 @@
 import { Box, Text, useApp, useInput } from "ink";
 import { homedir } from "node:os";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     completeCommand,
     dispatch,
@@ -8,6 +8,12 @@ import {
     type PickerPayload,
     type SlashCommandContext,
 } from "../commands/index.ts";
+import {
+    findActiveMention,
+    loadFileIndex,
+    matchFiles,
+    type MentionOption,
+} from "../mentions/index.ts";
 import {
     type Config,
     type LoadResult,
@@ -36,6 +42,7 @@ import { cycleMode } from "../ui/keybinds.ts";
 import { Chat, type ChatItem, newChatItemId } from "./chat.tsx";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
 import { KeyPrompt } from "./keyPrompt.tsx";
+import { MentionPicker } from "./mentionPicker.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
 import { Picker } from "./picker.tsx";
 import { SlashPicker } from "./slashPicker.tsx";
@@ -101,6 +108,13 @@ export const App = ({ config }: AppProps) => {
     const [error, setError] = useState<string | null>(null);
     const [bootError, setBootError] = useState<string | null>(null);
     const [currentInput, setCurrentInput] = useState("");
+    const [currentCursor, setCurrentCursor] = useState(0);
+    const [fileIndex, setFileIndex] = useState<readonly string[]>([]);
+    const [mentionActive, setMentionActive] = useState(0);
+    // When set, the picker is suppressed for this exact query string until the
+    // user edits the mention (causing the query to change) — that's how Esc
+    // closes the picker without preventing it from reopening on `@`.
+    const [dismissedMentionQuery, setDismissedMentionQuery] = useState<string | null>(null);
     // Index up to which `items` has been committed to Ink's <Static>. Held
     // back during a streaming session so consecutive read-only tool calls
     // can fold into a single group as they arrive; advanced to items.length
@@ -347,6 +361,11 @@ export const App = ({ config }: AppProps) => {
                 setMode(state.mode);
                 setContextWindow(state.contextWindow);
                 setUsedTokens(estimateTokens(state.history));
+                loadFileIndex(state.projectRoot)
+                    .then((idx) => {
+                        if (!cancelled) setFileIndex(idx);
+                    })
+                    .catch(() => {});
             } catch (e) {
                 setBootError(e instanceof Error ? e.message : String(e));
             }
@@ -630,6 +649,50 @@ export const App = ({ config }: AppProps) => {
         await sendNow(text);
     };
 
+    const activeMention = useMemo(
+        () => findActiveMention(currentInput, currentCursor),
+        [currentInput, currentCursor],
+    );
+    const mentionEnabled =
+        activeMention !== null && dismissedMentionQuery !== activeMention.query;
+    const mentionMatches: readonly MentionOption[] = useMemo(() => {
+        if (!mentionEnabled || activeMention === null || fileIndex.length === 0) return [];
+        return matchFiles(activeMention.query, fileIndex, 8);
+    }, [mentionEnabled, activeMention, fileIndex]);
+    const mentionOpen = mentionMatches.length > 0;
+
+    // Reset highlight to the top whenever the active mention's query changes,
+    // so a fresh `@x` doesn't inherit a stale row from `@xy`.
+    const mentionQueryKey = activeMention?.query ?? null;
+    useEffect(() => {
+        setMentionActive(0);
+    }, [mentionQueryKey]);
+
+    // Clear an Esc-dismissal once the user types past the dismissed query (or
+    // leaves the mention entirely).
+    useEffect(() => {
+        if (dismissedMentionQuery !== null && activeMention?.query !== dismissedMentionQuery) {
+            setDismissedMentionQuery(null);
+        }
+    }, [activeMention?.query, dismissedMentionQuery]);
+
+    const handleValueChange = (value: string, cursor: number): void => {
+        setCurrentInput(value);
+        setCurrentCursor(cursor);
+    };
+    const handleMentionMove = (delta: 1 | -1): void => {
+        if (mentionMatches.length === 0) return;
+        setMentionActive((i) => (i + delta + mentionMatches.length) % mentionMatches.length);
+    };
+    const handleMentionAccept = (): string | null => {
+        if (mentionMatches.length === 0) return null;
+        const safe = Math.min(Math.max(mentionActive, 0), mentionMatches.length - 1);
+        return mentionMatches[safe]?.id ?? null;
+    };
+    const handleMentionDismiss = (): void => {
+        if (activeMention) setDismissedMentionQuery(activeMention.query);
+    };
+
     if (bootError !== null) {
         return (
             <Box flexDirection="column" paddingX={1}>
@@ -679,13 +742,23 @@ export const App = ({ config }: AppProps) => {
             ) : (
                 <>
                     <SlashPicker input={currentInput} />
+                    {mentionOpen && (
+                        <MentionPicker
+                            matches={mentionMatches}
+                            activeIndex={mentionActive}
+                        />
+                    )}
                     <ChatInput
                         ref={chatInputRef}
                         onSubmit={send}
                         disabled={false}
-                        onValueChange={setCurrentInput}
+                        onValueChange={handleValueChange}
                         getCompletion={completeCommand}
                         history={history}
+                        mentionOpen={mentionOpen}
+                        onMentionMove={handleMentionMove}
+                        onMentionAccept={handleMentionAccept}
+                        onMentionDismiss={handleMentionDismiss}
                     />
                 </>
             )}

@@ -1,12 +1,22 @@
 import { Box, Text, useInput } from "ink";
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { findActiveMention } from "../mentions/index.ts";
 
 interface ChatInputProps {
     readonly onSubmit: (text: string) => void;
     readonly disabled: boolean;
-    readonly onValueChange?: (value: string) => void;
+    readonly onValueChange?: (value: string, cursor: number) => void;
     readonly getCompletion?: (value: string) => string | null;
     readonly history?: readonly string[];
+
+    // Mention picker integration. When `mentionOpen` is true, ↑/↓ drive the
+    // picker (instead of history), Enter/Tab accept the active option, and Esc
+    // dismisses. `onMentionAccept` returns the path to splice in, or null if
+    // there is no active option.
+    readonly mentionOpen?: boolean;
+    readonly onMentionMove?: (delta: 1 | -1) => void;
+    readonly onMentionAccept?: () => string | null;
+    readonly onMentionDismiss?: () => void;
 }
 
 export interface ChatInputHandle {
@@ -15,14 +25,25 @@ export interface ChatInputHandle {
 
 // Keys we deliberately handle vs. defer:
 //   - Shift+Tab: owned by App (mode cycle) — we ignore.
-//   - Tab (no shift): tab-completion via getCompletion when provided.
+//   - Tab (no shift): tab-completion via getCompletion when provided, OR
+//     accept the active mention when the picker is open.
 //   - Ctrl+C: owned by App (clear input → abort stream → no-op).
 // Shift+Enter for newline depends on the terminal sending a distinguishable
 // sequence (key.shift) — works in iTerm2/kitty with the right config; on
 // terminals that fold Shift+Enter into plain Enter, Alt/Option+Enter (key.meta)
 // is the fallback.
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
-    { onSubmit, disabled, onValueChange, getCompletion, history },
+    {
+        onSubmit,
+        disabled,
+        onValueChange,
+        getCompletion,
+        history,
+        mentionOpen,
+        onMentionMove,
+        onMentionAccept,
+        onMentionDismiss,
+    },
     ref,
 ) {
     const [value, setValue] = useState("");
@@ -33,8 +54,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     const [liveBuffer, setLiveBuffer] = useState("");
 
     useEffect(() => {
-        onValueChange?.(value);
-    }, [value, onValueChange]);
+        onValueChange?.(value, cursor);
+    }, [value, cursor, onValueChange]);
 
     useImperativeHandle(
         ref,
@@ -65,10 +86,25 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         setHistoryIndex(index);
     };
 
+    const acceptMention = (): boolean => {
+        if (!onMentionAccept) return false;
+        const replacement = onMentionAccept();
+        if (replacement === null) return false;
+        const mention = findActiveMention(value, cursor);
+        if (!mention) return false;
+        const insert = `${replacement} `;
+        const next = value.slice(0, mention.start) + insert + value.slice(mention.end);
+        setValue(next);
+        setCursor(mention.start + insert.length);
+        return true;
+    };
+
     useInput((input, key) => {
         if (disabled) return;
         if (key.tab) {
-            if (!key.shift && getCompletion) {
+            if (key.shift) return;
+            if (mentionOpen && acceptMention()) return;
+            if (getCompletion) {
                 const completed = getCompletion(value);
                 if (completed !== null) {
                     setValue(completed);
@@ -85,6 +121,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 setCursor((c) => c + 1);
                 return;
             }
+            if (mentionOpen && acceptMention()) return;
             const trimmed = value.trim();
             if (trimmed.length === 0) return;
             onSubmit(value);
@@ -113,6 +150,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         }
 
         if (key.upArrow) {
+            if (mentionOpen) {
+                onMentionMove?.(-1);
+                return;
+            }
             if (!history || history.length === 0) return;
             // Don't hijack up-arrow inside a multi-line draft unless we're
             // already navigating history.
@@ -126,6 +167,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             return;
         }
         if (key.downArrow) {
+            if (mentionOpen) {
+                onMentionMove?.(1);
+                return;
+            }
             if (historyIndex === null) return;
             if (historyIndex === 0) {
                 setValue(liveBuffer);
@@ -137,7 +182,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             }
             return;
         }
-        if (key.escape || key.ctrl || key.pageUp || key.pageDown) {
+        if (key.escape) {
+            if (mentionOpen) onMentionDismiss?.();
+            return;
+        }
+        if (key.ctrl || key.pageUp || key.pageDown) {
             return;
         }
 

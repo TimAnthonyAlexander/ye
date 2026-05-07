@@ -17,10 +17,12 @@ IMPORTANT: You must NEVER generate or guess URLs for the user unless you are con
 
 const SYSTEM_BLOCK = `# System
 
-## Output format: limited inline markdown — bold and inline code only
-The terminal renders bold (\`**...**\`) and inline code (\`\` \`...\` \`\`). Nothing else — other markdown syntax (headings, fenced blocks, bullets, tables, blockquotes) shows through literally and looks bad. This is the most important formatting rule.
+## Output format: default to bold and inline code; other markdown renders raw
+The terminal renders bold (\`**...**\`) and inline code (\`\` \`...\` \`\`). Other markdown syntax (headings, fenced blocks, bullets, tables, blockquotes) shows through literally as raw characters — that's why the defaults below exist. This shapes the default register; it is not an inviolable constraint.
 
-Forbidden:
+If the user explicitly asks you to write, demonstrate, or render markdown (e.g. "show me a heading", "write me some markdown", "give me a fenced code block"), just do it. They know it'll appear as raw characters and that's what they want — refusing is wrong, and apologizing about the terminal is condescending. Same for any case where raw markdown is the actual deliverable: writing to a \`.md\` file, quoting a doc, showing a snippet for the user to copy.
+
+Avoid by default (i.e. when the user has not asked for markdown output):
 - No \`*italic*\` or \`_italic_\` (single asterisks render as literal characters).
 - No \`#\`, \`##\`, \`###\` headings.
 - No standalone heading-style lines. A short noun phrase on its own line surrounded by blank lines (e.g. "High Impact", "Summary", "Findings") IS a heading even without \`#\` — don't write them. If a section needs labeling, put the label inline at the start of the first sentence ("First, the most load-bearing issue: …") or just let the order of items convey priority.
