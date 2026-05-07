@@ -329,6 +329,7 @@ export const App = ({ config }: AppProps) => {
             clearChat: rotateSession,
             exitApp: exit,
             addSystemMessage,
+            sendHiddenPrompt,
             getLastAssistantText: () => {
                 const history = stateRef.current?.history ?? [];
                 for (let i = history.length - 1; i >= 0; i--) {
@@ -672,6 +673,19 @@ export const App = ({ config }: AppProps) => {
         }
 
         await sendNow(text);
+    };
+
+    const sendHiddenPrompt = (prompt: string): void => {
+        if (!stateRef.current || !sessionRef.current || !providerRef.current) {
+            setError("session not ready");
+            return;
+        }
+        if (streamingRef.current) {
+            queueRef.current.push(prompt);
+            setQueuedCount(queueRef.current.length);
+            return;
+        }
+        void sendNow(prompt);
     };
 
     const activeMention = useMemo(

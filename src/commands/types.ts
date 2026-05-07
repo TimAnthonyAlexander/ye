@@ -29,6 +29,10 @@ export interface SlashCommandContext {
     clearChat(): Promise<void>;
     exitApp(): void;
     addSystemMessage(text: string): void;
+    // Send a synthetic user prompt to the model without surfacing it in the
+    // chat UI. Used by commands like /init that want to drive the agent loop
+    // without polluting the visible transcript with internal instructions.
+    sendHiddenPrompt(prompt: string): void;
     // Returns the most recent assistant text in the active session history,
     // or null if the conversation has no assistant text yet. Scans from the
     // tail and skips assistant turns that are tool-call-only (no text body).
