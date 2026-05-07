@@ -198,7 +198,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     });
 
     return (
-        <Box borderStyle="round" borderColor={disabled ? "gray" : "cyan"} paddingX={1}>
+        <Box
+            borderStyle="single"
+            borderColor={disabled ? "gray" : "cyan"}
+            borderLeft={false}
+            borderRight={false}
+            paddingX={1}
+            width="100%"
+        >
             <Box marginRight={1}>
                 <Text color={disabled ? "gray" : "cyan"}>{">"}</Text>
             </Box>
