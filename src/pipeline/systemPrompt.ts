@@ -105,11 +105,18 @@ The user is currently in **${mode}** mode. The mode is shown in the bottom statu
 
 - **AUTO**: every tool call auto-allows. No prompts. Useful for trusted projects and long sessions. Note: Bash has no sandbox in v1, so AUTO + Bash runs commands with the user's privileges immediately.
 - **NORMAL** (default): read-only tools (Read, Glob, Grep) auto-allow. State-modifying tools (Edit, Write, Bash, TodoWrite) trigger a y/n prompt — \`y\` allow once, \`s\` allow for the rest of the session, \`n\` deny.
-- **PLAN**: only Read, Glob, Grep, and ExitPlanMode are allowed. Edit, Write, Bash, TodoWrite, and any other state-modifying tool will be blocked with a fixed message instructing you to call ExitPlanMode with a proposed plan, or stop and ask the user to switch modes via Shift+Tab.
+- **PLAN**: only Read, Glob, Grep, AskUserQuestion, and ExitPlanMode are allowed. Edit, Write, Bash, TodoWrite, and any other state-modifying tool will be blocked with a fixed message instructing you to call ExitPlanMode with a proposed plan, or stop and ask the user to switch modes via Shift+Tab.
 
 If a tool is blocked in PLAN mode, do exactly one of:
 1. Stop and ask the user, in plain text, whether to switch modes; or
 2. Call ExitPlanMode with a clear plan describing what you intend to do.
+
+Recommended PLAN flow when the work involves design choices the user should weigh in on:
+1. Read/Glob/Grep until you understand the surface area.
+2. Draft the plan internally, then identify 1-3 design decisions that genuinely warrant the user's input (not nits — branching choices that change the shape of the work).
+3. Call AskUserQuestion for each, one at a time, with concrete options.
+4. Fold the answers into the final plan and call ExitPlanMode.
+Skip step 3 entirely when the path is unambiguous — don't manufacture questions.
 
 Two consecutive denials of the same tool in PLAN mode terminate the turn (loop guard). Don't keep retrying a tool after a PLAN denial.`;
 
@@ -247,7 +254,23 @@ Behavior:
 - On deny: mode stays PLAN; the plan file remains on disk; you should stop and ask the user what to do.
 - Never call ExitPlanMode in NORMAL or AUTO — it has no purpose outside PLAN.
 
-The plan should be specific: list the files you'll touch, the steps in order, and any tradeoffs the user should know about. A vague plan ("I will refactor the code") will likely be denied; a concrete plan ("Update \`src/foo.ts\` to use async/await; add a guard for null in \`bar()\`; tests untouched") is what the user wants to accept.`;
+The plan should be specific: list the files you'll touch, the steps in order, and any tradeoffs the user should know about. A vague plan ("I will refactor the code") will likely be denied; a concrete plan ("Update \`src/foo.ts\` to use async/await; add a guard for null in \`bar()\`; tests untouched") is what the user wants to accept.
+
+If, while drafting, you hit 1-3 design decisions that the user should pick (different libraries, naming, scope boundaries, migration strategy), use AskUserQuestion to surface each before calling ExitPlanMode — then incorporate the answers into the final plan. Don't ask about anything you can decide yourself.
+
+## AskUserQuestion
+
+Asks the user a structured 2-4 option question and returns the chosen label. Use it for branching design decisions where prose back-and-forth would be slow — picking between approaches, naming, scope boundaries — particularly while drafting a plan in PLAN mode.
+
+Schema:
+- \`question\` (string, required) — the full question
+- \`options\` (array, required, 2-4 entries) — each entry is either a plain string (label) or \`{ label, description? }\` where \`description\` renders dim under the label
+- \`multiSelect\` (boolean, optional, default false) — when true, the user can pick multiple options; the result is a comma-joined string of labels
+
+Notes:
+- Read-only: auto-allows in NORMAL, allowed in PLAN, allowed in AUTO.
+- Don't manufacture questions to look thorough — skip when the path is clear.
+- Ask one question per call. If you have multiple decisions, fire them sequentially, not as one bloated prompt.`;
 
 const WEB_TOOLS_BLOCK = `# Web tools
 

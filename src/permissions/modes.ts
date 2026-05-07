@@ -3,7 +3,13 @@ import { PLAN_MODE_BLOCKED } from "./messages.ts";
 import type { Decision, ToolCall } from "./types.ts";
 
 // Tools allowed in PLAN mode. Data, not code branches.
-export const PLAN_ALLOWED: readonly string[] = ["Read", "Glob", "Grep", "ExitPlanMode"];
+export const PLAN_ALLOWED: readonly string[] = [
+    "Read",
+    "Glob",
+    "Grep",
+    "AskUserQuestion",
+    "ExitPlanMode",
+];
 
 interface ModeContext {
     readonly mode: PermissionMode;
