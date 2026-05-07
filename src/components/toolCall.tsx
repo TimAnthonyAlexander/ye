@@ -31,14 +31,41 @@ const summarizeArgs = (name: string, args: unknown): string => {
 };
 
 const summarizeResult = (result: ToolResult | undefined): string => {
-    if (!result) return "";
-    if (!result.ok) return result.error;
-    if (typeof result.value === "string") {
-        return result.value.slice(0, 200) + (result.value.length > 200 ? "…" : "");
-    }
-    const json = JSON.stringify(result.value);
-    return json.slice(0, 200) + (json.length > 200 ? "…" : "");
+    if (!result || result.ok) return "";
+    return result.error.slice(0, 200) + (result.error.length > 200 ? "…" : "");
 };
+
+const MAX_DIFF_LINES = 20;
+const MAX_DIFF_LINE_WIDTH = 120;
+
+interface EditDiff {
+    readonly removed: readonly string[];
+    readonly added: readonly string[];
+    readonly truncated: boolean;
+}
+
+const editDiff = (args: unknown): EditDiff | null => {
+    if (typeof args !== "object" || args === null) return null;
+    const a = args as Record<string, unknown>;
+    const oldStr = typeof a["old_string"] === "string" ? (a["old_string"] as string) : null;
+    const newStr = typeof a["new_string"] === "string" ? (a["new_string"] as string) : null;
+    if (oldStr === null || newStr === null) return null;
+    const removed = oldStr.split("\n");
+    const added = newStr.split("\n");
+    const total = removed.length + added.length;
+    if (total <= MAX_DIFF_LINES) {
+        return { removed, added, truncated: false };
+    }
+    const half = Math.floor(MAX_DIFF_LINES / 2);
+    return {
+        removed: removed.slice(0, Math.min(removed.length, half)),
+        added: added.slice(0, Math.min(added.length, MAX_DIFF_LINES - half)),
+        truncated: true,
+    };
+};
+
+const clipLine = (line: string): string =>
+    line.length > MAX_DIFF_LINE_WIDTH ? line.slice(0, MAX_DIFF_LINE_WIDTH) + "…" : line;
 
 const statusGlyph = (status: ToolCallStatus): { ch: string; color: string } => {
     switch (status) {
@@ -59,6 +86,11 @@ export const ToolCallView = ({ entry }: Props) => {
     const { ch, color } = statusGlyph(entry.status);
     const argSummary = summarizeArgs(entry.name, entry.args);
     const resultSummary = summarizeResult(entry.result);
+    const diff =
+        entry.name === "Edit" && (entry.status === "done" || entry.status === "running")
+            ? editDiff(entry.args)
+            : null;
+    const showDiff = diff !== null && entry.result?.ok !== false;
     return (
         <Box flexDirection="column" marginBottom={1}>
             <Box>
@@ -72,6 +104,21 @@ export const ToolCallView = ({ entry }: Props) => {
                     </Text>
                 )}
             </Box>
+            {showDiff && (
+                <Box flexDirection="column" paddingLeft={2}>
+                    {diff.removed.map((line, i) => (
+                        <Text key={`-${i}`} color="red">
+                            - {clipLine(line)}
+                        </Text>
+                    ))}
+                    {diff.added.map((line, i) => (
+                        <Text key={`+${i}`} color="green">
+                            + {clipLine(line)}
+                        </Text>
+                    ))}
+                    {diff.truncated && <Text dimColor>… diff truncated</Text>}
+                </Box>
+            )}
             {resultSummary.length > 0 && (
                 <Box paddingLeft={2}>
                     <Text dimColor>{resultSummary}</Text>
