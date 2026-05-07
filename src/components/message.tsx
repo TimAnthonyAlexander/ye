@@ -1,4 +1,5 @@
 import { Box, Text } from "ink";
+import { memo } from "react";
 import type { Message } from "../providers/index.ts";
 
 interface MessageViewProps {
@@ -18,7 +19,7 @@ const labelFor = (role: Message["role"]): { label: string; color: string } => {
     }
 };
 
-export const MessageView = ({ message }: MessageViewProps) => {
+export const MessageView = memo(({ message }: MessageViewProps) => {
     if (message.role === "tool" || message.role === "system") return null;
     const { label, color } = labelFor(message.role);
     const content = message.content ?? "";
@@ -31,4 +32,5 @@ export const MessageView = ({ message }: MessageViewProps) => {
             <Text>{content}</Text>
         </Box>
     );
-};
+});
+MessageView.displayName = "MessageView";

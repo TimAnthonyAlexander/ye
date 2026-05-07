@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Quicksand:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     :root {
       --pink-50: #fff5f7;
@@ -203,6 +204,14 @@
     /* --- STORY / ABOUT --- */
     .story {
       background: var(--pink-50);
+      max-width: none;
+      padding: 100px 0;
+    }
+
+    .story-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 32px;
     }
 
     .story-grid {
@@ -267,9 +276,25 @@
       box-shadow: 0 12px 40px rgba(240, 98, 146, 0.12);
     }
 
-    .menu-card .emoji {
-      font-size: 56px;
-      margin-bottom: 20px;
+    .menu-card .icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 20px;
+      color: var(--pink-500);
+      stroke-width: 1.5;
+    }
+
+    .review-card .stars {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .review-card .stars .star-icon {
+      width: 18px;
+      height: 18px;
+      color: var(--pink-400);
+      fill: var(--pink-400);
     }
 
     .menu-card h4 {
@@ -301,13 +326,6 @@
       border: 1px solid var(--pink-100);
       border-radius: 20px;
       padding: 32px;
-    }
-
-    .review-card .stars {
-      color: var(--pink-400);
-      font-size: 18px;
-      margin-bottom: 12px;
-      letter-spacing: 2px;
     }
 
     .review-card p {
@@ -352,11 +370,19 @@
     }
 
     footer .heart {
-      font-size: 18px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 16px;
       opacity: 0.9;
     }
 
-    /* --- RESPONSIVE --- */
+    footer .heart .heart-icon {
+      width: 20px;
+      height: 20px;
+      fill: var(--white);
+      color: var(--white);
+    }
     @media (max-width: 768px) {
       .hero h1 { font-size: 56px; }
       .story-grid { grid-template-columns: 1fr; }
@@ -405,10 +431,13 @@
   </div>
 
   <section class="story" id="story">
+    <div class="story-inner">
     <h2>Our Story</h2>
     <p class="section-sub">From the North Sea to the Bayou</p>
     <div class="story-grid">
-      <div class="story-image">🧁</div>
+      <div class="story-image">
+        <i data-lucide="croissant" style="width:120px;height:120px;color:var(--pink-500);stroke-width:1.5"></i>
+      </div>
       <div class="story-text">
         <h3>Feli Schenke brought Cuxhaven to the Crescent City</h3>
         <p>
@@ -428,6 +457,7 @@
         <p class="tagline">Butter. Sugar. Patience. Love.</p>
       </div>
     </div>
+    </div>
   </section>
 
   <section id="menu">
@@ -435,32 +465,32 @@
     <p class="section-sub">Everything baked fresh daily, come early — we sell out.</p>
     <div class="menu-grid">
       <div class="menu-card">
-        <div class="emoji">🍭</div>
+        <i data-lucide="lollipop" class="icon"></i>
         <h4>Cakepops</h4>
         <p class="desc">Bite-sized joy on a stick. Red velvet, lemon-raspberry, cookies &amp; cream, salted caramel, and a dozen more. Our signature item — Goober's face is on every box.</p>
       </div>
       <div class="menu-card">
-        <div class="emoji">🎂</div>
+        <i data-lucide="cake-slice" class="icon"></i>
         <h4>Cakes</h4>
         <p class="desc">Whole cakes by order. Schwarzwälder kirsch torte, hummingbird cake, pink champagne, and Feli's famous "Cuxhaven Crumb" — a brown-butter streusel cake that tastes like home.</p>
       </div>
       <div class="menu-card">
-        <div class="emoji">🍪</div>
+        <i data-lucide="cookie" class="icon"></i>
         <h4>Cookies</h4>
         <p class="desc">Brown-butter chocolate chip, white-chocolate macadamia, pecan sandies, and our chewy ginger-molasses that locals line up for. Sold by the half-dozen.</p>
       </div>
       <div class="menu-card">
-        <div class="emoji">🧁</div>
-        <h4>Muffins &amp; Cupcakes</div>
+        <i data-lucide="croissant" class="icon"></i>
+        <h4>Muffins &amp; Cupcakes</h4>
         <p class="desc">Blueberry streusel muffins, double-chocolate cupcakes with swiss meringue, and a banana-bourbon cupcake that nods to our Louisiana home.</p>
       </div>
       <div class="menu-card">
-        <div class="emoji">🍫</div>
+        <i data-lucide="candy" class="icon"></i>
         <h4>Pralines</h4>
         <p class="desc">New Orleans tradition, German precision. Creamy, crunchy, made with Louisiana pecans and a whisper of sea salt. Try the chicory-coffee praline — it'll change you.</p>
       </div>
       <div class="menu-card">
-        <div class="emoji">☕</div>
+        <i data-lucide="coffee" class="icon"></i>
         <h4>Coffee &amp; More</h4>
         <p class="desc">Single-origin pour-overs, café au lait, matcha lattes, cold brew steeped 18 hours, and hot chocolate so thick your spoon stands up. Oat milk on the house.</p>
       </div>
@@ -472,17 +502,35 @@
     <p class="section-sub">What the neighborhood says</p>
     <div class="reviews-grid">
       <div class="review-card">
-        <div class="stars">★★★★★</div>
+        <div class="stars">
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+        </div>
         <p>"Moved here from Berlin and Goober's is the only place that gets a proper Schwarzwälder right. Feli hugged me when I told her. I cried a little. Five stars."</p>
         <div class="name">— Klara M.</div>
       </div>
       <div class="review-card">
-        <div class="stars">★★★★★</div>
+        <div class="stars">
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+        </div>
         <p>"I've eaten a lot of cakepops in my life. These are the only ones that matter. The lemon-raspberry tastes like summer. I order three boxes for every office party."</p>
         <div class="name">— DeMarcus J.</div>
       </div>
       <div class="review-card">
-        <div class="stars">★★★★★</div>
+        <div class="stars">
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+          <i data-lucide="star" class="star-icon"></i>
+        </div>
         <p>"The chicory praline is a spiritual experience. I don't even like sweets and I come here three times a week. Plus Goober the dog let me rub his belly once."</p>
         <div class="name">— Priya S.</div>
       </div>
@@ -493,8 +541,9 @@
     <div class="footer-logo">Goober's</div>
     <p class="address">1232 Magazine Street · Garden District · New Orleans, LA 70130</p>
     <p class="hours">Mon–Fri 6:30am – 4pm &nbsp;|&nbsp; Sat 7am – 5pm &nbsp;|&nbsp; Sun 8am – 2pm</p>
-    <p class="heart">Made with ♥ and a whole lot of butter</p>
+    <p class="heart">Made with <i data-lucide="heart" class="heart-icon"></i> and a whole lot of butter</p>
   </footer>
 
+  <script>lucide.createIcons();</script>
 </body>
 </html>

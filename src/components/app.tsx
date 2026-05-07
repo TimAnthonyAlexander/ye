@@ -26,7 +26,7 @@ import {
 import { getProjectId, openSession, type SessionHandle } from "../storage/index.ts";
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
-import { Chat, type ChatItem } from "./chat.tsx";
+import { Chat, type ChatItem, newChatItemId } from "./chat.tsx";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
 import { KeyPrompt } from "./keyPrompt.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
@@ -103,7 +103,7 @@ export const App = ({ config }: AppProps) => {
     const [queuedCount, setQueuedCount] = useState(0);
 
     const addSystemMessage = (text: string): void => {
-        setItems((prev) => [...prev, { kind: "system", content: text }]);
+        setItems((prev) => [...prev, { kind: "system", id: newChatItemId(), content: text }]);
     };
 
     const rotateSession = async (): Promise<void> => {
@@ -200,7 +200,10 @@ export const App = ({ config }: AppProps) => {
             setError("session not ready");
             return;
         }
-        setItems((prev) => [...prev, { kind: "message", role: "user", content: text }]);
+        setItems((prev) => [
+            ...prev,
+            { kind: "message", id: newChatItemId(), role: "user", content: text },
+        ]);
         const ctx: SlashCommandContext = {
             cwd: process.cwd(),
             projectRoot: state.projectRoot,
@@ -290,7 +293,7 @@ export const App = ({ config }: AppProps) => {
                 setQueuedCount(0);
                 setItems((prev) => [
                     ...prev,
-                    { kind: "system", content: "(stopped)" },
+                    { kind: "system", id: newChatItemId(), content: "(stopped)" },
                 ]);
             }
             return;
@@ -318,15 +321,39 @@ export const App = ({ config }: AppProps) => {
         setStreamingText("");
 
         let currentText = "";
+        let pendingFlush: ReturnType<typeof setTimeout> | null = null;
+
+        // Coalesce token deltas to one render per frame (~16ms). Prevents the
+        // render storm where every streamed token re-rendered the whole tree.
+        const scheduleStreamFlush = (): void => {
+            if (pendingFlush !== null) return;
+            pendingFlush = setTimeout(() => {
+                pendingFlush = null;
+                setStreamingText(currentText);
+            }, 16);
+        };
+
+        const cancelPendingFlush = (): void => {
+            if (pendingFlush !== null) {
+                clearTimeout(pendingFlush);
+                pendingFlush = null;
+            }
+        };
 
         const commitText = (): void => {
+            cancelPendingFlush();
             if (currentText.length === 0) return;
             const committed = currentText;
             currentText = "";
             setStreamingText("");
             setItems((prev) => [
                 ...prev,
-                { kind: "message", role: "assistant", content: committed },
+                {
+                    kind: "message",
+                    id: newChatItemId(),
+                    role: "assistant",
+                    content: committed,
+                },
             ]);
         };
 
@@ -344,7 +371,7 @@ export const App = ({ config }: AppProps) => {
                 switch (evt.type) {
                     case "model.text": {
                         currentText += evt.delta;
-                        setStreamingText(currentText);
+                        scheduleStreamFlush();
                         break;
                     }
                     case "model.toolCall": {
@@ -453,7 +480,12 @@ export const App = ({ config }: AppProps) => {
             return;
         }
 
-        const userItem: ChatItem = { kind: "message", role: "user", content: text };
+        const userItem: ChatItem = {
+            kind: "message",
+            id: newChatItemId(),
+            role: "user",
+            content: text,
+        };
         setItems((prev) => [...prev, userItem]);
 
         if (streamingRef.current) {
