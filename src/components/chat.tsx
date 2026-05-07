@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import { MessageView } from "./message.tsx";
+import { Thinking } from "./thinking.tsx";
 import { ToolCallView, type ToolCallEntry } from "./toolCall.tsx";
 
 export type ChatItem =
@@ -30,16 +31,17 @@ export const Chat = ({ items, streamingText, streaming }: ChatProps) => {
         }
         return <ToolCallView key={key} entry={item.entry} />;
       })}
-      {streaming && (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text bold color="green">
-            ye
-          </Text>
-          <Text>
-            {streamingText.length > 0 ? streamingText : <Text dimColor>…</Text>}
-          </Text>
-        </Box>
-      )}
+      {streaming &&
+        (streamingText.length > 0 ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text bold color="green">
+              ye
+            </Text>
+            <Text>{streamingText}</Text>
+          </Box>
+        ) : (
+          <Thinking />
+        ))}
     </Box>
   );
 };
