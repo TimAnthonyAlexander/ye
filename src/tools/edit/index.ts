@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { prettyPath } from "../../ui/path.ts";
 import { atomicWrite, hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
@@ -91,24 +92,25 @@ const execute = async (
     if (old_string === new_string) {
         return { ok: false, error: "old_string and new_string are identical" };
     }
+    const display = prettyPath(path, ctx.cwd);
     const entry = ctx.turnState.readFiles.get(path);
     if (!entry) {
         return {
             ok: false,
-            error: `Read ${path} before editing it (turn-local invariant).`,
+            error: `Read ${display} before editing it (turn-local invariant).`,
         };
     }
 
     const file = Bun.file(path);
     if (!(await file.exists())) {
-        return { ok: false, error: `file not found: ${path}` };
+        return { ok: false, error: `file not found: ${display}` };
     }
 
     const original = await file.text();
     if (hashContent(original) !== entry.hash) {
         return {
             ok: false,
-            error: `${path} has been modified since you last Read it. Re-Read the file before editing.`,
+            error: `${display} has been modified since you last Read it. Re-Read the file before editing.`,
         };
     }
 
@@ -120,14 +122,14 @@ const execute = async (
     if (total === 0) {
         return {
             ok: false,
-            error: `old_string not found in ${path}. Re-Read the file — whitespace or contents may differ from what you copied.`,
+            error: `old_string not found in ${display}. Re-Read the file — whitespace or contents may differ from what you copied.`,
         };
     }
     if (total > 1 && !replace_all) {
         const more = total > locations.length ? ` (+${total - locations.length} more)` : "";
         return {
             ok: false,
-            error: `old_string matches ${total} occurrences at line:col ${locations.join(", ")}${more} in ${path}. Add surrounding context to make it unique, or set replace_all: true.`,
+            error: `old_string matches ${total} occurrences at line:col ${locations.join(", ")}${more} in ${display}. Add surrounding context to make it unique, or set replace_all: true.`,
         };
     }
 

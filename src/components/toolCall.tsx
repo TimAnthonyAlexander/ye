@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type { ToolResult } from "../tools/index.ts";
+import { prettyPath } from "../ui/path.ts";
 
 export type ToolCallStatus = "running" | "done" | "error";
 
@@ -21,7 +22,7 @@ const summarizeArgs = (name: string, args: unknown): string => {
         case "Read":
         case "Write":
         case "Edit":
-            return typeof a["path"] === "string" ? (a["path"] as string) : "";
+            return typeof a["path"] === "string" ? prettyPath(a["path"] as string) : "";
         case "Glob":
             return typeof a["pattern"] === "string" ? (a["pattern"] as string) : "";
         case "Grep":

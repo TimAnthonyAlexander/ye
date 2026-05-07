@@ -1,5 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
+import { prettyPath } from "../ui/path.ts";
 
 interface PermissionPromptProps {
     readonly payload: PermissionPromptPayload;
@@ -13,11 +14,12 @@ const previewBash = (args: unknown): string => {
 const previewEdit = (args: unknown): string => {
     const a = args as { path?: string; old_string?: string };
     const head = (a.old_string ?? "").replace(/\s+/g, " ").slice(0, 80);
-    return `${a.path ?? "?"}\n  old: ${head}${(a.old_string ?? "").length > 80 ? "…" : ""}`;
+    const path = a.path ? prettyPath(a.path) : "?";
+    return `${path}\n  old: ${head}${(a.old_string ?? "").length > 80 ? "…" : ""}`;
 };
 const previewWrite = (args: unknown): string => {
     const a = args as { path?: string };
-    return a.path ?? "?";
+    return a.path ? prettyPath(a.path) : "?";
 };
 const previewSimple = (args: unknown): string => {
     try {
@@ -63,7 +65,9 @@ export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) 
                 <Text bold color="magenta">
                     Plan submitted — switch out of PLAN mode?
                 </Text>
-                {payload.planPath && <Text dimColor>saved to {payload.planPath}</Text>}
+                {payload.planPath && (
+                    <Text dimColor>saved to {prettyPath(payload.planPath)}</Text>
+                )}
                 <Text>
                     Switch to <Text bold>{payload.target ?? "NORMAL"}</Text> and proceed?{" "}
                     <Text dimColor>(y / n)</Text>

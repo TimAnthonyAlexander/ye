@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { prettyPath } from "../../ui/path.ts";
 import { atomicWrite, hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
@@ -23,18 +24,19 @@ const execute = async (
     const file = Bun.file(path);
     const fileExists = await file.exists();
     if (fileExists) {
+        const display = prettyPath(path, ctx.cwd);
         const entry = ctx.turnState.readFiles.get(path);
         if (!entry) {
             return {
                 ok: false,
-                error: `Read ${path} before overwriting it (turn-local invariant).`,
+                error: `Read ${display} before overwriting it (turn-local invariant).`,
             };
         }
         const original = await file.text();
         if (hashContent(original) !== entry.hash) {
             return {
                 ok: false,
-                error: `${path} has been modified since you last Read it. Re-Read the file before overwriting.`,
+                error: `${display} has been modified since you last Read it. Re-Read the file before overwriting.`,
             };
         }
     }

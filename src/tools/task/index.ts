@@ -1,6 +1,7 @@
 import type { Event } from "../../pipeline/events.ts";
 import type { ExploreThoroughness, SubagentKind } from "../../subagents/index.ts";
 import { isSubagentKind, spawn, SubagentError } from "../../subagents/index.ts";
+import { prettyPath } from "../../ui/path.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
 
@@ -24,7 +25,7 @@ const ARG_CLIP = 60;
 
 const clip = (s: string): string => (s.length > ARG_CLIP ? s.slice(0, ARG_CLIP) + "…" : s);
 
-const formatChildLine = (evt: Event): string | null => {
+const formatChildLine = (evt: Event, cwd: string): string | null => {
     if (evt.type !== "tool.start") return null;
     const a = (evt.args ?? {}) as Record<string, unknown>;
     const path = typeof a["path"] === "string" ? (a["path"] as string) : "";
@@ -34,7 +35,7 @@ const formatChildLine = (evt: Event): string | null => {
         case "Read":
         case "Edit":
         case "Write":
-            return path ? `${evt.name} ${clip(path)}` : evt.name;
+            return path ? `${evt.name} ${clip(prettyPath(path, cwd))}` : evt.name;
         case "Glob":
             return pattern ? `Glob ${clip(pattern)}` : "Glob";
         case "Grep":
@@ -76,7 +77,7 @@ const execute = async (
 
     const recent: string[] = [];
     const onChildEvent = (evt: Event): void => {
-        const line = formatChildLine(evt);
+        const line = formatChildLine(evt, ctx.cwd);
         if (line === null) return;
         recent.push(line);
         if (recent.length > PROGRESS_TAIL) recent.shift();

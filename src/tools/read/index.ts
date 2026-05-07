@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { prettyPath } from "../../ui/path.ts";
 import { hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
@@ -13,7 +14,7 @@ const DEFAULT_LIMIT = 2000;
 
 const execute = async (
     rawArgs: unknown,
-    _ctx: ToolContext,
+    ctx: ToolContext,
 ): Promise<ToolResult<{ content: string; totalLines: number }>> => {
     const v = validateArgs<ReadArgs>(rawArgs, ReadTool.schema);
     if (!v.ok) return v;
@@ -25,7 +26,7 @@ const execute = async (
 
     const file = Bun.file(path);
     if (!(await file.exists())) {
-        return { ok: false, error: `file not found: ${path}` };
+        return { ok: false, error: `file not found: ${prettyPath(path, ctx.cwd)}` };
     }
 
     const text = await file.text();
@@ -35,7 +36,7 @@ const execute = async (
         .map((line, i) => `${String(offset + i + 1).padStart(6, " ")}\t${line}`)
         .join("\n");
 
-    _ctx.turnState.readFiles.set(path, { hash: hashContent(text) });
+    ctx.turnState.readFiles.set(path, { hash: hashContent(text) });
 
     return {
         ok: true,

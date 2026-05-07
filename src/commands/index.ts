@@ -1,4 +1,5 @@
 import { ClearCommand } from "./clear.ts";
+import { CopyCommand } from "./copy.ts";
 import { ExitCommand } from "./exit.ts";
 import { buildHelpCommand } from "./help.ts";
 import { InitCommand } from "./init.ts";
@@ -34,6 +35,7 @@ const buildRegistry = (): ReadonlyMap<string, SlashCommand> => {
     const commands: readonly SlashCommand[] = [
         helpCommand,
         ClearCommand,
+        CopyCommand,
         ModeCommand,
         ProviderCommand,
         ModelCommand,

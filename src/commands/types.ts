@@ -29,6 +29,10 @@ export interface SlashCommandContext {
     clearChat(): Promise<void>;
     exitApp(): void;
     addSystemMessage(text: string): void;
+    // Returns the most recent assistant text in the active session history,
+    // or null if the conversation has no assistant text yet. Scans from the
+    // tail and skips assistant turns that are tool-call-only (no text body).
+    getLastAssistantText(): string | null;
     // Open the interactive picker. Resolves with the chosen option's `id`,
     // or `null` if the user dismissed (Esc).
     pick(payload: PickerPayload): Promise<string | null>;

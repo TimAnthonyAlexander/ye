@@ -271,6 +271,17 @@ export const App = ({ config }: AppProps) => {
             clearChat: rotateSession,
             exitApp: exit,
             addSystemMessage,
+            getLastAssistantText: () => {
+                const history = stateRef.current?.history ?? [];
+                for (let i = history.length - 1; i >= 0; i--) {
+                    const msg = history[i];
+                    if (msg && msg.role === "assistant" && msg.content !== null) {
+                        const trimmed = msg.content.trim();
+                        if (trimmed.length > 0) return msg.content;
+                    }
+                }
+                return null;
+            },
             pick,
         };
         const result = await dispatch(parsed, ctx);
