@@ -1,4 +1,5 @@
 import { Box, Text, useInput } from "ink";
+import { homedir } from "node:os";
 import { useEffect, useRef, useState } from "react";
 import type { LoadResult, PermissionMode } from "../config/index.ts";
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
@@ -22,6 +23,12 @@ interface PendingPrompt {
   readonly payload: PermissionPromptPayload;
   readonly respond: (r: PromptResponse) => void;
 }
+
+const prettyCwd = (): string => {
+  const cwd = process.cwd();
+  const home = homedir();
+  return cwd === home ? "~" : cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd;
+};
 
 export const App = ({ config }: AppProps) => {
   const cfg = config.config;
@@ -211,6 +218,9 @@ export const App = ({ config }: AppProps) => {
       ) : (
         <ChatInput onSubmit={send} disabled={streaming} />
       )}
+      <Box paddingX={1}>
+        <Text dimColor>{prettyCwd()}</Text>
+      </Box>
       <StatusBar mode={mode} model={cfg.defaultModel.model} streaming={streaming} />
     </Box>
   );
