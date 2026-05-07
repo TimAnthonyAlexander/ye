@@ -18,3 +18,6 @@ const main = async (): Promise<void> => {
 };
 
 await main();
+// Ink's useApp().exit() unmounts the renderer but stdin's raw-mode handle
+// can keep the event loop alive — force release back to the parent shell.
+process.exit(0);
