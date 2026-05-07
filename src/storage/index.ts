@@ -13,6 +13,7 @@ export {
     getProjectSessionsDir,
     getSidechainSessionsDir,
 } from "./paths.ts";
+export { appendHistory, loadHistory } from "./history.ts";
 export { _resetProjectCache, getProjectId, type ProjectId } from "./project.ts";
 export {
     openSession,

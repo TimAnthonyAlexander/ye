@@ -32,9 +32,17 @@ system prompt
 
 Sources Ye resolves through the centralized resolvers (no duplicate logic): notes file (`memory/notesFile.ts`), project memory, global `MEMORY.md`. The pipeline does not re-decide which file to read.
 
-## Auto-compact in v1 (step 4 detail)
+## Step 4 detail — shaper chain
 
-The single v1 shaper. Logic:
+Shapers run in declared order from cheapest to most expensive; each checks its own trigger and returns `"skip"`, `"applied"` (mutated history; orchestrator re-assembles before the next shaper), or `"done"` (request now fits; chain stops). The orchestrator owns a mutable `RequestBudget` shapers can lower; the resolved `budget.maxTokens` is then passed to the provider.
+
+Current chain:
+
+1. **Budget Reduction** — no model call, no history mutation. If `promptTokens + budget.maxTokens > contextWindow - margin` and the available headroom is at least `compact.minReplyTokens` (default 1024), clamp `budget.maxTokens` and stop the chain. Otherwise skip and let prompt-shrinking shapers run.
+2. *(Phase 4: Snip → Microcompact → Context Collapse will land between Budget Reduction and Auto-Compact)*
+3. **Auto-Compact** — last-resort. Fires when `currentTokens / contextWindow >= config.compact.threshold` (default 0.5). Runs at most once per turn (`state.compactedThisTurn`).
+
+### Auto-compact logic
 
 1. At step 4, compute `currentTokens` (sum of message token counts; estimate via `provider.countTokens?` if available, else heuristic).
 2. Compare against `contextWindow`, which is cached in `SessionState` from a one-time `provider.getContextSize(model)` call at session start. Fallback when the call fails: 128K.
@@ -78,16 +86,19 @@ The permission prompt is the only event that *expects a response*. It's modeled 
 
 ```
 src/pipeline/
-├── index.ts            # public API: queryLoop()
-├── turn.ts             # one turn of the 9 steps
-├── assemble.ts         # step 3: context assembly
-├── shapers/            # step 4
-│   ├── index.ts        # runs shapers in order
-│   └── autoCompact.ts  # v1's only shaper — threshold-triggered model summary
-├── dispatch.ts         # step 6: parse + queue tool calls
-├── stop.ts             # step 9: stop condition evaluation
-├── events.ts           # event types
-└── state.ts            # turn-local state types
+├── index.ts                # public API: queryLoop()
+├── turn.ts                 # one turn of the 9 steps
+├── assemble.ts             # step 3: context assembly
+├── shapers/                # step 4
+│   ├── index.ts            # runs shapers in declared order; owns the reply-budget object
+│   ├── types.ts            # Shaper interface + ShaperContext + RequestBudget
+│   ├── tokens.ts           # estimateTokens() — shared heuristic
+│   ├── budgetReduction.ts  # Phase 4 — clamps reply budget to fit window (cheapest)
+│   └── autoCompact.ts      # last-resort — threshold-triggered model summary
+├── dispatch.ts             # step 6: parse + queue tool calls
+├── stop.ts                 # step 9: stop condition evaluation
+├── events.ts               # event types
+└── state.ts                # turn-local state types
 ```
 
 The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) is in `src/tools/`. The pipeline calls into them; it doesn't own them.
@@ -128,7 +139,11 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 - [x] CLAUDE.md hierarchy concatenated in step 3
 
 ### Phase 4 — Recovery & full compaction
-- [ ] Add Budget Reduction, Snip, Microcompact, Context Collapse shapers *before* the existing Auto-Compact (cheapest first); Auto-Compact becomes the last-resort backstop
+- [x] Shaper-ordering scaffold: `Shaper` interface + `runShapers()` orchestrator with mutable `RequestBudget`; replaces the single direct `autoCompact()` call in `turn.ts`
+- [x] **Budget Reduction** shaper — clamps reply `maxTokens` to fit the window before falling through to prompt-shrinking shapers; pipeline now plumbs `maxTokens` through to the provider
+- [ ] **Snip** shaper — drop large stale tool results (highest user-visible payoff per LOC)
+- [ ] **Microcompact** shaper — small targeted summaries
+- [ ] **Context Collapse** shaper — bigger collapse before falling through to Auto-Compact
 - [ ] Token-budget escalation in step 5 with explicit retry budget (max 3)
 - [ ] Prompt-too-long → Context Collapse → Auto-Compact → terminate path
 - [ ] Streaming fallback to non-streaming on stream errors

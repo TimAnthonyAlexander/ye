@@ -1,14 +1,12 @@
 import type { Config } from "../../config/index.ts";
 import type { Message, Provider } from "../../providers/index.ts";
-import type { SessionState } from "../state.ts";
+import { estimateTokens } from "./tokens.ts";
+import type { Shaper, ShaperContext, ShaperResult } from "./types.ts";
 
 const PRESERVE_RECENT = 4;
 const SUMMARY_PROMPT =
     "Summarize the conversation above in <=300 words. Preserve names of files, " +
     "functions, and decisions made. The summary will replace the older messages.";
-
-export const estimateTokens = (messages: readonly Message[]): number =>
-    Math.ceil(JSON.stringify(messages).length / 4);
 
 const summarize = async (
     provider: Provider,
@@ -35,40 +33,35 @@ const summarize = async (
     return summary.trim();
 };
 
-export interface AutoCompactInput {
-    readonly state: SessionState;
-    readonly messages: Message[];
-    readonly provider: Provider;
-    readonly config: Config;
-}
+// Last-resort shaper. Spends a model call to summarize older history into a
+// single message. After Phase 4's cheaper shapers (Snip, Microcompact, Context
+// Collapse) land in front of this, autoCompact should rarely fire.
+const run = async (ctx: ShaperContext): Promise<ShaperResult> => {
+    const { state, messages, provider, config } = ctx;
 
-// Returns `true` if a compaction occurred (caller should re-read state.history).
-export const autoCompact = async ({
-    state,
-    messages,
-    provider,
-    config,
-}: AutoCompactInput): Promise<boolean> => {
-    if (state.compactedThisTurn) return false;
+    if (state.compactedThisTurn) return "skip";
 
     const threshold = config.compact?.threshold ?? 0.5;
     const tokens = estimateTokens(messages);
-    if (tokens / state.contextWindow < threshold) return false;
+    if (tokens / state.contextWindow < threshold) return "skip";
 
-    // Identify the slice to compact: everything except the system message at index 0
-    // and the last PRESERVE_RECENT messages.
-    if (state.history.length <= PRESERVE_RECENT) return false;
+    if (state.history.length <= PRESERVE_RECENT) return "skip";
 
     const olderHistory = state.history.slice(0, state.history.length - PRESERVE_RECENT);
     const recentHistory = state.history.slice(state.history.length - PRESERVE_RECENT);
 
     const summary = await summarize(provider, config, olderHistory);
-    if (summary.length === 0) return false;
+    if (summary.length === 0) return "skip";
 
     state.history = [
         { role: "system", content: `Earlier conversation summary:\n${summary}` },
         ...recentHistory,
     ];
     state.compactedThisTurn = true;
-    return true;
+    return "applied";
+};
+
+export const autoCompact: Shaper = {
+    name: "autoCompact",
+    run,
 };

@@ -23,7 +23,13 @@ import {
     type Provider,
     tryBuildProvider,
 } from "../providers/index.ts";
-import { getProjectId, openSession, type SessionHandle } from "../storage/index.ts";
+import {
+    appendHistory,
+    getProjectId,
+    loadHistory,
+    openSession,
+    type SessionHandle,
+} from "../storage/index.ts";
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
 import { Chat, type ChatItem, newChatItemId } from "./chat.tsx";
@@ -113,6 +119,32 @@ export const App = ({ config }: AppProps) => {
     const chainStartRef = useRef<number | null>(null);
     const chainFailedRef = useRef(false);
     const [queuedCount, setQueuedCount] = useState(0);
+    const [history, setHistory] = useState<readonly string[]>([]);
+    // Mirror of `history` so send() can dedup against the most-recent entry
+    // without re-rendering on every read.
+    const historyRef = useRef<readonly string[]>([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        loadHistory()
+            .then((entries) => {
+                if (cancelled) return;
+                historyRef.current = entries;
+                setHistory(entries);
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const recordHistory = (text: string): void => {
+        if (historyRef.current[0] === text) return;
+        const next = [text, ...historyRef.current];
+        historyRef.current = next;
+        setHistory(next);
+        appendHistory(text).catch(() => {});
+    };
 
     const addSystemMessage = (text: string): void => {
         setItems((prev) => [...prev, { kind: "system", id: newChatItemId(), content: text }]);
@@ -515,6 +547,7 @@ export const App = ({ config }: AppProps) => {
             return;
         }
         setError(null);
+        recordHistory(text);
 
         if (parseSlash(text)) {
             await runSlash(text);
@@ -591,6 +624,7 @@ export const App = ({ config }: AppProps) => {
                         disabled={false}
                         onValueChange={setCurrentInput}
                         getCompletion={completeCommand}
+                        history={history}
                     />
                 </>
             )}

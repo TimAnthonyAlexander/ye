@@ -155,7 +155,7 @@ src/memory/
 - [x] Pipeline step 3 (assemble) calls `hierarchy.read()` and `select.run()`; no other call sites
 
 ### Phase 4 — History + checkpoints + resume
-- [ ] `history.ts` — append on each prompt; reverse-read for Up-arrow
+- [x] `history.ts` — append on each prompt; reverse-read for Up-arrow
 - [ ] Compact-boundary events on session JSONL; load-time chain patching in `session.ts`
 - [ ] `checkpoints.ts` — file snapshots at change boundaries
 - [ ] `ye --resume <sessionId>` reconstructs history from JSONL (permissions are NOT restored — re-prompt as needed; this is a hard rule)

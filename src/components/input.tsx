@@ -6,6 +6,7 @@ interface ChatInputProps {
     readonly disabled: boolean;
     readonly onValueChange?: (value: string) => void;
     readonly getCompletion?: (value: string) => string | null;
+    readonly history?: readonly string[];
 }
 
 export interface ChatInputHandle {
@@ -21,11 +22,15 @@ export interface ChatInputHandle {
 // terminals that fold Shift+Enter into plain Enter, Alt/Option+Enter (key.meta)
 // is the fallback.
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
-    { onSubmit, disabled, onValueChange, getCompletion },
+    { onSubmit, disabled, onValueChange, getCompletion, history },
     ref,
 ) {
     const [value, setValue] = useState("");
     const [cursor, setCursor] = useState(0);
+    // null = "live" (showing user's draft); otherwise an index into `history`.
+    const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+    // Saved draft we restore when user navigates back past the most-recent entry.
+    const [liveBuffer, setLiveBuffer] = useState("");
 
     useEffect(() => {
         onValueChange?.(value);
@@ -37,10 +42,28 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             clear: () => {
                 setValue("");
                 setCursor(0);
+                setHistoryIndex(null);
+                setLiveBuffer("");
             },
         }),
         [],
     );
+
+    // Any edit (typing, backspace, newline) leaves history-nav mode but keeps
+    // the current value — matches readline behavior.
+    const exitHistoryNav = (): void => {
+        if (historyIndex !== null) {
+            setHistoryIndex(null);
+            setLiveBuffer("");
+        }
+    };
+
+    const recallEntry = (index: number): void => {
+        const entry = history?.[index] ?? "";
+        setValue(entry);
+        setCursor(entry.length);
+        setHistoryIndex(index);
+    };
 
     useInput((input, key) => {
         if (disabled) return;
@@ -57,6 +80,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
 
         if (key.return) {
             if (key.shift || key.meta) {
+                exitHistoryNav();
                 setValue((v) => v.slice(0, cursor) + "\n" + v.slice(cursor));
                 setCursor((c) => c + 1);
                 return;
@@ -66,11 +90,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             onSubmit(value);
             setValue("");
             setCursor(0);
+            setHistoryIndex(null);
+            setLiveBuffer("");
             return;
         }
 
         if (key.backspace || key.delete) {
             if (cursor === 0) return;
+            exitHistoryNav();
             setValue((v) => v.slice(0, cursor - 1) + v.slice(cursor));
             setCursor((c) => c - 1);
             return;
@@ -84,11 +111,38 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             setCursor((c) => Math.min(value.length, c + 1));
             return;
         }
-        if (key.upArrow || key.downArrow || key.escape || key.ctrl || key.pageUp || key.pageDown) {
+
+        if (key.upArrow) {
+            if (!history || history.length === 0) return;
+            // Don't hijack up-arrow inside a multi-line draft unless we're
+            // already navigating history.
+            if (historyIndex === null && value.includes("\n")) return;
+            if (historyIndex === null) {
+                setLiveBuffer(value);
+                recallEntry(0);
+            } else if (historyIndex < history.length - 1) {
+                recallEntry(historyIndex + 1);
+            }
+            return;
+        }
+        if (key.downArrow) {
+            if (historyIndex === null) return;
+            if (historyIndex === 0) {
+                setValue(liveBuffer);
+                setCursor(liveBuffer.length);
+                setHistoryIndex(null);
+                setLiveBuffer("");
+            } else {
+                recallEntry(historyIndex - 1);
+            }
+            return;
+        }
+        if (key.escape || key.ctrl || key.pageUp || key.pageDown) {
             return;
         }
 
         if (input.length > 0) {
+            exitHistoryNav();
             setValue((v) => v.slice(0, cursor) + input + v.slice(cursor));
             setCursor((c) => c + input.length);
         }

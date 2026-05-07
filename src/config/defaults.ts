@@ -20,6 +20,8 @@ export const DEFAULT_CONFIG: Config = {
     },
     compact: {
         threshold: 0.5,
+        defaultMaxTokens: 16_384,
+        minReplyTokens: 1024,
     },
     maxTurns: {
         master: 100,

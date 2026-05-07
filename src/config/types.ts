@@ -27,6 +27,12 @@ export interface ModelSetting {
 
 export interface CompactConfig {
     readonly threshold: number;
+    // Default reply token budget the pipeline asks the model for. Phase 4's
+    // Budget Reduction shaper may clamp this down on tight turns.
+    readonly defaultMaxTokens?: number;
+    // Floor below which Budget Reduction gives up — a too-cramped reply ceiling
+    // is worse than letting the next (prompt-shrinking) shaper run.
+    readonly minReplyTokens?: number;
 }
 
 export interface MaxTurnsConfig {

@@ -99,7 +99,37 @@ const validateCompactConfig = (value: unknown): CompactConfig => {
     if (value.threshold <= 0 || value.threshold > 1) {
         throw new ConfigValidationError("compact.threshold must be in (0, 1]");
     }
-    return { threshold: value.threshold };
+    let defaultMaxTokens: number | undefined;
+    if (value.defaultMaxTokens !== undefined) {
+        if (
+            typeof value.defaultMaxTokens !== "number" ||
+            !Number.isInteger(value.defaultMaxTokens) ||
+            value.defaultMaxTokens <= 0
+        ) {
+            throw new ConfigValidationError(
+                "compact.defaultMaxTokens must be a positive integer",
+            );
+        }
+        defaultMaxTokens = value.defaultMaxTokens;
+    }
+    let minReplyTokens: number | undefined;
+    if (value.minReplyTokens !== undefined) {
+        if (
+            typeof value.minReplyTokens !== "number" ||
+            !Number.isInteger(value.minReplyTokens) ||
+            value.minReplyTokens <= 0
+        ) {
+            throw new ConfigValidationError(
+                "compact.minReplyTokens must be a positive integer",
+            );
+        }
+        minReplyTokens = value.minReplyTokens;
+    }
+    return {
+        threshold: value.threshold,
+        ...(defaultMaxTokens !== undefined ? { defaultMaxTokens } : {}),
+        ...(minReplyTokens !== undefined ? { minReplyTokens } : {}),
+    };
 };
 
 const validateMaxTurnsConfig = (value: unknown): MaxTurnsConfig => {

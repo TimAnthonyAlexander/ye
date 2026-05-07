@@ -22,7 +22,7 @@ import {
 import { assemble } from "./assemble.ts";
 import { type CollectedToolCall, streamFromProvider } from "./dispatch.ts";
 import { transcriptable, type Event, type StopReason } from "./events.ts";
-import { autoCompact } from "./shapers/index.ts";
+import { runShapers } from "./shapers/index.ts";
 import { recordDenial, resetDenialTrail, type SessionState } from "./state.ts";
 import { evaluateStop } from "./stop.ts";
 
@@ -102,12 +102,16 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
 
     const activeModel = state.activeModel ?? config.defaultModel.model;
 
-    // Steps 3 + 4: assemble + shapers (autoCompact may rewrite state.history).
-    let messages = await assemble({ state, model: activeModel });
-    const compacted = await autoCompact({ state, messages, provider, config });
-    if (compacted) {
-        messages = await assemble({ state, model: activeModel });
-    }
+    // Step 3: assemble. Step 4: shapers (Budget Reduction → Auto-Compact),
+    // which may clamp the reply budget and/or rewrite state.history.
+    const initialMessages = await assemble({ state, model: activeModel });
+    const { messages, budget } = await runShapers({
+        state,
+        initialMessages,
+        provider,
+        config,
+        model: activeModel,
+    });
 
     // Step 5 + start of step 6: model call + tool-call collection.
     const tools = assembleToolPool({
@@ -120,6 +124,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         messages,
         tools,
         signal,
+        maxTokens: budget.maxTokens,
         providerOptions: {
             providerOrder: config.defaultModel.providerOrder,
             allowFallbacks: config.defaultModel.allowFallbacks,

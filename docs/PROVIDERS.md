@@ -47,7 +47,7 @@ interface ProviderCapabilities {
 `getContextSize(model)` returns the model's max context window in tokens. Used by the pipeline's auto-compact shaper to compute the trigger threshold (`currentTokens / contextWindow >= config.compact.threshold`).
 
 - **OpenRouter:** `GET https://openrouter.ai/api/v1/models` exposes `context_length` per model.
-- **Anthropic:** hardcoded per-model lookup table (vendor doesn't expose a discovery endpoint). Lives in `src/providers/anthropic/models.ts`. Current values: 200K for opus 4.6/4.7 and haiku 4.5; 1M for sonnet 4.6.
+- **Anthropic:** hardcoded per-model lookup table (vendor doesn't expose a discovery endpoint). Lives in `src/providers/anthropic/models.ts`. Current values: 1M for opus 4.6/4.7 and sonnet 4.6 (the API exposes the 1M window on the same model ID; no beta header required as of 2026-03-13); 200K for haiku 4.5 (no 1M variant).
 - **OpenAI:** hardcoded per-model lookup table.
 - **Fallback on any failure:** `128_000`. Logged but not surfaced to the user.
 
