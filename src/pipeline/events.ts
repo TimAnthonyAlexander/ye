@@ -42,6 +42,12 @@ export type Event =
           readonly name: string;
           readonly result: ToolResult;
       }
+    | {
+          readonly type: "tool.progress";
+          readonly id: string;
+          readonly lines: readonly string[];
+          readonly turn: number;
+      }
     | { readonly type: "mode.changed"; readonly mode: string }
     | {
           readonly type: "userQuestion.prompt";

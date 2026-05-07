@@ -3,12 +3,18 @@ import type { ToolResult } from "../tools/index.ts";
 
 export type ToolCallStatus = "running" | "done" | "error";
 
+export interface ToolCallProgress {
+    readonly lines: readonly string[];
+    readonly turn: number;
+}
+
 export interface ToolCallEntry {
     readonly id: string;
     readonly name: string;
     readonly args: unknown;
     readonly status: ToolCallStatus;
     readonly result?: ToolResult;
+    readonly progress?: ToolCallProgress;
 }
 
 const summarizeArgs = (name: string, args: unknown): string => {
@@ -134,6 +140,11 @@ export const ToolCallView = ({ entry }: Props) => {
             ? editDiff(entry.args)
             : null;
     const showDiff = diff !== null && entry.result?.ok !== false;
+    const showProgress =
+        entry.name === "Task" &&
+        entry.status === "running" &&
+        entry.progress !== undefined &&
+        entry.progress.lines.length > 0;
     return (
         <Box flexDirection="column" marginBottom={1}>
             <Box>
@@ -153,6 +164,17 @@ export const ToolCallView = ({ entry }: Props) => {
                     </Text>
                 )}
             </Box>
+            {showProgress && entry.progress && (
+                <Box flexDirection="column" paddingLeft={2}>
+                    <Text dimColor>↳ turn {entry.progress.turn}</Text>
+                    {entry.progress.lines.map((line, i) => (
+                        <Text key={`p-${i}`} dimColor>
+                            {"  "}
+                            {clipLine(line)}
+                        </Text>
+                    ))}
+                </Box>
+            )}
             {showDiff && (
                 <Box flexDirection="column" paddingLeft={2}>
                     {diff.removed.map((line, i) => (

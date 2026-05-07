@@ -1,4 +1,5 @@
 import type { Config } from "../../config/index.ts";
+import type { Event } from "../../pipeline/events.ts";
 import { queryLoop, type SessionState } from "../../pipeline/index.ts";
 import type { Provider } from "../../providers/index.ts";
 import { openSidechainSession } from "../../storage/index.ts";
@@ -16,6 +17,7 @@ export interface InProcessRun {
     readonly config: Config;
     readonly provider: Provider;
     readonly signal: AbortSignal;
+    readonly onChildEvent?: (evt: Event) => void;
 }
 
 export const runInProcess = async (input: InProcessRun): Promise<SubagentResult> => {
@@ -50,6 +52,7 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
             signal: input.signal,
             maxTurnsOverride: input.maxTurns,
         })) {
+            input.onChildEvent?.(evt);
             if (evt.type === "turn.start") turnCount = evt.turnIndex + 1;
             if (evt.type === "turn.end" && evt.error !== undefined) errorMessage = evt.error;
             // Subagents force AUTO mode and have a narrowed tool pool, so prompts

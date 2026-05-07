@@ -1,4 +1,5 @@
 import type { Config } from "../config/index.ts";
+import type { Event } from "../pipeline/events.ts";
 import type { Provider } from "../providers/index.ts";
 import { EXPLORE_TOOLS, exploreSystemPrompt, exploreTurnBudget } from "./kinds/explore.ts";
 import { GENERAL_TOOLS, generalSystemPrompt, generalTurnBudget } from "./kinds/general.ts";
@@ -27,6 +28,10 @@ export interface SpawnContext {
     readonly config: Config;
     readonly provider: Provider;
     readonly signal: AbortSignal;
+    // Fires for every event the subagent's queryLoop yields (turn boundaries,
+    // tool starts/ends, model text, etc.). Used by the parent's Task tool to
+    // build live action-line progress for the UI.
+    readonly onChildEvent?: (evt: Event) => void;
 }
 
 interface KindResolution {
@@ -77,6 +82,7 @@ export const spawn = async (
         config: ctx.config,
         provider: ctx.provider,
         signal: ctx.signal,
+        ...(ctx.onChildEvent ? { onChildEvent: ctx.onChildEvent } : {}),
     });
 };
 

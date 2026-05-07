@@ -43,6 +43,10 @@ export interface ToolContext {
     readonly projectId: string;
     readonly turnState: TurnState;
     readonly subagentContext?: SubagentToolContext;
+    // Optional liveness hook. Tools that wrap a long-running sub-process (e.g.
+    // Task) push a current snapshot of recent action lines + turn index here;
+    // the pipeline re-emits them as tool.progress events for the UI.
+    readonly emitProgress?: (lines: readonly string[], turn: number) => void;
     log(msg: string): void;
 }
 

@@ -1,3 +1,4 @@
+import type { Event } from "../../pipeline/events.ts";
 import type { ExploreThoroughness, SubagentKind } from "../../subagents/index.ts";
 import { isSubagentKind, spawn, SubagentError } from "../../subagents/index.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
@@ -17,6 +18,33 @@ interface TaskResultValue {
 
 const isThoroughness = (v: unknown): v is ExploreThoroughness =>
     v === "quick" || v === "medium" || v === "very_thorough";
+
+const PROGRESS_TAIL = 5;
+const ARG_CLIP = 60;
+
+const clip = (s: string): string => (s.length > ARG_CLIP ? s.slice(0, ARG_CLIP) + "…" : s);
+
+const formatChildLine = (evt: Event): string | null => {
+    if (evt.type !== "tool.start") return null;
+    const a = (evt.args ?? {}) as Record<string, unknown>;
+    const path = typeof a["path"] === "string" ? (a["path"] as string) : "";
+    const pattern = typeof a["pattern"] === "string" ? (a["pattern"] as string) : "";
+    const command = typeof a["command"] === "string" ? (a["command"] as string) : "";
+    switch (evt.name) {
+        case "Read":
+        case "Edit":
+        case "Write":
+            return path ? `${evt.name} ${clip(path)}` : evt.name;
+        case "Glob":
+            return pattern ? `Glob ${clip(pattern)}` : "Glob";
+        case "Grep":
+            return pattern ? `Grep "${clip(pattern)}"` : "Grep";
+        case "Bash":
+            return command ? `Bash ${clip(command)}` : "Bash";
+        default:
+            return evt.name;
+    }
+};
 
 const execute = async (
     rawArgs: unknown,
@@ -46,6 +74,25 @@ const execute = async (
         };
     }
 
+    const recent: string[] = [];
+    let currentTurn = 0;
+    const onChildEvent = (evt: Event): void => {
+        if (evt.type === "turn.start") {
+            currentTurn = evt.turnIndex + 1;
+            // Push a turn marker so the user sees turn boundaries advance even
+            // if the next tool call hasn't fired yet.
+            recent.push(`— turn ${currentTurn} —`);
+            if (recent.length > PROGRESS_TAIL) recent.shift();
+            ctx.emitProgress?.([...recent], currentTurn);
+            return;
+        }
+        const line = formatChildLine(evt);
+        if (line === null) return;
+        recent.push(line);
+        if (recent.length > PROGRESS_TAIL) recent.shift();
+        ctx.emitProgress?.([...recent], currentTurn);
+    };
+
     try {
         const result = await spawn(
             {
@@ -61,6 +108,7 @@ const execute = async (
                 config: subagentCtx.config,
                 provider: subagentCtx.provider,
                 signal: ctx.signal,
+                onChildEvent,
             },
         );
         return {

@@ -289,6 +289,16 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
                   }
                 : undefined;
 
+        // Progress plumbing: tools that wrap a long-running sub-process push
+        // current action-line snapshots through emitProgress; we drain those
+        // into tool.progress events while tool.execute is in flight.
+        interface ProgressUpdate {
+            readonly lines: readonly string[];
+            readonly turn: number;
+        }
+        const progressQueue: ProgressUpdate[] = [];
+        let wakeup = deferred<void>();
+
         const toolCtx: ToolContext = {
             cwd: state.projectRoot,
             signal,
@@ -296,9 +306,51 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             projectId: state.projectId,
             turnState,
             log: () => {},
+            emitProgress: (lines, turn) => {
+                progressQueue.push({ lines, turn });
+                wakeup.resolve();
+            },
             ...(subagentContext ? { subagentContext } : {}),
         };
-        const result = await tool.execute(call.args, toolCtx);
+
+        const execPromise = tool.execute(call.args, toolCtx);
+        let executed = false;
+        let hadError = false;
+        let toolError: unknown = null;
+        let toolResultRaw: ToolResult | null = null;
+        execPromise.then(
+            (r) => {
+                toolResultRaw = r;
+                executed = true;
+                wakeup.resolve();
+            },
+            (e) => {
+                toolError = e;
+                hadError = true;
+                executed = true;
+                wakeup.resolve();
+            },
+        );
+
+        while (true) {
+            await wakeup.promise;
+            wakeup = deferred<void>();
+            while (progressQueue.length > 0) {
+                const p = progressQueue.shift()!;
+                const progressEvent: Event = {
+                    type: "tool.progress",
+                    id: call.id,
+                    lines: p.lines,
+                    turn: p.turn,
+                };
+                yield progressEvent;
+                // Volatile UI state — not persisted to the session transcript.
+            }
+            if (executed) break;
+        }
+
+        if (hadError) throw toolError;
+        const result = toolResultRaw as unknown as ToolResult;
 
         // AskUserQuestion: surface the question to the UI, replace the tool's
         // payload-shaped result with the user's answer string before pushing it

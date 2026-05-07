@@ -65,6 +65,13 @@ export const Chat = ({ items, streamingText, streaming }: ChatProps) => {
     const committed = splitAt === items.length ? items : items.slice(0, splitAt);
     const inFlight = splitAt === items.length ? [] : items.slice(splitAt);
 
+    // While a tool is mid-execution, its own running indicator (and progress
+    // panel for Task) signals liveness — the generic Thinking spinner becomes
+    // misleading and visually competes with the tool entry.
+    const hasRunningTool = inFlight.some(
+        (item) => item.kind === "toolCall" && item.entry.status === "running",
+    );
+
     return (
         <>
             <Static items={committed as ChatItem[]}>
@@ -79,6 +86,7 @@ export const Chat = ({ items, streamingText, streaming }: ChatProps) => {
                     <RenderItem key={itemKey(item)} item={item} />
                 ))}
                 {streaming &&
+                    !hasRunningTool &&
                     (streamingText.length > 0 ? (
                         <AssistantLine content={streamingText} />
                     ) : (

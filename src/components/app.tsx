@@ -466,6 +466,22 @@ export const App = ({ config }: AppProps) => {
                         }
                         break;
                     }
+                    case "tool.progress": {
+                        setItems((prev) =>
+                            prev.map((item) => {
+                                if (item.kind !== "toolCall") return item;
+                                if (item.entry.id !== evt.id) return item;
+                                return {
+                                    kind: "toolCall",
+                                    entry: {
+                                        ...item.entry,
+                                        progress: { lines: evt.lines, turn: evt.turn },
+                                    },
+                                };
+                            }),
+                        );
+                        break;
+                    }
                     case "permission.prompt": {
                         await new Promise<void>((resolve) => {
                             setPendingPrompt({
