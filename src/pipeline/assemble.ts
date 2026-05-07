@@ -1,19 +1,20 @@
-import { getProjectNotesFile } from "../memory/index.ts";
+import { readNotesHierarchy } from "../memory/index.ts";
 import type { Message } from "../providers/index.ts";
-import type { SessionState } from "./state.ts";
+import type { SelectedMemoryEntry, SessionState } from "./state.ts";
 import { buildSystemPrompt } from "./systemPrompt.ts";
 
 const buildNotesBlock = async (projectRoot: string): Promise<string | null> => {
-    const notes = getProjectNotesFile(projectRoot);
-    if (!notes.existed) return null;
-    try {
-        const content = await Bun.file(notes.path).text();
-        if (content.trim().length === 0) return null;
-        const filename = notes.format === "claude" ? "CLAUDE.md" : "YE.md";
-        return `# Project notes (${filename})\n\n${content}`;
-    } catch {
-        return null;
-    }
+    const hierarchy = await readNotesHierarchy(projectRoot);
+    if (hierarchy.length === 0) return null;
+    return `# Project notes\n\n${hierarchy}`;
+};
+
+const buildMemoryBlock = (selected: readonly SelectedMemoryEntry[] | null): string | null => {
+    if (!selected || selected.length === 0) return null;
+    const sections = selected.map(
+        (entry) => `----- ${entry.title} (${entry.path}) -----\n\n${entry.content}`,
+    );
+    return `# Auto-memory\n\n${sections.join("\n\n")}`;
 };
 
 export interface AssembleInput {
@@ -22,8 +23,8 @@ export interface AssembleInput {
 }
 
 // Step 3: build the messages array sent to the model.
-//   system prompt (full) + project notes (if present) → one system message
-//   then conversation history
+//   system prompt (full) + project notes hierarchy + auto-memory selection
+//   → one system message, then conversation history.
 export const assemble = async ({ state, model }: AssembleInput): Promise<Message[]> => {
     const systemBody = buildSystemPrompt({
         cwd: state.projectRoot,
@@ -33,10 +34,15 @@ export const assemble = async ({ state, model }: AssembleInput): Promise<Message
         date: new Date().toISOString().slice(0, 10),
     });
     const notes = await buildNotesBlock(state.projectRoot);
+    const memory = buildMemoryBlock(state.selectedMemory);
+
+    const parts = [systemBody];
+    if (notes) parts.push(notes);
+    if (memory) parts.push(memory);
 
     const systemMessage: Message = {
         role: "system",
-        content: notes ? `${systemBody}\n\n${notes}` : systemBody,
+        content: parts.join("\n\n"),
     };
 
     return [systemMessage, ...state.history];

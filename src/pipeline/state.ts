@@ -7,6 +7,14 @@ export interface DenialTrail {
     readonly count: number;
 }
 
+// Structurally compatible with MemoryFile from src/memory/select.ts.
+// Defined here (not imported) to avoid a select.ts → pipeline → select.ts cycle.
+export interface SelectedMemoryEntry {
+    readonly path: string;
+    readonly title: string;
+    readonly content: string;
+}
+
 export interface SessionState {
     readonly sessionId: string;
     readonly projectId: string;
@@ -17,6 +25,9 @@ export interface SessionState {
     sessionRules: PermissionRule[];
     denialTrail: DenialTrail | null;
     compactedThisTurn: boolean;
+    // Auto-memory cache: populated lazily on first turn that has a user query.
+    // null = not yet selected; [] = no memory available; non-empty = active.
+    selectedMemory: readonly SelectedMemoryEntry[] | null;
 }
 
 export const newTurnState = (): TurnState => ({

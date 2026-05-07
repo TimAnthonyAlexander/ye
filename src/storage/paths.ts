@@ -7,6 +7,7 @@ export const HISTORY_FILE = join(YE_DIR, "history.jsonl");
 export const GLOBAL_MEMORY_FILE = join(YE_DIR, "MEMORY.md");
 export const GLOBAL_MEMORY_DIR = join(YE_DIR, "memory");
 export const USER_NOTES_FILE = join(YE_DIR, "CLAUDE.md");
+export const MANAGED_NOTES_FILE = "/etc/ye/CLAUDE.md";
 
 export const getProjectDir = (projectId: string): string => join(PROJECTS_DIR, projectId);
 export const getProjectMetaPath = (projectId: string): string =>

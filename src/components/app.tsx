@@ -54,6 +54,9 @@ export const App = ({ config }: AppProps) => {
     const sessionRef = useRef<SessionHandle | null>(null);
     const providerRef = useRef<Provider | null>(null);
     const pendingTodosRef = useRef<readonly TodoItem[] | null>(null);
+    const streamingRef = useRef(false);
+    const queueRef = useRef<string[]>([]);
+    const [queuedCount, setQueuedCount] = useState(0);
 
     const addSystemMessage = (text: string): void => {
         setItems((prev) => [...prev, { kind: "system", content: text }]);
@@ -147,20 +150,8 @@ export const App = ({ config }: AppProps) => {
         }
     });
 
-    const send = async (text: string): Promise<void> => {
-        if (!stateRef.current || !sessionRef.current || !providerRef.current) {
-            setError("session not ready");
-            return;
-        }
-        setError(null);
-
-        if (parseSlash(text)) {
-            await runSlash(text);
-            return;
-        }
-
-        const userItem: ChatItem = { kind: "message", role: "user", content: text };
-        setItems((prev) => [...prev, userItem]);
+    const sendNow = async (text: string): Promise<void> => {
+        streamingRef.current = true;
         setStreaming(true);
         setStreamingText("");
 
@@ -179,10 +170,10 @@ export const App = ({ config }: AppProps) => {
 
         try {
             const stream = queryLoop({
-                provider: providerRef.current,
+                provider: providerRef.current!,
                 config: cfg,
-                state: stateRef.current,
-                session: sessionRef.current,
+                state: stateRef.current!,
+                session: sessionRef.current!,
                 userPrompt: text,
             });
 
@@ -257,9 +248,41 @@ export const App = ({ config }: AppProps) => {
             setError(e instanceof Error ? e.message : String(e));
         } finally {
             commitText();
+            streamingRef.current = false;
             setStreaming(false);
             setStreamingText("");
         }
+
+        // Drain the next queued message, if any.
+        const next = queueRef.current.shift();
+        setQueuedCount(queueRef.current.length);
+        if (next !== undefined) {
+            await sendNow(next);
+        }
+    };
+
+    const send = async (text: string): Promise<void> => {
+        if (!stateRef.current || !sessionRef.current || !providerRef.current) {
+            setError("session not ready");
+            return;
+        }
+        setError(null);
+
+        if (parseSlash(text)) {
+            await runSlash(text);
+            return;
+        }
+
+        const userItem: ChatItem = { kind: "message", role: "user", content: text };
+        setItems((prev) => [...prev, userItem]);
+
+        if (streamingRef.current) {
+            queueRef.current.push(text);
+            setQueuedCount(queueRef.current.length);
+            return;
+        }
+
+        await sendNow(text);
     };
 
     if (bootError !== null) {
@@ -293,7 +316,7 @@ export const App = ({ config }: AppProps) => {
                     <SlashPicker input={currentInput} />
                     <ChatInput
                         onSubmit={send}
-                        disabled={streaming}
+                        disabled={false}
                         onValueChange={setCurrentInput}
                         getCompletion={completeCommand}
                     />
@@ -302,7 +325,12 @@ export const App = ({ config }: AppProps) => {
             <Box paddingX={1}>
                 <Text dimColor>{prettyCwd()}</Text>
             </Box>
-            <StatusBar mode={mode} model={cfg.defaultModel.model} streaming={streaming} />
+            <StatusBar
+                mode={mode}
+                model={cfg.defaultModel.model}
+                streaming={streaming}
+                queuedCount={queuedCount}
+            />
         </Box>
     );
 };

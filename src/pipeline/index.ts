@@ -38,6 +38,7 @@ export const createSessionState = async (
         sessionRules: [],
         denialTrail: null,
         compactedThisTurn: false,
+        selectedMemory: null,
     };
     return { state, session };
 };

@@ -1,4 +1,5 @@
 import type { Config } from "../config/index.ts";
+import { ensureSelectedMemory } from "../memory/index.ts";
 import { decide, USER_DENIED } from "../permissions/index.ts";
 import type { PermissionPromptPayload, PromptResponse, ToolCall } from "../permissions/index.ts";
 import type { Message, Provider, ToolCallRequest } from "../providers/index.ts";
@@ -76,6 +77,21 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
 
     yield { type: "turn.start", turnIndex };
     await session.appendEvent({ type: "turn.start", turnIndex });
+
+    // Auto-memory: populate once per session, gated on a non-empty user query.
+    if (state.selectedMemory === null) {
+        const lastUser = [...state.history].reverse().find((m) => m.role === "user");
+        const queryText =
+            lastUser && typeof lastUser.content === "string" ? lastUser.content : "";
+        if (queryText.length > 0) {
+            state.selectedMemory = await ensureSelectedMemory({
+                projectId: state.projectId,
+                query: queryText,
+                provider,
+                config,
+            });
+        }
+    }
 
     // Steps 3 + 4: assemble + shapers (autoCompact may rewrite state.history).
     let messages = await assemble({ state, model: config.defaultModel.model });
