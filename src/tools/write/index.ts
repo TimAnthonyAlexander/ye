@@ -21,7 +21,8 @@ const execute = async (
     }
 
     const file = Bun.file(path);
-    if (await file.exists()) {
+    const fileExists = await file.exists();
+    if (fileExists) {
         const entry = ctx.turnState.readFiles.get(path);
         if (!entry) {
             return {
@@ -38,7 +39,7 @@ const execute = async (
         }
     }
 
-    await atomicWrite(path, content);
+    await atomicWrite(path, content, { preserveMode: fileExists });
     // Once written, this counts as read for subsequent edits in the same turn.
     ctx.turnState.readFiles.set(path, { hash: hashContent(content) });
     return { ok: true, value: { bytes: Buffer.byteLength(content, "utf8") } };

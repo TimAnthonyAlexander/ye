@@ -10,10 +10,74 @@ interface EditArgs {
     readonly replace_all?: boolean;
 }
 
+interface EditValue {
+    readonly replacements: number;
+    readonly line: number;
+    readonly preview: string;
+}
+
+const PREVIEW_RADIUS = 3;
+const MAX_OCCURRENCE_LOCATIONS = 3;
+
+// Walk every match of `needle` in `text` once, recording line:col for the
+// first `max` hits and the total count. Single pass — line/col counters
+// advance from the previous hit, never from index 0.
+const findOccurrences = (
+    text: string,
+    needle: string,
+    max: number,
+): { locations: readonly string[]; total: number } => {
+    const locations: string[] = [];
+    let line = 1;
+    let col = 1;
+    let cursor = 0;
+    let total = 0;
+    let from = 0;
+    while (true) {
+        const idx = text.indexOf(needle, from);
+        if (idx === -1) break;
+        while (cursor < idx) {
+            if (text.charCodeAt(cursor) === 10) {
+                line += 1;
+                col = 1;
+            } else {
+                col += 1;
+            }
+            cursor += 1;
+        }
+        total += 1;
+        if (locations.length < max) {
+            locations.push(`${line}:${col}`);
+        }
+        from = idx + needle.length;
+    }
+    return { locations, total };
+};
+
+// Render ~PREVIEW_RADIUS lines before and after the change site, with
+// 1-indexed line numbers in the same `<padded>\t<content>` format as Read.
+const buildPreview = (
+    updated: string,
+    siteLineIdx: number,
+    newStringLineSpan: number,
+): { line: number; preview: string } => {
+    const lines = updated.split("\n");
+    const startLine = Math.max(0, siteLineIdx - PREVIEW_RADIUS);
+    const endLine = Math.min(
+        lines.length,
+        siteLineIdx + newStringLineSpan + PREVIEW_RADIUS,
+    );
+    const preview = lines
+        .slice(startLine, endLine)
+        .map((l, i) => `${String(startLine + i + 1).padStart(6, " ")}\t${l}`)
+        .join("\n");
+    return { line: siteLineIdx + 1, preview };
+};
+
 const execute = async (
     rawArgs: unknown,
     ctx: ToolContext,
-): Promise<ToolResult<{ replacements: number }>> => {
+): Promise<ToolResult<EditValue>> => {
     const v = validateArgs<EditArgs>(rawArgs, EditTool.schema);
     if (!v.ok) return v;
     const { path, old_string, new_string, replace_all = false } = v.value;
@@ -21,15 +85,18 @@ const execute = async (
     if (!isAbsolute(path)) {
         return { ok: false, error: "path must be absolute" };
     }
+    if (old_string === "") {
+        return { ok: false, error: "old_string must not be empty" };
+    }
+    if (old_string === new_string) {
+        return { ok: false, error: "old_string and new_string are identical" };
+    }
     const entry = ctx.turnState.readFiles.get(path);
     if (!entry) {
         return {
             ok: false,
             error: `Read ${path} before editing it (turn-local invariant).`,
         };
-    }
-    if (old_string === new_string) {
-        return { ok: false, error: "old_string and new_string are identical" };
     }
 
     const file = Bun.file(path);
@@ -45,29 +112,47 @@ const execute = async (
         };
     }
 
-    const parts = original.split(old_string);
-    const matches = parts.length - 1;
-    if (matches === 0) {
+    const { locations, total } = findOccurrences(
+        original,
+        old_string,
+        MAX_OCCURRENCE_LOCATIONS,
+    );
+    if (total === 0) {
         return {
             ok: false,
             error: `old_string not found in ${path}. Re-Read the file — whitespace or contents may differ from what you copied.`,
         };
     }
-    if (matches > 1 && !replace_all) {
+    if (total > 1 && !replace_all) {
+        const more = total > locations.length ? ` (+${total - locations.length} more)` : "";
         return {
             ok: false,
-            error: `old_string matches ${matches} occurrences in ${path}. Add surrounding context to make it unique, or set replace_all: true.`,
+            error: `old_string matches ${total} occurrences at line:col ${locations.join(", ")}${more} in ${path}. Add surrounding context to make it unique, or set replace_all: true.`,
         };
     }
 
+    const firstIdx = original.indexOf(old_string);
     const updated = replace_all
-        ? parts.join(new_string)
-        : parts[0] + new_string + parts.slice(1).join(old_string);
+        ? original.split(old_string).join(new_string)
+        : original.slice(0, firstIdx) +
+          new_string +
+          original.slice(firstIdx + old_string.length);
 
-    await atomicWrite(path, updated);
+    await atomicWrite(path, updated, { preserveMode: true });
     ctx.turnState.readFiles.set(path, { hash: hashContent(updated) });
 
-    return { ok: true, value: { replacements: replace_all ? matches : 1 } };
+    const siteLineIdx = updated.slice(0, firstIdx).split("\n").length - 1;
+    const newStringLineSpan = new_string.split("\n").length;
+    const { line, preview } = buildPreview(updated, siteLineIdx, newStringLineSpan);
+
+    return {
+        ok: true,
+        value: {
+            replacements: replace_all ? total : 1,
+            line,
+            preview,
+        },
+    };
 };
 
 export const EditTool: Tool = {

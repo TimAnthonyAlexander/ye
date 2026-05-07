@@ -132,8 +132,11 @@ Schema:
 Notes:
 - Edit FAILS if you have not Read this exact path earlier in the current turn.
 - Edit FAILS if \`old_string\` is not unique in the file (and \`replace_all\` is false). To force a single replacement, expand \`old_string\` with surrounding context until it's unique.
-- Edit FAILS if \`old_string\` is not found, or equals \`new_string\`.
+- Edit FAILS if \`old_string\` is not found, is empty, or equals \`new_string\`.
 - Preserve indentation and whitespace exactly when copying \`old_string\` from a Read result. Do not include the leading line-number prefix.
+- To delete a line cleanly (no leftover blank), include its trailing \`\\n\` in \`old_string\` and set \`new_string\` to \`""\`.
+- Ambiguity errors include \`line:col\` for the first 3 matches — use them to pick a unique anchor without re-Reading.
+- On success, the response includes \`{ replacements, line, preview }\` where \`preview\` is a small numbered snippet around the change site. Use it to self-verify before further edits.
 - Edit is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.
 
 ## Write
