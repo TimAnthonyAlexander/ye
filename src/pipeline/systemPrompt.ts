@@ -154,6 +154,7 @@ Notes:
 - Edit FAILS if \`old_string\` is not unique in the file (and \`replace_all\` is false). To force a single replacement, expand \`old_string\` with surrounding context until it's unique.
 - Edit FAILS if \`old_string\` is not found, is empty, or equals \`new_string\`.
 - Preserve indentation and whitespace exactly when copying \`old_string\` from a Read result. Do not include the leading line-number prefix.
+- Edit matches \`old_string\` byte-for-byte against the file — no escape processing. A single literal backslash in the file is one byte; if the file contains \`\\Device\`, \`old_string\` must contain one backslash, not two. When Read's output is ambiguous about backslashes or other escape-prone characters and an Edit fails, the error returns JSON-escaped \`yours:\` and \`file:\` windows around the first divergence. Count \`\\\\\` pairs there (each pair is one literal backslash on disk) to spot the mismatch and correct \`old_string\` — do not just re-Read, the rendering will look the same.
 - To delete a line cleanly (no leftover blank), include its trailing \`\\n\` in \`old_string\` and set \`new_string\` to \`""\`.
 - Ambiguity errors include \`line:col\` for the first 3 matches — use them to pick a unique anchor without re-Reading.
 - On success, the response includes \`{ replacements, line, preview }\` where \`preview\` is a small numbered snippet around the change site. Use it to self-verify before further edits.
