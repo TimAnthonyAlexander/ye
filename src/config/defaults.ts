@@ -7,6 +7,10 @@ export const DEFAULT_CONFIG: Config = {
             baseUrl: "https://openrouter.ai/api/v1",
             apiKeyEnv: "OPENROUTER_API_KEY",
         },
+        anthropic: {
+            baseUrl: "https://api.anthropic.com",
+            apiKeyEnv: "ANTHROPIC_API_KEY",
+        },
     },
     defaultModel: {
         provider: "openrouter",

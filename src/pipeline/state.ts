@@ -25,6 +25,10 @@ export interface SessionState {
     sessionRules: PermissionRule[];
     denialTrail: DenialTrail | null;
     compactedThisTurn: boolean;
+    // Per-session model override. When undefined, runTurn falls back to
+    // config.defaultModel.model. /model and /provider mutate this; provider
+    // switches also clear it (the new provider gets its registry default).
+    activeModel?: string;
     // Auto-memory cache: populated lazily on first turn that has a user query.
     // null = not yet selected; [] = no memory available; non-empty = active.
     selectedMemory: readonly SelectedMemoryEntry[] | null;

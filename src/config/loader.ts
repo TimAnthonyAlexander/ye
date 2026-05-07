@@ -26,7 +26,23 @@ export const loadConfig = async (path: string = CONFIG_FILE): Promise<LoadResult
 
     const raw: unknown = await file.json();
     const config = validateConfig(raw);
-    return { config, path, created: false };
+    return { config: mergeDefaultProviders(config), path, created: false };
+};
+
+// Existing user configs may pre-date a newly-added provider entry in
+// DEFAULT_CONFIG. Merge the missing entries at load time so /provider can
+// switch without forcing a manual config edit. The on-disk file is not
+// rewritten — users who customize an existing entry keep their version.
+const mergeDefaultProviders = (config: Config): Config => {
+    const merged = { ...config.providers };
+    let added = false;
+    for (const [key, value] of Object.entries(DEFAULT_CONFIG.providers)) {
+        if (!merged[key]) {
+            merged[key] = value;
+            added = true;
+        }
+    }
+    return added ? { ...config, providers: merged } : config;
 };
 
 export const saveConfig = async (config: Config, path: string = CONFIG_FILE): Promise<void> => {

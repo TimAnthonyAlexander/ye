@@ -9,7 +9,11 @@ export interface SlashCommandContext {
     readonly projectRoot: string;
     readonly projectId: string;
     readonly mode: PermissionMode;
+    readonly providerId: string;
+    readonly model: string;
     setMode(next: PermissionMode): void;
+    setProvider(next: string): Promise<void>;
+    setModel(next: string): Promise<void>;
     clearChat(): Promise<void>;
     exitApp(): void;
     addSystemMessage(text: string): void;

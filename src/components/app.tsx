@@ -10,7 +10,13 @@ import {
 import type { LoadResult, PermissionMode } from "../config/index.ts";
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
 import { createSessionState, queryLoop, type SessionState } from "../pipeline/index.ts";
-import { getProvider, MissingApiKeyError, type Provider } from "../providers/index.ts";
+import {
+    defaultModelFor,
+    findModel,
+    getProvider,
+    isMissingKeyError,
+    type Provider,
+} from "../providers/index.ts";
 import { getProjectId, openSession, type SessionHandle } from "../storage/index.ts";
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
@@ -47,6 +53,8 @@ export const App = ({ config }: AppProps) => {
     const cfg = config.config;
     const { exit } = useApp();
     const [mode, setMode] = useState<PermissionMode>(cfg.permissions?.defaultMode ?? "NORMAL");
+    const [providerId, setProviderId] = useState<string>(cfg.defaultProvider);
+    const [model, setModelState] = useState<string>(cfg.defaultModel.model);
     const [items, setItems] = useState<ChatItem[]>([]);
     const [streamingText, setStreamingText] = useState("");
     const [streaming, setStreaming] = useState(false);
@@ -88,6 +96,42 @@ export const App = ({ config }: AppProps) => {
         setError(null);
     };
 
+    const switchProvider = async (nextId: string): Promise<void> => {
+        const state = stateRef.current;
+        if (!state) throw new Error("session not ready");
+        // Build the new provider eagerly so a missing key surfaces before we
+        // mutate any state.
+        const nextProvider = getProvider(cfg, nextId);
+        const nextModelInfo = defaultModelFor(nextId);
+        const nextModel = nextModelInfo?.id ?? cfg.defaultModel.model;
+        let nextWindow = state.contextWindow;
+        try {
+            nextWindow = await nextProvider.getContextSize(nextModel);
+        } catch {
+            // Keep prior window on failure — getContextSize already falls back internally.
+        }
+        providerRef.current = nextProvider;
+        state.activeModel = nextModel;
+        state.contextWindow = nextWindow;
+        setProviderId(nextId);
+        setModelState(nextModel);
+    };
+
+    const switchModel = async (nextModel: string): Promise<void> => {
+        const state = stateRef.current;
+        const provider = providerRef.current;
+        if (!state || !provider) throw new Error("session not ready");
+        let nextWindow = state.contextWindow;
+        try {
+            nextWindow = await provider.getContextSize(nextModel);
+        } catch {
+            // Keep prior window on failure.
+        }
+        state.activeModel = nextModel;
+        state.contextWindow = nextWindow;
+        setModelState(nextModel);
+    };
+
     const runSlash = async (text: string): Promise<void> => {
         const parsed = parseSlash(text);
         if (!parsed) return;
@@ -102,11 +146,15 @@ export const App = ({ config }: AppProps) => {
             projectRoot: state.projectRoot,
             projectId: state.projectId,
             mode: state.mode,
+            providerId,
+            model,
             setMode: (next) => {
                 state.mode = next;
                 state.denialTrail = null;
                 setMode(next);
             },
+            setProvider: switchProvider,
+            setModel: switchModel,
             clearChat: rotateSession,
             exitApp: exit,
             addSystemMessage,
@@ -138,7 +186,7 @@ export const App = ({ config }: AppProps) => {
                 sessionRef.current = session;
                 setMode(state.mode);
             } catch (e) {
-                if (e instanceof MissingApiKeyError) {
+                if (isMissingKeyError(e)) {
                     setBootError(e.message);
                 } else {
                     setBootError(e instanceof Error ? e.message : String(e));
@@ -379,7 +427,8 @@ export const App = ({ config }: AppProps) => {
             </Box>
             <StatusBar
                 mode={mode}
-                model={cfg.defaultModel.model}
+                providerId={providerId}
+                model={findModel(model)?.label ?? model}
                 streaming={streaming}
                 queuedCount={queuedCount}
             />

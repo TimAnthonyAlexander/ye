@@ -100,11 +100,13 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         }
     }
 
+    const activeModel = state.activeModel ?? config.defaultModel.model;
+
     // Steps 3 + 4: assemble + shapers (autoCompact may rewrite state.history).
-    let messages = await assemble({ state, model: config.defaultModel.model });
+    let messages = await assemble({ state, model: activeModel });
     const compacted = await autoCompact({ state, messages, provider, config });
     if (compacted) {
-        messages = await assemble({ state, model: config.defaultModel.model });
+        messages = await assemble({ state, model: activeModel });
     }
 
     // Step 5 + start of step 6: model call + tool-call collection.
@@ -114,7 +116,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         ...(state.allowedTools ? { allowedTools: state.allowedTools } : {}),
     });
     const streamGen = streamFromProvider(provider, {
-        model: config.defaultModel.model,
+        model: activeModel,
         messages,
         tools,
         signal,

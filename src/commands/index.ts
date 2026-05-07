@@ -3,6 +3,8 @@ import { ExitCommand } from "./exit.ts";
 import { buildHelpCommand } from "./help.ts";
 import { InitCommand } from "./init.ts";
 import { ModeCommand } from "./mode.ts";
+import { ModelCommand } from "./model.ts";
+import { ProviderCommand } from "./provider.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
 
 export type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
@@ -27,6 +29,8 @@ const buildRegistry = (): ReadonlyMap<string, SlashCommand> => {
         helpCommand,
         ClearCommand,
         ModeCommand,
+        ProviderCommand,
+        ModelCommand,
         InitCommand,
         ExitCommand,
     ];
