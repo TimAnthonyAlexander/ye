@@ -66,3 +66,25 @@ export const dispatch = async (
   }
   return await cmd.execute(parsed.args, ctx);
 };
+
+// Return commands matching the partial input. Used for the picker + Tab completion.
+// Empty list means: no picker. We hide it once the user starts typing args (a space appears).
+export const matchCommands = (input: string): readonly SlashCommand[] => {
+  const trimmed = input.trimStart();
+  if (!trimmed.startsWith("/")) return [];
+  const afterSlash = trimmed.slice(1);
+  if (afterSlash.includes(" ")) return [];
+  if (afterSlash.length === 0) return listCommands();
+  const prefix = afterSlash.toLowerCase();
+  return listCommands().filter((c) => c.name.toLowerCase().startsWith(prefix));
+};
+
+// Tab completion. Returns the new input string when there's exactly one match;
+// otherwise null (Tab is a no-op).
+export const completeCommand = (input: string): string | null => {
+  const matches = matchCommands(input);
+  if (matches.length !== 1) return null;
+  const cmd = matches[0];
+  if (!cmd) return null;
+  return `/${cmd.name} `;
+};

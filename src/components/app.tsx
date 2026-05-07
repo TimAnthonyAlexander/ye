@@ -1,7 +1,12 @@
 import { Box, Text, useApp, useInput } from "ink";
 import { homedir } from "node:os";
 import { useEffect, useRef, useState } from "react";
-import { dispatch, parseSlash, type SlashCommandContext } from "../commands/index.ts";
+import {
+  completeCommand,
+  dispatch,
+  parseSlash,
+  type SlashCommandContext,
+} from "../commands/index.ts";
 import type { LoadResult, PermissionMode } from "../config/index.ts";
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
 import { createSessionState, queryLoop, type SessionState } from "../pipeline/index.ts";
@@ -12,6 +17,7 @@ import { cycleMode } from "../ui/keybinds.ts";
 import { Chat, type ChatItem } from "./chat.tsx";
 import { ChatInput } from "./input.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
+import { SlashPicker } from "./slashPicker.tsx";
 import { StatusBar } from "./statusBar.tsx";
 import { TodoPanel } from "./todoPanel.tsx";
 import type { ToolCallEntry } from "./toolCall.tsx";
@@ -42,6 +48,7 @@ export const App = ({ config }: AppProps) => {
   const [todos, setTodos] = useState<readonly TodoItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [currentInput, setCurrentInput] = useState("");
 
   const stateRef = useRef<SessionState | null>(null);
   const sessionRef = useRef<SessionHandle | null>(null);
@@ -272,7 +279,15 @@ export const App = ({ config }: AppProps) => {
       {pendingPrompt ? (
         <PermissionPrompt payload={pendingPrompt.payload} onRespond={pendingPrompt.respond} />
       ) : (
-        <ChatInput onSubmit={send} disabled={streaming} />
+        <>
+          <SlashPicker input={currentInput} />
+          <ChatInput
+            onSubmit={send}
+            disabled={streaming}
+            onValueChange={setCurrentInput}
+            getCompletion={completeCommand}
+          />
+        </>
       )}
       <Box paddingX={1}>
         <Text dimColor>{prettyCwd()}</Text>

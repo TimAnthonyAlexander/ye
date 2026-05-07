@@ -1,25 +1,41 @@
 import { Box, Text, useInput } from "ink";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface ChatInputProps {
   readonly onSubmit: (text: string) => void;
   readonly disabled: boolean;
+  readonly onValueChange?: (value: string) => void;
+  readonly getCompletion?: (value: string) => string | null;
 }
 
-// Keys we deliberately don't handle here:
-//   - Tab / Shift+Tab: owned by App (mode cycle)
-//   - Ctrl+C: Ink default exit
+// Keys we deliberately handle vs. defer:
+//   - Shift+Tab: owned by App (mode cycle) — we ignore.
+//   - Tab (no shift): tab-completion via getCompletion when provided.
+//   - Ctrl+C: Ink default exit.
 // Shift+Enter for newline depends on the terminal sending a distinguishable
 // sequence (key.shift) — works in iTerm2/kitty with the right config; on
 // terminals that fold Shift+Enter into plain Enter, Alt/Option+Enter (key.meta)
 // is the fallback.
-export const ChatInput = ({ onSubmit, disabled }: ChatInputProps) => {
+export const ChatInput = ({ onSubmit, disabled, onValueChange, getCompletion }: ChatInputProps) => {
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
 
+  useEffect(() => {
+    onValueChange?.(value);
+  }, [value, onValueChange]);
+
   useInput((input, key) => {
     if (disabled) return;
-    if (key.tab) return;
+    if (key.tab) {
+      if (!key.shift && getCompletion) {
+        const completed = getCompletion(value);
+        if (completed !== null) {
+          setValue(completed);
+          setCursor(completed.length);
+        }
+      }
+      return;
+    }
 
     if (key.return) {
       if (key.shift || key.meta) {
