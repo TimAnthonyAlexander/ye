@@ -292,11 +292,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         // Progress plumbing: tools that wrap a long-running sub-process push
         // current action-line snapshots through emitProgress; we drain those
         // into tool.progress events while tool.execute is in flight.
-        interface ProgressUpdate {
-            readonly lines: readonly string[];
-            readonly turn: number;
-        }
-        const progressQueue: ProgressUpdate[] = [];
+        const progressQueue: Array<readonly string[]> = [];
         let wakeup = deferred<void>();
 
         const toolCtx: ToolContext = {
@@ -306,8 +302,8 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             projectId: state.projectId,
             turnState,
             log: () => {},
-            emitProgress: (lines, turn) => {
-                progressQueue.push({ lines, turn });
+            emitProgress: (lines) => {
+                progressQueue.push(lines);
                 wakeup.resolve();
             },
             ...(subagentContext ? { subagentContext } : {}),
@@ -336,12 +332,11 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             await wakeup.promise;
             wakeup = deferred<void>();
             while (progressQueue.length > 0) {
-                const p = progressQueue.shift()!;
+                const lines = progressQueue.shift()!;
                 const progressEvent: Event = {
                     type: "tool.progress",
                     id: call.id,
-                    lines: p.lines,
-                    turn: p.turn,
+                    lines,
                 };
                 yield progressEvent;
                 // Volatile UI state — not persisted to the session transcript.

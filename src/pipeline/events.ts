@@ -46,7 +46,6 @@ export type Event =
           readonly type: "tool.progress";
           readonly id: string;
           readonly lines: readonly string[];
-          readonly turn: number;
       }
     | { readonly type: "mode.changed"; readonly mode: string }
     | {

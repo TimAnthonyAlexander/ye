@@ -75,22 +75,12 @@ const execute = async (
     }
 
     const recent: string[] = [];
-    let currentTurn = 0;
     const onChildEvent = (evt: Event): void => {
-        if (evt.type === "turn.start") {
-            currentTurn = evt.turnIndex + 1;
-            // Push a turn marker so the user sees turn boundaries advance even
-            // if the next tool call hasn't fired yet.
-            recent.push(`— turn ${currentTurn} —`);
-            if (recent.length > PROGRESS_TAIL) recent.shift();
-            ctx.emitProgress?.([...recent], currentTurn);
-            return;
-        }
         const line = formatChildLine(evt);
         if (line === null) return;
         recent.push(line);
         if (recent.length > PROGRESS_TAIL) recent.shift();
-        ctx.emitProgress?.([...recent], currentTurn);
+        ctx.emitProgress?.([...recent]);
     };
 
     try {

@@ -473,10 +473,7 @@ export const App = ({ config }: AppProps) => {
                                 if (item.entry.id !== evt.id) return item;
                                 return {
                                     kind: "toolCall",
-                                    entry: {
-                                        ...item.entry,
-                                        progress: { lines: evt.lines, turn: evt.turn },
-                                    },
+                                    entry: { ...item.entry, progress: evt.lines },
                                 };
                             }),
                         );
