@@ -21,6 +21,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     const cfg = ctx.config.webTools ?? {};
 
     if (ctx.provider.capabilities.serverSideWebSearch) {
+        ctx.emitProgress?.([`querying anthropic web_search · ${query}`]);
         const text = await runAnthropicSearch({
             provider: ctx.provider,
             model: ctx.activeModel,
@@ -43,6 +44,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
         };
     }
 
+    ctx.emitProgress?.([`querying duckduckgo · ${query}`]);
     const ddg = await runDuckDuckGoSearch({
         query,
         ...(v.value.allowed_domains ? { allowedDomains: v.value.allowed_domains } : {}),
@@ -54,6 +56,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     });
     if (!ddg.ok) return ddg;
 
+    ctx.emitProgress?.([`got ${ddg.results.length} results`]);
     const lines = ddg.results.map((r) => `- [${r.title}](${r.url})`);
     return { ok: true, value: lines.join("\n") };
 };

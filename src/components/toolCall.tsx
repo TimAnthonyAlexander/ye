@@ -1,6 +1,8 @@
 import { Box, Text } from "ink";
+import { useEffect, useState } from "react";
 import type { ToolResult } from "../tools/index.ts";
 import { prettyPath } from "../ui/path.ts";
+import { ELAPSED_INTERVAL_MS, FRAME_INTERVAL_MS, FRAMES } from "./spinner.ts";
 
 export type ToolCallStatus = "running" | "done" | "error";
 
@@ -110,10 +112,10 @@ const editDiff = (args: unknown): EditDiff | null => {
 const clipLine = (line: string): string =>
     line.length > MAX_DIFF_LINE_WIDTH ? line.slice(0, MAX_DIFF_LINE_WIDTH) + "…" : line;
 
-const statusGlyph = (status: ToolCallStatus): { ch: string; color: string } => {
+const finalGlyph = (status: ToolCallStatus): { ch: string; color: string } | null => {
     switch (status) {
         case "running":
-            return { ch: "•", color: "yellow" };
+            return null;
         case "done":
             return { ch: "✓", color: "green" };
         case "error":
@@ -121,12 +123,36 @@ const statusGlyph = (status: ToolCallStatus): { ch: string; color: string } => {
     }
 };
 
+const RunningGlyph = () => {
+    const [frame, setFrame] = useState(0);
+    const [elapsedSec, setElapsedSec] = useState(0);
+    useEffect(() => {
+        const startedAt = Date.now();
+        const frameId = setInterval(() => {
+            setFrame((f) => (f + 1) % FRAMES.length);
+        }, FRAME_INTERVAL_MS);
+        const elapsedId = setInterval(() => {
+            setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+        }, ELAPSED_INTERVAL_MS);
+        return () => {
+            clearInterval(frameId);
+            clearInterval(elapsedId);
+        };
+    }, []);
+    return (
+        <>
+            <Text color="yellow">{FRAMES[frame]} </Text>
+            {elapsedSec > 0 && <Text dimColor>({elapsedSec}s) </Text>}
+        </>
+    );
+};
+
 interface Props {
     readonly entry: ToolCallEntry;
 }
 
 export const ToolCallView = ({ entry }: Props) => {
-    const { ch, color } = statusGlyph(entry.status);
+    const final = finalGlyph(entry.status);
     const argSummary = summarizeArgs(entry.name, entry.args);
     const resultSummary = summarizeResult(entry.result);
     const answerLine = actionLineAnswer(entry.name, entry.args, entry.result);
@@ -136,14 +162,13 @@ export const ToolCallView = ({ entry }: Props) => {
             : null;
     const showDiff = diff !== null && entry.result?.ok !== false;
     const showProgress =
-        entry.name === "Task" &&
         entry.status === "running" &&
         entry.progress !== undefined &&
         entry.progress.length > 0;
     return (
         <Box flexDirection="column" marginBottom={1}>
             <Box>
-                <Text color={color}>{ch} </Text>
+                {final ? <Text color={final.color}>{final.ch} </Text> : <RunningGlyph />}
                 <Text bold>{entry.name}</Text>
                 {argSummary.length > 0 && (
                     <Text dimColor>

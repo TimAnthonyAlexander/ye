@@ -28,6 +28,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
         return { ok: false, error: "prompt is empty" };
     }
 
+    ctx.emitProgress?.(["normalising URL"]);
     const normalised = normalizeUrl(rawUrl);
     if (!normalised.ok) return normalised;
 
@@ -43,7 +44,10 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     const maxChars = cfg.maxContentChars ?? DEFAULT_MAX_CHARS;
 
     let content = cacheGet(normalised.url);
-    if (content === null) {
+    if (content !== null) {
+        ctx.emitProgress?.([`cache hit (${content.length.toLocaleString()} chars)`]);
+    } else {
+        ctx.emitProgress?.([`fetching ${normalised.host}`]);
         const fetched = await fetchUrl({
             url: normalised.url,
             maxBytes,
@@ -51,6 +55,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
         });
         if (!fetched.ok) return fetched;
         if (fetched.kind === "redirect") {
+            ctx.emitProgress?.([`cross-host redirect → ${fetched.redirectTo}`]);
             return {
                 ok: true,
                 value:
@@ -58,14 +63,19 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
                     "Call WebFetch again with this URL if you trust the new host.",
             };
         }
+        ctx.emitProgress?.([
+            `received ${fetched.content.length.toLocaleString()} chars (${fetched.kind}), parsing`,
+        ]);
         const raw = fetched.kind === "html" ? htmlToMarkdown(fetched.content) : fetched.content;
         content = truncateContent(raw, maxChars);
         cacheSet(normalised.url, content, ttl);
     }
 
+    const summarizerModel = cfg.summarizeModel ?? ctx.activeModel;
+    ctx.emitProgress?.([`summarising via ${summarizerModel}`]);
     const summary = await summarizePage({
         provider: ctx.provider,
-        model: cfg.summarizeModel ?? ctx.activeModel,
+        model: summarizerModel,
         url: normalised.url,
         question: prompt,
         content,

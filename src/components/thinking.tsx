@@ -1,9 +1,6 @@
 import { Box, Text } from "ink";
 import { useEffect, useMemo, useState } from "react";
-
-const FRAMES = ["✻", "✦", "✧", "✶", "✷", "✸"] as const;
-const FRAME_INTERVAL_MS = 120;
-const ELAPSED_INTERVAL_MS = 250;
+import { ELAPSED_INTERVAL_MS, FRAME_INTERVAL_MS, FRAMES } from "./spinner.ts";
 
 const VERBS = [
     "Thinking",
