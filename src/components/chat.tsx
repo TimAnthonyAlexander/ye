@@ -52,6 +52,36 @@ const itemKey = (item: ChatItem): string =>
 // each call earns its own line.
 const BUNDLEABLE: ReadonlySet<string> = new Set(["Read", "Glob", "Grep"]);
 
+// Boundary index: items[0..return) are stable enough to commit to <Static>
+// (scrollback) right now; items[return..] must remain in the live region.
+//
+// Anything in the live region re-renders on every animation frame
+// (Thinking spinner, RunningGlyph). When the live region's total height
+// exceeds the terminal viewport, Ink falls back to clearTerminal-based
+// redraws and the screen flickers. So we want the live region to be as
+// small as possible during a turn.
+//
+// An item must stay dynamic if either:
+//   (1) it's a tool call still running — its glyph/progress will change, or
+//   (2) it's a bundleable (Read/Glob/Grep) at the trailing edge — a future
+//       arrival of the same kind could merge into its group.
+//
+// As soon as we walk back past one non-bundleable item, any earlier
+// bundleables are safe: a future arrival can't merge backward across that
+// boundary because grouping is consecutive-only.
+export const computeDynamicStart = (items: readonly ChatItem[]): number => {
+    let i = items.length;
+    while (i > 0) {
+        const item = items[i - 1]!;
+        const mustStayDynamic =
+            item.kind === "toolCall" &&
+            (item.entry.status === "running" || BUNDLEABLE.has(item.entry.name));
+        if (!mustStayDynamic) break;
+        i--;
+    }
+    return i;
+};
+
 type RenderUnit =
     | { readonly kind: "single"; readonly key: string; readonly item: ChatItem }
     | {

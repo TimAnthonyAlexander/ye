@@ -2,7 +2,7 @@ import { Box, Text, useApp, useInput } from "ink";
 import { existsSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import pkg from "../../package.json" with { type: "json" };
 import {
     completeCommand,
@@ -37,7 +37,7 @@ import {
 } from "../storage/index.ts";
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
-import { Chat, type ChatItem, newChatItemId } from "./chat.tsx";
+import { Chat, type ChatItem, computeDynamicStart, newChatItemId } from "./chat.tsx";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
 import { KeyPrompt } from "./keyPrompt.tsx";
 import { MentionPicker } from "./mentionPicker.tsx";
@@ -141,10 +141,12 @@ export const App = ({ config }: AppProps) => {
     // user edits the mention (causing the query to change) — that's how Esc
     // closes the picker without preventing it from reopening on `@`.
     const [dismissedMentionQuery, setDismissedMentionQuery] = useState<string | null>(null);
-    // Index up to which `items` has been committed to Ink's <Static>. Held
-    // back during a streaming session so consecutive read-only tool calls
-    // can fold into a single group as they arrive; advanced to items.length
-    // when streaming flips off, and reset to 0 by rotateSession.
+    // Index up to which `items` has been committed to Ink's <Static>
+    // (scrollback). Advanced eagerly via useLayoutEffect below — every
+    // stable, non-trailing-mergeable item is committed as soon as it
+    // settles. Anything still in the live region re-renders on every
+    // animation frame; keeping that region small is what prevents Ink from
+    // falling back to clearTerminal-based redraws on a tall conversation.
     const [committedCount, setCommittedCount] = useState(items.length);
     // Toggled with Ctrl+O. Only affects groups in the dynamic section —
     // anything in scrollback already committed in collapsed form.
@@ -174,15 +176,18 @@ export const App = ({ config }: AppProps) => {
     // Mirror of `history` so send() can dedup against the most-recent entry
     // without re-rendering on every read.
     const historyRef = useRef<readonly string[]>([]);
-    // Mirror of `items.length` so the streaming-end effect can read the
-    // current value without re-firing on every items update.
-    const itemsLengthRef = useRef(0);
-    useEffect(() => {
-        itemsLengthRef.current = items.length;
-    }, [items.length]);
-    useEffect(() => {
-        if (!streaming) setCommittedCount(itemsLengthRef.current);
-    }, [streaming]);
+    // Recompute the commit boundary synchronously after each render that
+    // changes items or streaming, before Ink writes to the terminal. This is
+    // why we use useLayoutEffect rather than useEffect: a useEffect runs
+    // after Ink's stdout flush, which would briefly draw the just-completed
+    // tool call inside the live region before promoting it to <Static> on
+    // the next frame — exactly the kind of one-frame artifact we're trying
+    // to eliminate. Math.max enforces monotonicity since <Static> is
+    // append-only; the boundary is reset to 0 explicitly in rotateSession.
+    useLayoutEffect(() => {
+        const target = streaming ? computeDynamicStart(items) : items.length;
+        setCommittedCount((prev) => (target > prev ? target : prev));
+    }, [items, streaming]);
 
     useEffect(() => {
         let cancelled = false;

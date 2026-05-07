@@ -19,6 +19,64 @@ interface EditValue {
 
 const PREVIEW_RADIUS = 3;
 const MAX_OCCURRENCE_LOCATIONS = 3;
+const MIN_PREFIX_FOR_DIAGNOSTIC = 10;
+const DIVERGENCE_WINDOW = 24;
+
+// Binary-search the longest prefix of `needle` that appears anywhere in
+// `text`. Used to localise a near-miss when an exact match fails so we can
+// point the model at the actual divergence rather than a generic "not
+// found".
+const longestPrefixInText = (text: string, needle: string): { idx: number; len: number } | null => {
+    let lo = 1;
+    let hi = needle.length;
+    let best = 0;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (text.includes(needle.slice(0, mid))) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    if (best < MIN_PREFIX_FOR_DIAGNOSTIC) return null;
+    return { idx: text.indexOf(needle.slice(0, best)), len: best };
+};
+
+const firstDivergence = (a: string, b: string): number => {
+    const n = Math.min(a.length, b.length);
+    for (let i = 0; i < n; i++) {
+        if (a.charCodeAt(i) !== b.charCodeAt(i)) return i;
+    }
+    return n;
+};
+
+// Render a tight, JSON-escaped window around the mismatch point. JSON
+// representation makes backslashes (`\\`), tabs (`\t`), and other control
+// chars countable byte-for-byte, which the model's display layer otherwise
+// collapses (`\\` → `\`) and can't reliably reason about.
+const buildMismatchDetail = (original: string, old_string: string): string | null => {
+    const m = longestPrefixInText(original, old_string);
+    if (!m) return null;
+    const fileRegion = original.slice(m.idx, m.idx + old_string.length);
+    const d = firstDivergence(old_string, fileRegion);
+    if (d === 0) return null;
+    const start = Math.max(0, d - DIVERGENCE_WINDOW);
+    const yourEnd = Math.min(old_string.length, d + DIVERGENCE_WINDOW);
+    const fileEnd = Math.min(fileRegion.length, d + DIVERGENCE_WINDOW);
+    const yourSlice = old_string.slice(start, yourEnd);
+    const fileSlice = fileRegion.slice(start, fileEnd);
+    const fileOffset = m.idx + d;
+    const upToDiverge = original.slice(0, fileOffset);
+    const lineNo = upToDiverge.split("\n").length;
+    const colNo = fileOffset - (upToDiverge.lastIndexOf("\n") + 1) + 1;
+    return (
+        `Matched first ${d} chars, diverged at line ${lineNo}:${colNo}. ` +
+        `Compare these JSON-escaped windows byte-for-byte (\\\\ is one literal backslash):\n` +
+        `  yours: ${JSON.stringify(yourSlice)}\n` +
+        `  file:  ${JSON.stringify(fileSlice)}`
+    );
+};
 
 // Walk every match of `needle` in `text` once, recording line:col for the
 // first `max` hits and the total count. Single pass — line/col counters
@@ -110,9 +168,11 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<E
 
     const { locations, total } = findOccurrences(original, old_string, MAX_OCCURRENCE_LOCATIONS);
     if (total === 0) {
+        const detail = buildMismatchDetail(original, old_string);
+        const suffix = detail !== null ? `\n${detail}` : "";
         return {
             ok: false,
-            error: `old_string not found in ${display}. Re-Read the file — whitespace or contents may differ from what you copied.`,
+            error: `old_string not found in ${display}.${suffix}`,
         };
     }
     if (total > 1 && !replace_all) {
