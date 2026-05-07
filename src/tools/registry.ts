@@ -9,6 +9,8 @@ import { ReadTool } from "./read/index.ts";
 import { TaskTool } from "./task/index.ts";
 import { TodoWriteTool } from "./todoWrite/index.ts";
 import type { Tool } from "./types.ts";
+import { WebFetchTool } from "./webFetch/index.ts";
+import { WebSearchTool } from "./webSearch/index.ts";
 import { WriteTool } from "./write/index.ts";
 
 const TOOLS: readonly Tool[] = [
@@ -23,6 +25,8 @@ const TOOLS: readonly Tool[] = [
     EnterPlanModeTool,
     AskUserQuestionTool,
     TaskTool,
+    WebFetchTool,
+    WebSearchTool,
 ];
 
 const TOOLS_BY_NAME: ReadonlyMap<string, Tool> = new Map(TOOLS.map((t) => [t.name, t]));

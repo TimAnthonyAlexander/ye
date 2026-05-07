@@ -122,8 +122,8 @@ export const TaskTool: Tool = {
     name: "Task",
     description:
         "Spawn an isolated subagent to investigate or perform a task in a fresh context. " +
-        "kind=\"explore\" uses Read/Glob/Grep only and returns a summary " +
-        "(thoroughness: quick|medium|very_thorough). kind=\"general\" gets the full toolset " +
+        'kind="explore" uses Read/Glob/Grep only and returns a summary ' +
+        '(thoroughness: quick|medium|very_thorough). kind="general" gets the full toolset ' +
         "and runs in AUTO mode. The subagent's transcript is preserved separately; only " +
         "its final assistant message is returned to you. Use a subagent when the task " +
         "would otherwise pollute your context with many tool calls.",

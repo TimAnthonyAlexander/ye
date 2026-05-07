@@ -130,9 +130,7 @@ export const Picker = ({ payload, onRespond }: PickerProps) => {
                                 <Text color={isActive ? "cyan" : undefined}>
                                     {prefix} {marker} {opt.label}
                                 </Text>
-                                {opt.label !== opt.id && (
-                                    <Text dimColor> — {opt.id}</Text>
-                                )}
+                                {opt.label !== opt.id && <Text dimColor> — {opt.id}</Text>}
                             </Box>
                             {opt.description && (
                                 <Box paddingLeft={5}>

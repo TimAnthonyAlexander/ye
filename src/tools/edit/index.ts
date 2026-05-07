@@ -64,10 +64,7 @@ const buildPreview = (
 ): { line: number; preview: string } => {
     const lines = updated.split("\n");
     const startLine = Math.max(0, siteLineIdx - PREVIEW_RADIUS);
-    const endLine = Math.min(
-        lines.length,
-        siteLineIdx + newStringLineSpan + PREVIEW_RADIUS,
-    );
+    const endLine = Math.min(lines.length, siteLineIdx + newStringLineSpan + PREVIEW_RADIUS);
     const preview = lines
         .slice(startLine, endLine)
         .map((l, i) => `${String(startLine + i + 1).padStart(6, " ")}\t${l}`)
@@ -75,10 +72,7 @@ const buildPreview = (
     return { line: siteLineIdx + 1, preview };
 };
 
-const execute = async (
-    rawArgs: unknown,
-    ctx: ToolContext,
-): Promise<ToolResult<EditValue>> => {
+const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<EditValue>> => {
     const v = validateArgs<EditArgs>(rawArgs, EditTool.schema);
     if (!v.ok) return v;
     const { path, old_string, new_string, replace_all = false } = v.value;
@@ -114,11 +108,7 @@ const execute = async (
         };
     }
 
-    const { locations, total } = findOccurrences(
-        original,
-        old_string,
-        MAX_OCCURRENCE_LOCATIONS,
-    );
+    const { locations, total } = findOccurrences(original, old_string, MAX_OCCURRENCE_LOCATIONS);
     if (total === 0) {
         return {
             ok: false,
@@ -136,9 +126,7 @@ const execute = async (
     const firstIdx = original.indexOf(old_string);
     const updated = replace_all
         ? original.split(old_string).join(new_string)
-        : original.slice(0, firstIdx) +
-          new_string +
-          original.slice(firstIdx + old_string.length);
+        : original.slice(0, firstIdx) + new_string + original.slice(firstIdx + old_string.length);
 
     await atomicWrite(path, updated, { preserveMode: true });
     ctx.turnState.readFiles.set(path, { hash: hashContent(updated) });

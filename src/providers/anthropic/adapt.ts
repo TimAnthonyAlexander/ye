@@ -20,10 +20,7 @@ interface AnthropicToolResultBlock {
     content: string;
 }
 
-type AnthropicContentBlock =
-    | AnthropicTextBlock
-    | AnthropicToolUseBlock
-    | AnthropicToolResultBlock;
+type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock | AnthropicToolResultBlock;
 
 interface AnthropicMessage {
     role: "user" | "assistant";
@@ -42,13 +39,19 @@ interface AnthropicTool {
     input_schema: object;
 }
 
+// Server-side built-in tool entry. Anthropic types these by `type` and a few
+// optional config fields; we forward the object verbatim so callers can pass
+// any of `web_search_20250305`, `code_execution_*`, etc., without us having to
+// model each variant. Validation is deferred to the API.
+type AnthropicBuiltinTool = Readonly<Record<string, unknown>> & { readonly type: string };
+
 interface AnthropicRequestBody {
     model: string;
     messages: AnthropicMessage[];
     max_tokens: number;
     stream: true;
     system?: AnthropicSystemBlock[];
-    tools?: AnthropicTool[];
+    tools?: (AnthropicTool | AnthropicBuiltinTool)[];
     temperature?: number;
 }
 
@@ -168,8 +171,19 @@ export const buildRequestBody = (input: ProviderInput): AnthropicRequestBody => 
 
     if (system) body.system = system;
 
-    if (input.tools && input.tools.length > 0) {
-        body.tools = input.tools.map(toAnthropicTool);
+    const userTools: AnthropicTool[] =
+        input.tools && input.tools.length > 0 ? input.tools.map(toAnthropicTool) : [];
+    const builtin = input.providerOptions?.["builtinTools"];
+    const builtinTools: AnthropicBuiltinTool[] = Array.isArray(builtin)
+        ? (builtin.filter(
+              (t) =>
+                  typeof t === "object" &&
+                  t !== null &&
+                  typeof (t as { type?: unknown }).type === "string",
+          ) as AnthropicBuiltinTool[])
+        : [];
+    if (userTools.length > 0 || builtinTools.length > 0) {
+        body.tools = [...userTools, ...builtinTools];
     }
 
     if (input.temperature !== undefined && !isOpus47(input.model)) {

@@ -21,14 +21,15 @@ const buildOptions = (): readonly PickerOption[] =>
     PROVIDER_IDS.map((id) => {
         const meta = PROVIDER_LABELS[id];
         return meta
-            ? { id, label: meta.label, ...(meta.description ? { description: meta.description } : {}) }
+            ? {
+                  id,
+                  label: meta.label,
+                  ...(meta.description ? { description: meta.description } : {}),
+              }
             : { id, label: id };
     });
 
-const applyChoice = async (
-    next: string,
-    ctx: SlashCommandContext,
-): Promise<SlashCommandResult> => {
+const applyChoice = async (next: string, ctx: SlashCommandContext): Promise<SlashCommandResult> => {
     if (next === ctx.providerId) {
         ctx.addSystemMessage(`Already using ${next}.`);
         return { kind: "ok" };

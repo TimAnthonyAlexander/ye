@@ -7,6 +7,8 @@ import type {
     PermissionRule,
     PermissionsConfig,
     ProviderConfig,
+    WebSearchFallback,
+    WebToolsConfig,
 } from "./types.ts";
 
 const PERMISSION_MODES: readonly PermissionMode[] = ["AUTO", "NORMAL", "PLAN"];
@@ -106,9 +108,7 @@ const validateCompactConfig = (value: unknown): CompactConfig => {
             !Number.isInteger(value.defaultMaxTokens) ||
             value.defaultMaxTokens <= 0
         ) {
-            throw new ConfigValidationError(
-                "compact.defaultMaxTokens must be a positive integer",
-            );
+            throw new ConfigValidationError("compact.defaultMaxTokens must be a positive integer");
         }
         defaultMaxTokens = value.defaultMaxTokens;
     }
@@ -119,9 +119,7 @@ const validateCompactConfig = (value: unknown): CompactConfig => {
             !Number.isInteger(value.minReplyTokens) ||
             value.minReplyTokens <= 0
         ) {
-            throw new ConfigValidationError(
-                "compact.minReplyTokens must be a positive integer",
-            );
+            throw new ConfigValidationError("compact.minReplyTokens must be a positive integer");
         }
         minReplyTokens = value.minReplyTokens;
     }
@@ -190,6 +188,73 @@ const validatePermissionsConfig = (value: unknown): PermissionsConfig => {
     return { defaultMode: value.defaultMode as PermissionMode, rules };
 };
 
+const SEARCH_FALLBACKS: readonly WebSearchFallback[] = ["duckduckgo", "off"];
+
+const validateStringArray = (path: string, value: unknown): readonly string[] => {
+    if (!Array.isArray(value) || !value.every(isString)) {
+        throw new ConfigValidationError(`${path} must be string[]`);
+    }
+    return value;
+};
+
+const validatePositiveInt = (path: string, value: unknown): number => {
+    if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+        throw new ConfigValidationError(`${path} must be a positive integer`);
+    }
+    return value;
+};
+
+const validateWebToolsConfig = (value: unknown): WebToolsConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError("webTools must be an object");
+    }
+    const out: {
+        cacheTtlMs?: number;
+        maxFetchBytes?: number;
+        maxContentChars?: number;
+        allowedDomains?: readonly string[];
+        blockedDomains?: readonly string[];
+        summarizeModel?: string;
+        searchFallback?: WebSearchFallback;
+    } = {};
+    if (value.cacheTtlMs !== undefined) {
+        out.cacheTtlMs = validatePositiveInt("webTools.cacheTtlMs", value.cacheTtlMs);
+    }
+    if (value.maxFetchBytes !== undefined) {
+        out.maxFetchBytes = validatePositiveInt("webTools.maxFetchBytes", value.maxFetchBytes);
+    }
+    if (value.maxContentChars !== undefined) {
+        out.maxContentChars = validatePositiveInt(
+            "webTools.maxContentChars",
+            value.maxContentChars,
+        );
+    }
+    if (value.allowedDomains !== undefined) {
+        out.allowedDomains = validateStringArray("webTools.allowedDomains", value.allowedDomains);
+    }
+    if (value.blockedDomains !== undefined) {
+        out.blockedDomains = validateStringArray("webTools.blockedDomains", value.blockedDomains);
+    }
+    if (value.summarizeModel !== undefined) {
+        if (!isString(value.summarizeModel)) {
+            throw new ConfigValidationError("webTools.summarizeModel must be a string");
+        }
+        out.summarizeModel = value.summarizeModel;
+    }
+    if (value.searchFallback !== undefined) {
+        if (
+            !isString(value.searchFallback) ||
+            !SEARCH_FALLBACKS.includes(value.searchFallback as WebSearchFallback)
+        ) {
+            throw new ConfigValidationError(
+                `webTools.searchFallback must be one of ${SEARCH_FALLBACKS.join(" | ")}`,
+            );
+        }
+        out.searchFallback = value.searchFallback as WebSearchFallback;
+    }
+    return out;
+};
+
 export const validateConfig = (raw: unknown): Config => {
     if (!isObject(raw)) {
         throw new ConfigValidationError("root must be an object");
@@ -215,6 +280,7 @@ export const validateConfig = (raw: unknown): Config => {
         ...(raw.permissions !== undefined
             ? { permissions: validatePermissionsConfig(raw.permissions) }
             : {}),
+        ...(raw.webTools !== undefined ? { webTools: validateWebToolsConfig(raw.webTools) } : {}),
     };
 };
 

@@ -70,8 +70,7 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
     const finalAssistant = [...subState.history]
         .reverse()
         .find(
-            (m) =>
-                m.role === "assistant" && typeof m.content === "string" && m.content.length > 0,
+            (m) => m.role === "assistant" && typeof m.content === "string" && m.content.length > 0,
         );
     const summary =
         finalAssistant && typeof finalAssistant.content === "string"

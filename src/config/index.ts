@@ -12,5 +12,7 @@ export type {
     PermissionsConfig,
     ProviderConfig,
     ProviderId,
+    WebSearchFallback,
+    WebToolsConfig,
 } from "./types.ts";
 export { ConfigValidationError, validateConfig } from "./validate.ts";

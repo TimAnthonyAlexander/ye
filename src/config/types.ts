@@ -51,6 +51,19 @@ export interface PermissionsConfig {
     readonly rules: readonly PermissionRule[];
 }
 
+export type WebSearchFallback = "duckduckgo" | "off";
+
+export interface WebToolsConfig {
+    readonly cacheTtlMs?: number;
+    readonly maxFetchBytes?: number;
+    readonly maxContentChars?: number;
+    readonly allowedDomains?: readonly string[];
+    readonly blockedDomains?: readonly string[];
+    // When unset, WebFetch's summariser uses the active provider's active model.
+    readonly summarizeModel?: string;
+    readonly searchFallback?: WebSearchFallback;
+}
+
 export interface Config {
     readonly defaultProvider: ProviderId;
     readonly providers: Readonly<Record<string, ProviderConfig>>;
@@ -58,4 +71,5 @@ export interface Config {
     readonly compact?: CompactConfig;
     readonly maxTurns?: MaxTurnsConfig;
     readonly permissions?: PermissionsConfig;
+    readonly webTools?: WebToolsConfig;
 }

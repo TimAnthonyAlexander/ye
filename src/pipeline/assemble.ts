@@ -28,10 +28,7 @@ export interface AssembleInput {
 // subagent gets exactly the role/tool framing its kind specifies.
 export const assemble = async ({ state, model }: AssembleInput): Promise<Message[]> => {
     if (state.systemPromptOverride) {
-        return [
-            { role: "system", content: state.systemPromptOverride },
-            ...state.history,
-        ];
+        return [{ role: "system", content: state.systemPromptOverride }, ...state.history];
     }
 
     const systemBody = buildSystemPrompt({

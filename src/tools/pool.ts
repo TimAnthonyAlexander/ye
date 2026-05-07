@@ -11,6 +11,10 @@ export interface PoolContext {
     // Used by subagents to narrow their tool surface (and as the recursion guard:
     // since Task is never in a subagent's allowedTools, recursion is structural).
     readonly allowedTools?: readonly string[];
+    // WebSearch is only useful when the active provider has server-side search
+    // OR a fallback (DuckDuckGo) is configured. The pool drops it otherwise so
+    // the model never tries to call an unavailable tool.
+    readonly webSearchAvailable?: boolean;
 }
 
 // Single seam where the tool list shown to the model is assembled.
@@ -33,9 +37,14 @@ export const assembleToolPool = (ctx: PoolContext): readonly ToolDefinition[] =>
     }
     const ruleFiltered = modeFiltered.filter((t) => !blanketDenied.has(t.name));
 
+    const capabilityFiltered =
+        ctx.webSearchAvailable === false
+            ? ruleFiltered.filter((t) => t.name !== "WebSearch")
+            : ruleFiltered;
+
     const seen = new Set<string>();
     const deduped: Tool[] = [];
-    for (const t of ruleFiltered) {
+    for (const t of capabilityFiltered) {
         if (seen.has(t.name)) continue;
         seen.add(t.name);
         deduped.push(t);

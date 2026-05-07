@@ -74,8 +74,7 @@ const actionLineAnswer = (
             .filter((s): s is string => s !== null);
     })();
     const idx = labels.findIndex((label) => label === result.value);
-    const truncated =
-        result.value.length > 60 ? `${result.value.slice(0, 60)}…` : result.value;
+    const truncated = result.value.length > 60 ? `${result.value.slice(0, 60)}…` : result.value;
     return idx >= 0 ? `[${idx + 1}] ${truncated}` : `(typed) ${truncated}`;
 };
 

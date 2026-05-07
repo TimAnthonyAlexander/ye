@@ -19,8 +19,7 @@ const MODELS: readonly ModelInfo[] = [
 export const listModels = (providerId?: string): readonly ModelInfo[] =>
     providerId ? MODELS.filter((m) => m.provider === providerId) : MODELS;
 
-export const findModel = (id: string): ModelInfo | undefined =>
-    MODELS.find((m) => m.id === id);
+export const findModel = (id: string): ModelInfo | undefined => MODELS.find((m) => m.id === id);
 
 export const findModelLabel = (id: string): string => findModel(id)?.label ?? id;
 

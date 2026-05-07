@@ -25,7 +25,12 @@ export const createAnthropicProvider = (deps: AnthropicDeps): Provider => {
 
     return {
         id: "anthropic",
-        capabilities: { promptCache: true, toolUse: true, vision: true },
+        capabilities: {
+            promptCache: true,
+            toolUse: true,
+            vision: true,
+            serverSideWebSearch: true,
+        },
 
         async *stream(input: ProviderInput): AsyncIterable<ProviderEvent> {
             const body = buildRequestBody(input);

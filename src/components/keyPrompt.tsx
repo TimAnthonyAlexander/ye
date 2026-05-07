@@ -74,8 +74,7 @@ export const KeyPrompt = ({ payload, onRespond }: KeyPromptProps) => {
                 <Text inverse> </Text>
             </Box>
             <Text dimColor>
-                {buffer.length} {buffer.length === 1 ? "char" : "chars"} · Enter saves · Esc
-                cancels
+                {buffer.length} {buffer.length === 1 ? "char" : "chars"} · Enter saves · Esc cancels
             </Text>
         </Box>
     );

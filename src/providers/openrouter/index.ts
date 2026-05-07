@@ -43,7 +43,12 @@ export const createOpenRouterProvider = (deps: OpenRouterDeps): Provider => {
 
     return {
         id: "openrouter",
-        capabilities: { promptCache: false, toolUse: true, vision: false },
+        capabilities: {
+            promptCache: false,
+            toolUse: true,
+            vision: false,
+            serverSideWebSearch: false,
+        },
 
         async *stream(input: ProviderInput): AsyncIterable<ProviderEvent> {
             const body = buildRequestBody(input);

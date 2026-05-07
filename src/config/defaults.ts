@@ -31,6 +31,12 @@ export const DEFAULT_CONFIG: Config = {
         defaultMode: "NORMAL",
         rules: [],
     },
+    webTools: {
+        cacheTtlMs: 15 * 60 * 1000,
+        maxFetchBytes: 10 * 1024 * 1024,
+        maxContentChars: 100_000,
+        searchFallback: "duckduckgo",
+    },
 };
 
 export const FALLBACK_CONTEXT_WINDOW = 128_000;

@@ -88,8 +88,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     // Auto-memory: populate once per session, gated on a non-empty user query.
     if (state.selectedMemory === null) {
         const lastUser = [...state.history].reverse().find((m) => m.role === "user");
-        const queryText =
-            lastUser && typeof lastUser.content === "string" ? lastUser.content : "";
+        const queryText = lastUser && typeof lastUser.content === "string" ? lastUser.content : "";
         if (queryText.length > 0) {
             state.selectedMemory = await ensureSelectedMemory({
                 projectId: state.projectId,
@@ -114,9 +113,13 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     });
 
     // Step 5 + start of step 6: model call + tool-call collection.
+    const webSearchAvailable =
+        provider.capabilities.serverSideWebSearch ||
+        (config.webTools?.searchFallback ?? "duckduckgo") !== "off";
     const tools = assembleToolPool({
         mode: state.mode,
         rules: [...(config.permissions?.rules ?? []), ...state.sessionRules],
+        webSearchAvailable,
         ...(state.allowedTools ? { allowedTools: state.allowedTools } : {}),
     });
     const streamGen = streamFromProvider(provider, {
@@ -301,6 +304,9 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             sessionId: state.sessionId,
             projectId: state.projectId,
             turnState,
+            provider,
+            config,
+            activeModel,
             log: () => {},
             emitProgress: (lines) => {
                 progressQueue.push(lines);

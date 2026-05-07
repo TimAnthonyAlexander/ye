@@ -65,9 +65,7 @@ export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) 
                 <Text bold color="magenta">
                     Plan submitted — switch out of PLAN mode?
                 </Text>
-                {payload.planPath && (
-                    <Text dimColor>saved to {prettyPath(payload.planPath)}</Text>
-                )}
+                {payload.planPath && <Text dimColor>saved to {prettyPath(payload.planPath)}</Text>}
                 <Text>
                     Switch to <Text bold>{payload.target ?? "NORMAL"}</Text> and proceed?{" "}
                     <Text dimColor>(y / n)</Text>
@@ -77,8 +75,7 @@ export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) 
     }
 
     if (payload.reason === "enter_plan_mode") {
-        const reasonText =
-            (payload.toolCall.args as { reason?: string } | null)?.reason ?? "";
+        const reasonText = (payload.toolCall.args as { reason?: string } | null)?.reason ?? "";
         return (
             <Box
                 flexDirection="column"

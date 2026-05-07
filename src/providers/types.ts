@@ -49,6 +49,10 @@ export interface ProviderCapabilities {
     readonly promptCache: boolean;
     readonly toolUse: boolean;
     readonly vision: boolean;
+    // True when the provider exposes server-side built-in tools (e.g.
+    // Anthropic's web_search_20250305). Tools may opt in via
+    // providerOptions.builtinTools.
+    readonly serverSideWebSearch: boolean;
 }
 
 export interface Provider {

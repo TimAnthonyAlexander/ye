@@ -42,6 +42,13 @@ export interface ToolContext {
     readonly sessionId: string;
     readonly projectId: string;
     readonly turnState: TurnState;
+    // Active provider + config for the current turn. Tools that need to make
+    // their own LLM calls (WebFetch's summariser) or read tool-scoped config
+    // (WebFetch/WebSearch domain lists) read these. Set by the pipeline on
+    // every tool invocation, including subagent ones.
+    readonly provider: Provider;
+    readonly config: Config;
+    readonly activeModel: string;
     readonly subagentContext?: SubagentToolContext;
     // Optional liveness hook. Tools that wrap a long-running sub-process (e.g.
     // Task) push a current snapshot of recent action lines here; the pipeline

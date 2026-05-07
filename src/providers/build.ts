@@ -54,9 +54,7 @@ export interface TryBuildResult {
 // Pure: takes the prompt + persist callbacks as args so it doesn't capture App
 // state. Caller threads the returned cfg back into App's config ref so future
 // builds see the persisted key.
-export const tryBuildProvider = async (
-    args: TryBuildArgs,
-): Promise<TryBuildResult | null> => {
+export const tryBuildProvider = async (args: TryBuildArgs): Promise<TryBuildResult | null> => {
     try {
         return { provider: getProvider(args.cfg, args.providerId), cfg: args.cfg };
     } catch (e) {

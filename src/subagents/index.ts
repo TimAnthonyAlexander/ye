@@ -60,10 +60,7 @@ const resolveKind = (spec: SubagentSpec, cwd: string, subagentBudget: number): K
     }
 };
 
-export const spawn = async (
-    spec: SubagentSpec,
-    ctx: SpawnContext,
-): Promise<SubagentResult> => {
+export const spawn = async (spec: SubagentSpec, ctx: SpawnContext): Promise<SubagentResult> => {
     if (typeof spec.prompt !== "string" || spec.prompt.trim().length === 0) {
         throw new SubagentError("subagent prompt must be a non-empty string");
     }

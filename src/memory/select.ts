@@ -57,9 +57,7 @@ export const selectMemoryFiles = async (
     if (input.query.trim().length === 0) return [];
     const max = input.max ?? 5;
 
-    const headers = input.indices
-        .map((e, i) => `${i + 1}. ${e.title} — ${e.hook}`)
-        .join("\n");
+    const headers = input.indices.map((e, i) => `${i + 1}. ${e.title} — ${e.hook}`).join("\n");
     const userMsg =
         `Memory files:\n${headers}\n\n` +
         `User query: ${input.query}\n\n` +

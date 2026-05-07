@@ -246,6 +246,37 @@ Behavior:
 
 The plan should be specific: list the files you'll touch, the steps in order, and any tradeoffs the user should know about. A vague plan ("I will refactor the code") will likely be denied; a concrete plan ("Update \`src/foo.ts\` to use async/await; add a guard for null in \`bar()\`; tests untouched") is what the user wants to accept.`;
 
+const WEB_TOOLS_BLOCK = `# Web tools
+
+## WebFetch
+
+Fetches a URL and returns a small-model summary answering your question — never the raw HTML. The summariser runs with a tight ruleset: quotes longer than 125 characters are paraphrased, no song lyrics, answer only from the provided content.
+
+Schema:
+- \`url\` (string, required) — max 2000 chars, plain HTTP is auto-upgraded to HTTPS
+- \`prompt\` (string, required) — the question to answer about the page
+
+Behavior:
+- Cross-host redirects fail closed: you get a \`REDIRECT DETECTED: <new-url>\` message instead of the followed page. Re-call WebFetch with the new URL only if you trust the new host.
+- Results are cached 15 minutes per URL. A repeat call within the window is free.
+- Binary responses (images, PDFs, archives) are rejected; this tool is for text/HTML/JSON/Markdown only.
+- For GitHub URLs (issues, PRs, files, API resources), prefer the \`gh\` CLI via Bash — \`gh pr view <n>\`, \`gh issue view <n>\`, \`gh api <path>\`. It hits the API directly and avoids HTML parsing.
+
+## WebSearch
+
+Returns a markdown list of \`- [title](url)\` for the top results. No snippets, no page content — call WebFetch on a result if you want to read it. A typical research turn: one WebSearch, then 3–8 WebFetch calls on the most promising results.
+
+Schema:
+- \`query\` (string, required) — minimum 2 chars
+- \`allowed_domains\` (string[], optional) — restrict results to these hosts (subdomain match)
+- \`blocked_domains\` (string[], optional) — drop results from these hosts
+
+Behavior:
+- After answering with WebSearch results, you MUST include a \`Sources:\` section at the end of the response listing each cited URL as a markdown link. This is mandatory.
+- When searching for current/recent information, use the current year (see Environment block) — models default to training-cutoff dates and miss recent results otherwise.
+- WebSearch uses Anthropic's server-side search when on the Anthropic provider; otherwise it falls back to a DuckDuckGo HTML scrape (lower quality, may break if DDG changes their markup). Anthropic server-side search is US-only.
+- If WebSearch isn't in your tool list at all, the fallback is disabled in config — switch providers with \`/provider\` or set \`webTools.searchFallback\` in \`~/.ye/config.json\`.`;
+
 const PROJECT_NOTES_BLOCK = `# Project notes
 
 The user may have a project notes file (\`CLAUDE.md\` if it exists, otherwise \`YE.md\`) at the project root. If present, its content is appended below as durable instructions for this project. Treat it as the user's stated preferences — follow it.`;
@@ -268,6 +299,7 @@ export const buildSystemPrompt = (env: SystemPromptEnv): string =>
         TOOL_DISCIPLINE_BLOCK,
         PERMISSION_MODES_BLOCK(env.mode),
         TOOLS_BLOCK,
+        WEB_TOOLS_BLOCK,
         PROJECT_NOTES_BLOCK,
         ENV_BLOCK(env),
     ].join("\n\n");
