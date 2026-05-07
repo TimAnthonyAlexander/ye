@@ -1,0 +1,27 @@
+Performance Bottlenecks in Ye — Analysis
+
+High Impact
+
+1. src/pipeline/turn.ts:161 — Transcript writes on every text delta. The model streams hundreds of small text chunks; each one triggers await session.appendEvent() which does a disk write. This blocks event consumption inside the tight stream loop. Batch writes to end-of-turn instead.
+
+2. src/pipeline/shapers/tokens.ts:7-8 — JSON.stringify(messages).length / 4 for token estimation. As conversation history grows, this serializes the entire message array to a massive string just to guess token count. Use a running counter or sample-based estimate.
+
+3. src/memory/select.ts:69-84 — Memory selection fires a model call on first turn. This adds a full API round-trip of latency before the user even sees a response. Could be deferred to run as a background task after streaming starts.
+
+Medium Impact
+
+4. src/pipeline/assemble.ts:44 — Notes hierarchy re-read from disk on each of up to 3 assemble calls per turn. Cache the result within the turn.
+
+5. src/pipeline/turn.ts:90 — [...state.history].reverse().find(...) copies the full history array just to find the last user message. Walk backwards without copying.
+
+6. src/tools/read/index.ts:31-33 — Loads entire file text then slices. For large files (e.g. 50MB logs) requested with small offset/limit, this wastes memory. Read only the needed range.
+
+7. src/tools/glob/index.ts:25-33 — Sequential stat calls per matched file. Thousands of files = thousands of sequential I/O waits. Batch with Promise.all.
+
+Lower Impact
+
+8. src/components/app.tsx:449-461 — setItems(prev => prev.map(...)) O(n) scan to find matching tool call entry per tool end. Use a Map lookup by ID.
+
+9. src/commands/index.ts — Slash picker re-scans command registry on every keystroke. Memoize the command list.
+
+10. src/providers/openrouter/index.ts:93-101 — Model list cache lost on provider switch because a fresh provider object is built. Reuse the cache across instances.

@@ -16,6 +16,7 @@ import {
 } from "../config/index.ts";
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
 import { createSessionState, queryLoop, type SessionState } from "../pipeline/index.ts";
+import { estimateTokens } from "../pipeline/shapers/tokens.ts";
 import {
     defaultModelFor,
     findModel,
@@ -119,6 +120,8 @@ export const App = ({ config }: AppProps) => {
     const chainStartRef = useRef<number | null>(null);
     const chainFailedRef = useRef(false);
     const [queuedCount, setQueuedCount] = useState(0);
+    const [usedTokens, setUsedTokens] = useState(0);
+    const [contextWindow, setContextWindow] = useState(0);
     const [history, setHistory] = useState<readonly string[]>([]);
     // Mirror of `history` so send() can dedup against the most-recent entry
     // without re-rendering on every read.
@@ -164,6 +167,7 @@ export const App = ({ config }: AppProps) => {
         setItems([]);
         setTodos([]);
         setError(null);
+        setUsedTokens(0);
     };
 
     const askForKey = (payload: KeyPromptPayload): Promise<string | null> => {
@@ -207,6 +211,7 @@ export const App = ({ config }: AppProps) => {
         state.contextWindow = nextWindow;
         setProviderId(nextId);
         setModelState(nextModel);
+        setContextWindow(nextWindow);
     };
 
     const switchModel = async (nextModel: string): Promise<void> => {
@@ -222,6 +227,7 @@ export const App = ({ config }: AppProps) => {
         state.activeModel = nextModel;
         state.contextWindow = nextWindow;
         setModelState(nextModel);
+        setContextWindow(nextWindow);
     };
 
     const pick = (payload: PickerPayload): Promise<string | null> => {
@@ -310,6 +316,8 @@ export const App = ({ config }: AppProps) => {
                 stateRef.current = state;
                 sessionRef.current = session;
                 setMode(state.mode);
+                setContextWindow(state.contextWindow);
+                setUsedTokens(estimateTokens(state.history));
             } catch (e) {
                 setBootError(e instanceof Error ? e.message : String(e));
             }
@@ -510,6 +518,9 @@ export const App = ({ config }: AppProps) => {
             abortRef.current = null;
             setStreaming(false);
             setStreamingText("");
+            if (stateRef.current) {
+                setUsedTokens(estimateTokens(stateRef.current.history));
+            }
         }
 
         // Drain the next queued message, if any.
@@ -637,6 +648,8 @@ export const App = ({ config }: AppProps) => {
                 model={findModel(model)?.label ?? model}
                 streaming={streaming}
                 queuedCount={queuedCount}
+                usedTokens={usedTokens}
+                contextWindow={contextWindow}
             />
         </Box>
     );

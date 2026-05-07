@@ -8,7 +8,22 @@ interface StatusBarProps {
     readonly model: string;
     readonly streaming: boolean;
     readonly queuedCount?: number;
+    readonly usedTokens: number;
+    readonly contextWindow: number;
 }
+
+const usageColor = (pct: number): string => {
+    if (pct < 50) return "green";
+    if (pct < 75) return "yellow";
+    if (pct < 90) return "#ff8800";
+    return "red";
+};
+
+const formatPct = (pct: number): string => {
+    if (pct <= 0) return "0%";
+    if (pct < 1) return "<1%";
+    return `${Math.round(pct)}%`;
+};
 
 export const StatusBar = ({
     mode,
@@ -16,14 +31,18 @@ export const StatusBar = ({
     model,
     streaming,
     queuedCount = 0,
+    usedTokens,
+    contextWindow,
 }: StatusBarProps) => {
+    const pct = contextWindow > 0 ? (usedTokens / contextWindow) * 100 : 0;
     return (
         <Box justifyContent="space-between" paddingX={1}>
             <Box>
                 <Text bold color={modeColor(mode)}>
                     {mode}
                 </Text>
-                <Text dimColor> · Shift+Tab cycles · Enter sends · Shift+Enter newline</Text>
+                <Text dimColor> · Shift+Tab cycles · </Text>
+                <Text color={usageColor(pct)}>{formatPct(pct)} context</Text>
             </Box>
             <Box>
                 {streaming && <Text color="yellow">streaming </Text>}
