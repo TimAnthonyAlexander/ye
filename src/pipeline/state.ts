@@ -36,7 +36,7 @@ export interface SessionState {
 }
 
 export const newTurnState = (): TurnState => ({
-    readFiles: new Set<string>(),
+    readFiles: new Map(),
     todos: [],
 });
 

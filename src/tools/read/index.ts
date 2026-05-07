@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
 
@@ -34,7 +35,7 @@ const execute = async (
         .map((line, i) => `${String(offset + i + 1).padStart(6, " ")}\t${line}`)
         .join("\n");
 
-    _ctx.turnState.readFiles.add(path);
+    _ctx.turnState.readFiles.set(path, { hash: hashContent(text) });
 
     return {
         ok: true,

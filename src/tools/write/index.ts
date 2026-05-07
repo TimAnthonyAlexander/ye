@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { atomicWrite, hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
 
@@ -21,18 +22,26 @@ const execute = async (
 
     const file = Bun.file(path);
     if (await file.exists()) {
-        if (!ctx.turnState.readFiles.has(path)) {
+        const entry = ctx.turnState.readFiles.get(path);
+        if (!entry) {
             return {
                 ok: false,
                 error: `Read ${path} before overwriting it (turn-local invariant).`,
             };
         }
+        const original = await file.text();
+        if (hashContent(original) !== entry.hash) {
+            return {
+                ok: false,
+                error: `${path} has been modified since you last Read it. Re-Read the file before overwriting.`,
+            };
+        }
     }
 
-    const bytes = await Bun.write(path, content);
+    await atomicWrite(path, content);
     // Once written, this counts as read for subsequent edits in the same turn.
-    ctx.turnState.readFiles.add(path);
-    return { ok: true, value: { bytes } };
+    ctx.turnState.readFiles.set(path, { hash: hashContent(content) });
+    return { ok: true, value: { bytes: Buffer.byteLength(content, "utf8") } };
 };
 
 export const WriteTool: Tool = {

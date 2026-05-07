@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { atomicWrite, hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
 
@@ -20,7 +21,8 @@ const execute = async (
     if (!isAbsolute(path)) {
         return { ok: false, error: "path must be absolute" };
     }
-    if (!ctx.turnState.readFiles.has(path)) {
+    const entry = ctx.turnState.readFiles.get(path);
+    if (!entry) {
         return {
             ok: false,
             error: `Read ${path} before editing it (turn-local invariant).`,
@@ -36,33 +38,36 @@ const execute = async (
     }
 
     const original = await file.text();
-    let updated: string;
-    let replacements: number;
-
-    if (replace_all) {
-        const parts = original.split(old_string);
-        replacements = parts.length - 1;
-        if (replacements === 0) {
-            return { ok: false, error: "old_string not found" };
-        }
-        updated = parts.join(new_string);
-    } else {
-        const idx = original.indexOf(old_string);
-        if (idx === -1) {
-            return { ok: false, error: "old_string not found" };
-        }
-        if (original.indexOf(old_string, idx + old_string.length) !== -1) {
-            return {
-                ok: false,
-                error: "old_string is not unique in the file (use replace_all or expand the match)",
-            };
-        }
-        updated = original.slice(0, idx) + new_string + original.slice(idx + old_string.length);
-        replacements = 1;
+    if (hashContent(original) !== entry.hash) {
+        return {
+            ok: false,
+            error: `${path} has been modified since you last Read it. Re-Read the file before editing.`,
+        };
     }
 
-    await Bun.write(path, updated);
-    return { ok: true, value: { replacements } };
+    const parts = original.split(old_string);
+    const matches = parts.length - 1;
+    if (matches === 0) {
+        return {
+            ok: false,
+            error: `old_string not found in ${path}. Re-Read the file — whitespace or contents may differ from what you copied.`,
+        };
+    }
+    if (matches > 1 && !replace_all) {
+        return {
+            ok: false,
+            error: `old_string matches ${matches} occurrences in ${path}. Add surrounding context to make it unique, or set replace_all: true.`,
+        };
+    }
+
+    const updated = replace_all
+        ? parts.join(new_string)
+        : parts[0] + new_string + parts.slice(1).join(old_string);
+
+    await atomicWrite(path, updated);
+    ctx.turnState.readFiles.set(path, { hash: hashContent(updated) });
+
+    return { ok: true, value: { replacements: replace_all ? matches : 1 } };
 };
 
 export const EditTool: Tool = {

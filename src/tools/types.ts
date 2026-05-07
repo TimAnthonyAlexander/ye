@@ -11,10 +11,16 @@ export interface TodoItem {
     readonly status: "pending" | "in_progress" | "completed";
 }
 
+// Per-file fingerprint captured on Read. Edit/Write compare the live file
+// against this to detect drift (formatter ran, another process wrote, etc.).
+export interface ReadEntry {
+    readonly hash: string;
+}
+
 // Turn-local mutable state shared with tools. The pipeline owns this object
 // and resets it each turn. Tools mutate via the field, not by reassigning.
 export interface TurnState {
-    readFiles: Set<string>;
+    readFiles: Map<string, ReadEntry>;
     todos: TodoItem[];
 }
 
