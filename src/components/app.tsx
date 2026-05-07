@@ -8,21 +8,27 @@ import {
     type PickerPayload,
     type SlashCommandContext,
 } from "../commands/index.ts";
-import type { LoadResult, PermissionMode } from "../config/index.ts";
+import {
+    type Config,
+    type LoadResult,
+    type PermissionMode,
+    saveConfig,
+} from "../config/index.ts";
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
 import { createSessionState, queryLoop, type SessionState } from "../pipeline/index.ts";
 import {
     defaultModelFor,
     findModel,
-    getProvider,
-    isMissingKeyError,
+    type KeyPromptPayload,
     type Provider,
+    tryBuildProvider,
 } from "../providers/index.ts";
 import { getProjectId, openSession, type SessionHandle } from "../storage/index.ts";
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
 import { Chat, type ChatItem } from "./chat.tsx";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
+import { KeyPrompt } from "./keyPrompt.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
 import { Picker } from "./picker.tsx";
 import { SlashPicker } from "./slashPicker.tsx";
@@ -50,6 +56,11 @@ interface PendingPicker {
     readonly respond: (id: string | null) => void;
 }
 
+interface PendingKeyPrompt {
+    readonly payload: KeyPromptPayload;
+    readonly respond: (key: string | null) => void;
+}
+
 const prettyCwd = (): string => {
     const cwd = process.cwd();
     const home = homedir();
@@ -57,11 +68,13 @@ const prettyCwd = (): string => {
 };
 
 export const App = ({ config }: AppProps) => {
-    const cfg = config.config;
+    const initialCfg = config.config;
     const { exit } = useApp();
-    const [mode, setMode] = useState<PermissionMode>(cfg.permissions?.defaultMode ?? "NORMAL");
-    const [providerId, setProviderId] = useState<string>(cfg.defaultProvider);
-    const [model, setModelState] = useState<string>(cfg.defaultModel.model);
+    const [mode, setMode] = useState<PermissionMode>(
+        initialCfg.permissions?.defaultMode ?? "NORMAL",
+    );
+    const [providerId, setProviderId] = useState<string>(initialCfg.defaultProvider);
+    const [model, setModelState] = useState<string>(initialCfg.defaultModel.model);
     const [items, setItems] = useState<ChatItem[]>([]);
     const [streamingText, setStreamingText] = useState("");
     const [streaming, setStreaming] = useState(false);
@@ -69,6 +82,7 @@ export const App = ({ config }: AppProps) => {
     const [pendingUserQuestion, setPendingUserQuestion] =
         useState<PendingUserQuestion | null>(null);
     const [pendingPicker, setPendingPicker] = useState<PendingPicker | null>(null);
+    const [pendingKeyPrompt, setPendingKeyPrompt] = useState<PendingKeyPrompt | null>(null);
     const [todos, setTodos] = useState<readonly TodoItem[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [bootError, setBootError] = useState<string | null>(null);
@@ -77,6 +91,10 @@ export const App = ({ config }: AppProps) => {
     const stateRef = useRef<SessionState | null>(null);
     const sessionRef = useRef<SessionHandle | null>(null);
     const providerRef = useRef<Provider | null>(null);
+    // Mutable, in-memory mirror of the on-disk config. tryBuildProvider returns
+    // an updated cfg when a key is persisted; we write it here so subsequent
+    // builds and queryLoop calls see the new key without a stale closure.
+    const cfgRef = useRef<Config>(initialCfg);
     const pendingTodosRef = useRef<readonly TodoItem[] | null>(null);
     const streamingRef = useRef(false);
     const queueRef = useRef<string[]>([]);
@@ -104,21 +122,43 @@ export const App = ({ config }: AppProps) => {
         setError(null);
     };
 
+    const askForKey = (payload: KeyPromptPayload): Promise<string | null> => {
+        return new Promise<string | null>((resolve) => {
+            setPendingKeyPrompt({
+                payload,
+                respond: (key) => {
+                    setPendingKeyPrompt(null);
+                    resolve(key);
+                },
+            });
+        });
+    };
+
     const switchProvider = async (nextId: string): Promise<void> => {
         const state = stateRef.current;
         if (!state) throw new Error("session not ready");
-        // Build the new provider eagerly so a missing key surfaces before we
-        // mutate any state.
-        const nextProvider = getProvider(cfg, nextId);
+        const built = await tryBuildProvider({
+            cfg: cfgRef.current,
+            providerId: nextId,
+            askForKey,
+            persistConfig: saveConfig,
+        });
+        if (!built) {
+            // Cancellation routes through /provider's try/catch, which surfaces
+            // the message in the red error bar — visually consistent with other
+            // slash-command failures.
+            throw new Error(`API key required for ${nextId}; switch cancelled`);
+        }
+        cfgRef.current = built.cfg;
         const nextModelInfo = defaultModelFor(nextId);
-        const nextModel = nextModelInfo?.id ?? cfg.defaultModel.model;
+        const nextModel = nextModelInfo?.id ?? built.cfg.defaultModel.model;
         let nextWindow = state.contextWindow;
         try {
-            nextWindow = await nextProvider.getContextSize(nextModel);
+            nextWindow = await built.provider.getContextSize(nextModel);
         } catch {
             // Keep prior window on failure — getContextSize already falls back internally.
         }
-        providerRef.current = nextProvider;
+        providerRef.current = built.provider;
         state.activeModel = nextModel;
         state.contextWindow = nextWindow;
         setProviderId(nextId);
@@ -190,11 +230,28 @@ export const App = ({ config }: AppProps) => {
         let cancelled = false;
         (async () => {
             try {
-                const provider = getProvider(cfg);
+                const built = await tryBuildProvider({
+                    cfg: cfgRef.current,
+                    providerId: cfgRef.current.defaultProvider,
+                    askForKey,
+                    persistConfig: saveConfig,
+                });
+                if (cancelled) return;
+                if (!built) {
+                    const env =
+                        cfgRef.current.providers[cfgRef.current.defaultProvider]?.apiKeyEnv;
+                    setBootError(
+                        env
+                            ? `API key required. Set $${env} and relaunch, or relaunch to enter one.`
+                            : "API key required to start.",
+                    );
+                    return;
+                }
+                cfgRef.current = built.cfg;
                 const proj = await getProjectId();
                 const { state, session } = await createSessionState({
-                    provider,
-                    config: cfg,
+                    provider: built.provider,
+                    config: built.cfg,
                     projectId: proj.id,
                     projectRoot: proj.root,
                 });
@@ -202,23 +259,23 @@ export const App = ({ config }: AppProps) => {
                     await session.close();
                     return;
                 }
-                providerRef.current = provider;
+                providerRef.current = built.provider;
                 stateRef.current = state;
                 sessionRef.current = session;
                 setMode(state.mode);
             } catch (e) {
-                if (isMissingKeyError(e)) {
-                    setBootError(e.message);
-                } else {
-                    setBootError(e instanceof Error ? e.message : String(e));
-                }
+                setBootError(e instanceof Error ? e.message : String(e));
             }
         })();
         return () => {
             cancelled = true;
             sessionRef.current?.close().catch(() => {});
         };
-    }, [cfg]);
+        // The config prop never changes for the lifetime of App (cli.tsx mounts
+        // once); cfgRef is mutated in place. eslint-disable-next-line is
+        // intentional — depending on `config` triggers a remount with the
+        // initial config and would lose persisted keys.
+    }, [config]);
 
     useInput((input, key) => {
         if (key.ctrl && input === "c") {
@@ -244,7 +301,8 @@ export const App = ({ config }: AppProps) => {
             stateRef.current &&
             !pendingPrompt &&
             !pendingPicker &&
-            !pendingUserQuestion
+            !pendingUserQuestion &&
+            !pendingKeyPrompt
         ) {
             const next = cycleMode(stateRef.current.mode);
             stateRef.current.mode = next;
@@ -275,7 +333,7 @@ export const App = ({ config }: AppProps) => {
         try {
             const stream = queryLoop({
                 provider: providerRef.current!,
-                config: cfg,
+                config: cfgRef.current,
                 state: stateRef.current!,
                 session: sessionRef.current!,
                 userPrompt: text,
@@ -421,7 +479,11 @@ export const App = ({ config }: AppProps) => {
                 items={items}
                 streamingText={streamingText}
                 streaming={
-                    streaming && !pendingPrompt && !pendingUserQuestion && !pendingPicker
+                    streaming &&
+                    !pendingPrompt &&
+                    !pendingUserQuestion &&
+                    !pendingPicker &&
+                    !pendingKeyPrompt
                 }
             />
             {error !== null && (
@@ -442,6 +504,11 @@ export const App = ({ config }: AppProps) => {
                 />
             ) : pendingPicker ? (
                 <Picker payload={pendingPicker.payload} onRespond={pendingPicker.respond} />
+            ) : pendingKeyPrompt ? (
+                <KeyPrompt
+                    payload={pendingKeyPrompt.payload}
+                    onRespond={pendingKeyPrompt.respond}
+                />
             ) : (
                 <>
                     <SlashPicker input={currentInput} />

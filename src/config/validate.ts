@@ -33,7 +33,25 @@ const validateProviderConfig = (key: string, value: unknown): ProviderConfig => 
     if (!isString(value.apiKeyEnv)) {
         throw new ConfigValidationError(`providers.${key}.apiKeyEnv must be a string`);
     }
-    return { baseUrl: value.baseUrl, apiKeyEnv: value.apiKeyEnv };
+    let apiKey: string | undefined;
+    if (value.apiKey !== undefined) {
+        if (!isString(value.apiKey)) {
+            throw new ConfigValidationError(
+                `providers.${key}.apiKey must be a string when present`,
+            );
+        }
+        if (value.apiKey.trim().length === 0) {
+            throw new ConfigValidationError(
+                `providers.${key}.apiKey must be non-empty when present`,
+            );
+        }
+        apiKey = value.apiKey;
+    }
+    return {
+        baseUrl: value.baseUrl,
+        apiKeyEnv: value.apiKeyEnv,
+        ...(apiKey !== undefined ? { apiKey } : {}),
+    };
 };
 
 const validateModelSetting = (value: unknown): ModelSetting => {

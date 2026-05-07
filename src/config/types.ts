@@ -13,6 +13,9 @@ export type PermissionMode = "AUTO" | "NORMAL" | "PLAN";
 export interface ProviderConfig {
     readonly baseUrl: string;
     readonly apiKeyEnv: string;
+    // Optional fallback when the env var named in apiKeyEnv is unset. Written by
+    // the in-app key prompt; env var still wins when both are present.
+    readonly apiKey?: string;
 }
 
 export interface ModelSetting {

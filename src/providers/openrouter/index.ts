@@ -1,5 +1,6 @@
 import { FALLBACK_CONTEXT_WINDOW } from "../../config/index.ts";
 import type { Config } from "../../config/index.ts";
+import { resolveApiKey } from "../build.ts";
 import type { Provider, ProviderEvent, ProviderInput } from "../types.ts";
 import { buildRequestBody } from "./adapt.ts";
 import { parseStream } from "./stream.ts";
@@ -114,7 +115,7 @@ export const buildOpenRouterFromConfig = (config: Config): Provider => {
     if (!provCfg) {
         throw new Error("openrouter provider missing from config.providers");
     }
-    const apiKey = process.env[provCfg.apiKeyEnv];
+    const apiKey = resolveApiKey(provCfg);
     if (!apiKey) {
         throw new MissingApiKeyError(provCfg.apiKeyEnv);
     }

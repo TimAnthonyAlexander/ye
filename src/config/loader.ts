@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { DEFAULT_CONFIG } from "./defaults.ts";
 import { CONFIG_FILE } from "./paths.ts";
@@ -14,6 +14,10 @@ export interface LoadResult {
 const writeConfig = async (path: string, config: Config): Promise<void> => {
     await mkdir(dirname(path), { recursive: true });
     await Bun.write(path, `${JSON.stringify(config, null, 2)}\n`);
+    // Tighten perms unconditionally — providers may now persist API keys here.
+    // Conditional chmod is a footgun: a later key-less save would loosen the file
+    // again. Best-effort: Windows and some FS layouts ignore POSIX modes.
+    await chmod(path, 0o600).catch(() => {});
 };
 
 export const loadConfig = async (path: string = CONFIG_FILE): Promise<LoadResult> => {

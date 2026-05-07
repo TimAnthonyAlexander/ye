@@ -23,6 +23,14 @@ export {
     listModels,
     type ModelInfo,
 } from "./models.ts";
+export {
+    type KeyPromptPayload,
+    resolveApiKey,
+    setProviderApiKey,
+    tryBuildProvider,
+    type TryBuildArgs,
+    type TryBuildResult,
+} from "./build.ts";
 
 const builders: Record<string, (config: Config) => Provider> = {
     openrouter: buildOpenRouterFromConfig,
