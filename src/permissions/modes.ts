@@ -8,6 +8,8 @@ export const PLAN_ALLOWED: readonly string[] = [
     "Glob",
     "Grep",
     "AskUserQuestion",
+    "WebFetch",
+    "WebSearch",
     "ExitPlanMode",
 ];
 

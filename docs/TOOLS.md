@@ -83,7 +83,7 @@ This function is the single seam where new sources of tools get added (subagents
 Listed by phase so the roadmap is in one place. Checkbox items live in the per-phase checklist below.
 
 - **Phase 2:** `Task` (subagent), `TaskOutput`, `TaskStop`, `EnterPlanMode` (model-initiated mode flip; the user already has Shift+Tab from v1 — this is the symmetric path for the model), `AskUserQuestion`. **All shipped.**
-- **Web tools (shipped early):** `WebFetch` (fetch + html→md + small-model summarize; 15-min cache; cross-host redirects fail closed), `WebSearch` (Anthropic server-side search or DuckDuckGo fallback; title+URL only). Originally Phase 6; pulled forward. PLAN mode blocks both (they make LLM calls).
+- **Web tools (shipped early):** `WebFetch` (fetch + html→md + small-model summarize; 15-min cache; cross-host redirects fail closed), `WebSearch` (Anthropic server-side search or DuckDuckGo fallback; title+URL only). Originally Phase 6; pulled forward.
 - **Phase 5:** `Skill`, `EnterWorktree`, `ExitWorktree`, `NotebookEdit`.
 - **Phase 6:** `PowerShell`, `Sleep`.
 - **Phase 7+:** MCP (`mcp`, `ListMcpResources`, `ReadMcpResource`, `McpAuth`), `CronCreate`/`Delete`/`List` (KAIROS), `RemoteTrigger`, `LSP`, `StructuredOutput`, `REPL`, `ToolSearch`, `SendUserFile`, `PushNotification`, `SubscribePR`.
