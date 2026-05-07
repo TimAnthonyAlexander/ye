@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Goober's — Bakery & Coffee</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Quicksand:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --pink-50: #fff5f7;
+      --pink-100: #ffe4ea;
+      --pink-200: #ffd0db;
+      --pink-300: #ffb3c6;
+      --pink-400: #ff85a1;
+      --pink-500: #f06292;
+      --pink-600: #d4467a;
+      --pink-700: #b83262;
+      --white: #ffffff;
+      --off-white: #fefefe;
+      --text: #3d2c33;
+      --text-light: #7a6270;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Quicksand', sans-serif;
+      background: var(--white);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* --- NAV --- */
+    nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+      border-bottom: 1px solid var(--pink-100);
+    }
+
+    nav .inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 32px;
+    }
+
+    nav .logo {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--pink-500);
+      letter-spacing: -0.5px;
+    }
+
+    nav .logo span {
+      font-weight: 400;
+      font-style: italic;
+      color: var(--pink-300);
+      font-size: 24px;
+    }
+
+    nav .links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+
+    nav .links a {
+      text-decoration: none;
+      color: var(--text-light);
+      font-weight: 500;
+      font-size: 15px;
+      letter-spacing: 0.3px;
+      transition: color 0.2s;
+    }
+
+    nav .links a:hover { color: var(--pink-500); }
+
+    /* --- HERO --- */
+    .hero {
+      min-height: 100vh;
+      background: linear-gradient(160deg, var(--pink-50) 0%, var(--pink-100) 40%, var(--pink-200) 70%, var(--pink-300) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 20% 80%, rgba(240, 98, 146, 0.15) 0%, transparent 60%),
+                  radial-gradient(ellipse at 80% 20%, rgba(255, 183, 197, 0.2) 0%, transparent 60%),
+                  radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.4) 0%, transparent 70%);
+    }
+
+    .hero .content {
+      position: relative;
+      z-index: 1;
+      padding: 40px;
+    }
+
+    .hero .badge {
+      display: inline-block;
+      background: var(--white);
+      color: var(--pink-600);
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      padding: 10px 28px;
+      border-radius: 100px;
+      box-shadow: 0 4px 24px rgba(240, 98, 146, 0.15);
+      margin-bottom: 32px;
+    }
+
+    .hero h1 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 96px;
+      font-weight: 700;
+      color: var(--pink-600);
+      line-height: 1;
+      margin-bottom: 16px;
+    }
+
+    .hero h1 em {
+      font-style: italic;
+      font-weight: 400;
+      color: var(--pink-400);
+    }
+
+    .hero .subtitle {
+      font-size: 20px;
+      font-weight: 400;
+      color: var(--pink-700);
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .hero .location {
+      font-size: 16px;
+      color: var(--text-light);
+      font-weight: 500;
+    }
+
+    .hero .sprinkles {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+    }
+
+    .hero .sprinkle {
+      position: absolute;
+      border-radius: 50%;
+      background: var(--pink-300);
+      opacity: 0.5;
+      animation: float 8s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-24px) scale(1.1); }
+    }
+
+    /* --- SECTION --- */
+    section {
+      padding: 100px 32px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    section h2 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 56px;
+      font-weight: 700;
+      color: var(--pink-600);
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    section .section-sub {
+      text-align: center;
+      font-size: 17px;
+      color: var(--text-light);
+      margin-bottom: 64px;
+      font-weight: 400;
+    }
+
+    /* --- STORY / ABOUT --- */
+    .story {
+      background: var(--pink-50);
+    }
+
+    .story-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+
+    .story-image {
+      aspect-ratio: 4 / 5;
+      background: linear-gradient(135deg, var(--pink-100), var(--pink-200));
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 120px;
+      box-shadow: 0 8px 48px rgba(240, 98, 146, 0.12);
+    }
+
+    .story-text h3 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 34px;
+      color: var(--pink-600);
+      margin-bottom: 20px;
+    }
+
+    .story-text p {
+      font-size: 17px;
+      line-height: 1.8;
+      color: var(--text-light);
+      margin-bottom: 16px;
+    }
+
+    .story-text .tagline {
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-size: 22px;
+      color: var(--pink-500);
+      margin-top: 24px;
+    }
+
+    /* --- MENU --- */
+    .menu-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+    }
+
+    .menu-card {
+      background: var(--white);
+      border: 1px solid var(--pink-100);
+      border-radius: 20px;
+      padding: 40px 28px;
+      text-align: center;
+      transition: transform 0.3s, box-shadow 0.3s;
+      cursor: default;
+    }
+
+    .menu-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 12px 40px rgba(240, 98, 146, 0.12);
+    }
+
+    .menu-card .emoji {
+      font-size: 56px;
+      margin-bottom: 20px;
+    }
+
+    .menu-card h4 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 26px;
+      color: var(--pink-600);
+      margin-bottom: 8px;
+    }
+
+    .menu-card .desc {
+      font-size: 14px;
+      color: var(--text-light);
+      line-height: 1.6;
+    }
+
+    /* --- REVIEWS --- */
+    .reviews {
+      background: linear-gradient(180deg, var(--white), var(--pink-50), var(--white));
+    }
+
+    .reviews-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+    }
+
+    .review-card {
+      background: var(--white);
+      border: 1px solid var(--pink-100);
+      border-radius: 20px;
+      padding: 32px;
+    }
+
+    .review-card .stars {
+      color: var(--pink-400);
+      font-size: 18px;
+      margin-bottom: 12px;
+      letter-spacing: 2px;
+    }
+
+    .review-card p {
+      font-size: 15px;
+      line-height: 1.7;
+      color: var(--text-light);
+      font-style: italic;
+      margin-bottom: 16px;
+    }
+
+    .review-card .name {
+      font-weight: 600;
+      color: var(--pink-600);
+      font-size: 14px;
+    }
+
+    /* --- FOOTER --- */
+    footer {
+      background: var(--pink-600);
+      color: var(--white);
+      padding: 64px 32px;
+      text-align: center;
+    }
+
+    footer .footer-logo {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 48px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    footer .address {
+      font-size: 16px;
+      opacity: 0.85;
+      margin-bottom: 8px;
+    }
+
+    footer .hours {
+      font-size: 14px;
+      opacity: 0.7;
+      margin-bottom: 24px;
+    }
+
+    footer .heart {
+      font-size: 18px;
+      opacity: 0.9;
+    }
+
+    /* --- RESPONSIVE --- */
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 56px; }
+      .story-grid { grid-template-columns: 1fr; }
+      .menu-grid { grid-template-columns: 1fr 1fr; }
+      .reviews-grid { grid-template-columns: 1fr; }
+      nav .links { gap: 16px; }
+    }
+
+    @media (max-width: 480px) {
+      .menu-grid { grid-template-columns: 1fr; }
+      nav .inner { flex-direction: column; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="inner">
+      <div class="logo">Goober<span>'s</span></div>
+      <ul class="links">
+        <li><a href="#story">Our Story</a></li>
+        <li><a href="#menu">Menu</a></li>
+        <li><a href="#reviews">Love Notes</a></li>
+        <li><a href="#visit">Visit</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="hero">
+    <div class="content">
+      <div class="badge">Est. 2019 · New Orleans</div>
+      <h1>Goober<em>'s</em></h1>
+      <p class="subtitle">Bakery & Coffee House</p>
+      <p class="location">1232 Magazine Street · Garden District</p>
+    </div>
+    <div class="sprinkles">
+      <div class="sprinkle" style="width:16px;height:16px;top:12%;left:10%;animation-delay:0s;"></div>
+      <div class="sprinkle" style="width:12px;height:12px;top:22%;left:75%;animation-delay:1.2s;"></div>
+      <div class="sprinkle" style="width:20px;height:20px;top:60%;left:8%;animation-delay:2.5s;"></div>
+      <div class="sprinkle" style="width:10px;height:10px;top:70%;left:88%;animation-delay:0.6s;"></div>
+      <div class="sprinkle" style="width:14px;height:14px;top:32%;left:42%;animation-delay:3.1s;"></div>
+      <div class="sprinkle" style="width:18px;height:18px;top:80%;left:30%;animation-delay:1.8s;"></div>
+      <div class="sprinkle" style="width:11px;height:11px;top:15%;left:58%;animation-delay:4.2s;"></div>
+      <div class="sprinkle" style="width:15px;height:15px;top:45%;left:92%;animation-delay:2.0s;"></div>
+    </div>
+  </div>
+
+  <section class="story" id="story">
+    <h2>Our Story</h2>
+    <p class="section-sub">From the North Sea to the Bayou</p>
+    <div class="story-grid">
+      <div class="story-image">🧁</div>
+      <div class="story-text">
+        <h3>Feli Schenke brought Cuxhaven to the Crescent City</h3>
+        <p>
+          Feli grew up in Cuxhaven, a small harbor town on Germany's North Sea coast,
+          where her Oma ran a konditorei that filled the streets with the scent of butterkuchen
+          and fresh schwarzwälder. After pastry school in Hamburg and a fateful trip to New Orleans
+          — she fell in love with the city's warmth, rhythm, and utter devotion to food — Feli packed
+          two suitcases, her grandmother's rolling pin, and a binder of handwritten recipes.
+        </p>
+        <p>
+          Goober's opened in the spring of 2019 on a tree-shaded corner of Magazine Street.
+          Named after her rescue beagle Goober (who still naps under the counter), the shop
+          fuses Old World technique with Southern soul. The praline recipe took 47 attempts.
+          The cakepops come in sixteen rotating flavors. Everything is baked before sunrise,
+          and the coffee is always strong enough to make you smile.
+        </p>
+        <p class="tagline">Butter. Sugar. Patience. Love.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="menu">
+    <h2>The Spread</h2>
+    <p class="section-sub">Everything baked fresh daily, come early — we sell out.</p>
+    <div class="menu-grid">
+      <div class="menu-card">
+        <div class="emoji">🍭</div>
+        <h4>Cakepops</h4>
+        <p class="desc">Bite-sized joy on a stick. Red velvet, lemon-raspberry, cookies &amp; cream, salted caramel, and a dozen more. Our signature item — Goober's face is on every box.</p>
+      </div>
+      <div class="menu-card">
+        <div class="emoji">🎂</div>
+        <h4>Cakes</h4>
+        <p class="desc">Whole cakes by order. Schwarzwälder kirsch torte, hummingbird cake, pink champagne, and Feli's famous "Cuxhaven Crumb" — a brown-butter streusel cake that tastes like home.</p>
+      </div>
+      <div class="menu-card">
+        <div class="emoji">🍪</div>
+        <h4>Cookies</h4>
+        <p class="desc">Brown-butter chocolate chip, white-chocolate macadamia, pecan sandies, and our chewy ginger-molasses that locals line up for. Sold by the half-dozen.</p>
+      </div>
+      <div class="menu-card">
+        <div class="emoji">🧁</div>
+        <h4>Muffins &amp; Cupcakes</div>
+        <p class="desc">Blueberry streusel muffins, double-chocolate cupcakes with swiss meringue, and a banana-bourbon cupcake that nods to our Louisiana home.</p>
+      </div>
+      <div class="menu-card">
+        <div class="emoji">🍫</div>
+        <h4>Pralines</h4>
+        <p class="desc">New Orleans tradition, German precision. Creamy, crunchy, made with Louisiana pecans and a whisper of sea salt. Try the chicory-coffee praline — it'll change you.</p>
+      </div>
+      <div class="menu-card">
+        <div class="emoji">☕</div>
+        <h4>Coffee &amp; More</h4>
+        <p class="desc">Single-origin pour-overs, café au lait, matcha lattes, cold brew steeped 18 hours, and hot chocolate so thick your spoon stands up. Oat milk on the house.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="reviews" id="reviews">
+    <h2>Love Notes</h2>
+    <p class="section-sub">What the neighborhood says</p>
+    <div class="reviews-grid">
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p>"Moved here from Berlin and Goober's is the only place that gets a proper Schwarzwälder right. Feli hugged me when I told her. I cried a little. Five stars."</p>
+        <div class="name">— Klara M.</div>
+      </div>
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p>"I've eaten a lot of cakepops in my life. These are the only ones that matter. The lemon-raspberry tastes like summer. I order three boxes for every office party."</p>
+        <div class="name">— DeMarcus J.</div>
+      </div>
+      <div class="review-card">
+        <div class="stars">★★★★★</div>
+        <p>"The chicory praline is a spiritual experience. I don't even like sweets and I come here three times a week. Plus Goober the dog let me rub his belly once."</p>
+        <div class="name">— Priya S.</div>
+      </div>
+    </div>
+  </section>
+
+  <footer id="visit">
+    <div class="footer-logo">Goober's</div>
+    <p class="address">1232 Magazine Street · Garden District · New Orleans, LA 70130</p>
+    <p class="hours">Mon–Fri 6:30am – 4pm &nbsp;|&nbsp; Sat 7am – 5pm &nbsp;|&nbsp; Sun 8am – 2pm</p>
+    <p class="heart">Made with ♥ and a whole lot of butter</p>
+  </footer>
+
+</body>
+</html>

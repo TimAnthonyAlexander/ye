@@ -10,6 +10,7 @@
     "scripts": {
         "start": "bun run src/cli.tsx",
         "dev": "bun --watch run src/cli.tsx",
+        "build": "scripts/install.sh",
         "typecheck": "tsc --noEmit",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
