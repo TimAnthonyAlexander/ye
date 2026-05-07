@@ -142,6 +142,12 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
                 await session.appendEvent(transcriptable(errorEvent));
                 return "error";
             }
+            if (next.value.stopReason === "abort") {
+                const cancelEvent: Event = { type: "turn.end", stopReason: "user_cancel" };
+                yield cancelEvent;
+                await session.appendEvent(transcriptable(cancelEvent));
+                return "user_cancel";
+            }
             break;
         }
         yield next.value;

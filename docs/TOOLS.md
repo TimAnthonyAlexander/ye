@@ -123,10 +123,10 @@ src/tools/
 - [ ] Smoke test: ExitPlanMode in PLAN mode writes a plan file, prompts, and on accept flips mode to NORMAL; on deny, mode stays PLAN and plan file remains
 
 ### Phase 2 — Subagent + model-side mode tools
-- [ ] AskUserQuestion (1–4 questions, 2–4 options, multiSelect)
-- [ ] EnterPlanMode (model-initiated flip into PLAN mode; ExitPlanMode is already Phase 1)
-- [ ] Task (spawns Explore / General-purpose; thin wrapper around `subagents.spawn()`)
-- [ ] TaskOutput, TaskStop
+- [x] AskUserQuestion (1 question, 2–4 options, multiSelect; options accept plain string OR `{label, description?}`; "Type something…" escape hatch + Esc dismissal flow)
+- [x] EnterPlanMode (model-initiated flip into PLAN mode; ExitPlanMode is already Phase 1)
+- [x] Task (spawns Explore / General-purpose; thin wrapper around `subagents.spawn()`)
+- [ ] TaskOutput, TaskStop (subagents run synchronously inside `Task.execute()` in v2 — no in-flight management API needed yet)
 
 ### Phase 5 — Skills, worktrees, notebooks
 - [ ] Skill (invokes a SKILL.md, blocking; loads instructions into context)

@@ -1,5 +1,5 @@
 import { Box, Text, useInput } from "ink";
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 
 interface ChatInputProps {
     readonly onSubmit: (text: string) => void;
@@ -8,21 +8,39 @@ interface ChatInputProps {
     readonly getCompletion?: (value: string) => string | null;
 }
 
+export interface ChatInputHandle {
+    clear(): void;
+}
+
 // Keys we deliberately handle vs. defer:
 //   - Shift+Tab: owned by App (mode cycle) — we ignore.
 //   - Tab (no shift): tab-completion via getCompletion when provided.
-//   - Ctrl+C: Ink default exit.
+//   - Ctrl+C: owned by App (clear input → abort stream → no-op).
 // Shift+Enter for newline depends on the terminal sending a distinguishable
 // sequence (key.shift) — works in iTerm2/kitty with the right config; on
 // terminals that fold Shift+Enter into plain Enter, Alt/Option+Enter (key.meta)
 // is the fallback.
-export const ChatInput = ({ onSubmit, disabled, onValueChange, getCompletion }: ChatInputProps) => {
+export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
+    { onSubmit, disabled, onValueChange, getCompletion },
+    ref,
+) {
     const [value, setValue] = useState("");
     const [cursor, setCursor] = useState(0);
 
     useEffect(() => {
         onValueChange?.(value);
     }, [value, onValueChange]);
+
+    useImperativeHandle(
+        ref,
+        () => ({
+            clear: () => {
+                setValue("");
+                setCursor(0);
+            },
+        }),
+        [],
+    );
 
     useInput((input, key) => {
         if (disabled) return;
@@ -84,7 +102,7 @@ export const ChatInput = ({ onSubmit, disabled, onValueChange, getCompletion }: 
             <Box flexGrow={1}>{renderWithCursor(value, cursor, disabled)}</Box>
         </Box>
     );
-};
+});
 
 const renderWithCursor = (value: string, cursor: number, disabled: boolean) => {
     if (disabled) {

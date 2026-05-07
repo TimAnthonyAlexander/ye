@@ -6,7 +6,8 @@ import { ConfigValidationError, loadConfig } from "./config/index.ts";
 const main = async (): Promise<void> => {
     try {
         const config = await loadConfig();
-        const { waitUntilExit } = render(<App config={config} />);
+        // App owns Ctrl+C handling: clear input → abort stream → no-op.
+        const { waitUntilExit } = render(<App config={config} />, { exitOnCtrlC: false });
         await waitUntilExit();
     } catch (error) {
         if (error instanceof ConfigValidationError) {

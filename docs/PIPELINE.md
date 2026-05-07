@@ -122,10 +122,10 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 - [x] Smoke test: in PLAN mode, two Edit attempts in a row terminate the turn with the loop-guard reason
 
 ### Phase 2 — Subagents in the loop
-- [ ] Step 6: classify read-only vs state-modifying via `Tool.annotations.readOnlyHint`; parallel-dispatch read-only
-- [ ] Subagent dispatch path through the same `queryLoop` with isolated state and sidechain transcript
-- [ ] Auto-memory injected in step 3
-- [ ] CLAUDE.md hierarchy concatenated in step 3
+- [ ] Step 6: classify read-only vs state-modifying via `Tool.annotations.readOnlyHint`; parallel-dispatch read-only (annotations exist; parallel dispatch deferred — tools still serialize in v2)
+- [x] Subagent dispatch path through the same `queryLoop` with isolated state and sidechain transcript
+- [x] Auto-memory injected in step 3
+- [x] CLAUDE.md hierarchy concatenated in step 3
 
 ### Phase 4 — Recovery & full compaction
 - [ ] Add Budget Reduction, Snip, Microcompact, Context Collapse shapers *before* the existing Auto-Compact (cheapest first); Auto-Compact becomes the last-resort backstop

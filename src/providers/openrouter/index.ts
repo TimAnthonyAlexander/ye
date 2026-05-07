@@ -55,6 +55,10 @@ export const createOpenRouterProvider = (deps: OpenRouterDeps): Provider => {
                     signal: input.signal,
                 });
             } catch (err) {
+                if (input.signal?.aborted) {
+                    yield { type: "stop", reason: "abort" };
+                    return;
+                }
                 const msg = err instanceof Error ? err.message : String(err);
                 yield { type: "stop", reason: "error", error: `network: ${msg}` };
                 return;
@@ -73,7 +77,16 @@ export const createOpenRouterProvider = (deps: OpenRouterDeps): Provider => {
                 return;
             }
 
-            yield* parseStream(res);
+            try {
+                yield* parseStream(res);
+            } catch (err) {
+                if (input.signal?.aborted) {
+                    yield { type: "stop", reason: "abort" };
+                    return;
+                }
+                const msg = err instanceof Error ? err.message : String(err);
+                yield { type: "stop", reason: "error", error: `stream: ${msg}` };
+            }
         },
 
         async getContextSize(model: string): Promise<number> {

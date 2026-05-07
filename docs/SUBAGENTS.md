@@ -86,16 +86,16 @@ The `Task` tool lives in `src/tools/task/` — wire-only, calls into `subagents.
 ## Checklist
 
 ### Phase 2 — Subagents v1
-- [ ] `types.ts` — SubagentSpec, SubagentResult (single summary string)
-- [ ] `sidechain.ts` — sidechain JSONL writer (delegates to `storage.session` for the file handle)
-- [ ] `inProcess.ts` — runs `queryLoop` with isolated state, tools, abort signal, transcript handle
-- [ ] `kinds/explore.ts` — Explore prompt, tool set (Read/Glob/Grep), thoroughness param mapping to max-turns inside the `maxTurns.subagent` cap
-- [ ] `kinds/general.ts` — General-purpose prompt, configurable tool set
-- [ ] Tool: `Task` (in `src/tools/task/`) — thin wire to `subagents.spawn()`; no logic
-- [ ] `index.ts` — `spawn()`, `wait()`, `abort()`
-- [ ] Recursion guard: subagent context flag prevents nested `Task` calls
-- [ ] Subagent inherits parent's permission mode in Phase 2
-- [ ] Smoke test: parent runs Explore against the Ye repo, gets a non-empty summary; parent's pre-Task vs post-Task message count differs only by the single Task tool result (no leaked sidechain history)
+- [x] `types.ts` — SubagentSpec, SubagentResult (single summary string)
+- [x] `sidechain.ts` — sidechain JSONL writer (delegates to `storage.session` for the file handle) — implemented as `openSidechainSession` in `storage/session.ts`; no separate `subagents/sidechain.ts` needed
+- [x] `inProcess.ts` — runs `queryLoop` with isolated state, tools, abort signal, transcript handle
+- [x] `kinds/explore.ts` — Explore prompt, tool set (Read/Glob/Grep), thoroughness param mapping to max-turns inside the `maxTurns.subagent` cap
+- [x] `kinds/general.ts` — General-purpose prompt, configurable tool set
+- [x] Tool: `Task` (in `src/tools/task/`) — thin wire to `subagents.spawn()`; no logic
+- [ ] `index.ts` — `spawn()`, `wait()`, `abort()` — only `spawn()` shipped; subagent runs synchronously inside `Task.execute()`, so wait/abort aren't needed (parent's `AbortSignal` flows through `SpawnContext.signal` for cancellation)
+- [x] Recursion guard: subagent context flag prevents nested `Task` calls (structural — Task is excluded from `allowedTools`, so it's never in the subagent's pool)
+- [ ] Subagent inherits parent's permission mode in Phase 2 — DIVERGED: Phase 2 forces AUTO inside subagents because permission prompts can't bubble out of the synchronous Task execution. The user's approval of the Task call is the trust boundary. Revisit in Phase 5 when prompts can bubble.
+- [x] Smoke test: parent runs Explore against the Ye repo, gets a non-empty summary; parent's pre-Task vs post-Task message count differs only by the single Task tool result (no leaked sidechain history) — verified with stub provider
 
 ### Phase 3 — Verification (likely-earlier-than-Phase-5)
 - [ ] `kinds/verification.ts` — adversarial verifier; ships with the anti-skipping prompt (see Phase 5 row in design)

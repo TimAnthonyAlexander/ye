@@ -15,7 +15,7 @@ import { getProjectId, openSession, type SessionHandle } from "../storage/index.
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
 import { Chat, type ChatItem } from "./chat.tsx";
-import { ChatInput } from "./input.tsx";
+import { ChatInput, type ChatInputHandle } from "./input.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
 import { SlashPicker } from "./slashPicker.tsx";
 import { StatusBar } from "./statusBar.tsx";
@@ -64,6 +64,8 @@ export const App = ({ config }: AppProps) => {
     const pendingTodosRef = useRef<readonly TodoItem[] | null>(null);
     const streamingRef = useRef(false);
     const queueRef = useRef<string[]>([]);
+    const abortRef = useRef<AbortController | null>(null);
+    const chatInputRef = useRef<ChatInputHandle | null>(null);
     const [queuedCount, setQueuedCount] = useState(0);
 
     const addSystemMessage = (text: string): void => {
@@ -149,7 +151,24 @@ export const App = ({ config }: AppProps) => {
         };
     }, [cfg]);
 
-    useInput((_input, key) => {
+    useInput((input, key) => {
+        if (key.ctrl && input === "c") {
+            // Ctrl+C: clear input → abort stream → no-op. Use /exit to quit.
+            if (currentInput.length > 0) {
+                chatInputRef.current?.clear();
+                return;
+            }
+            if (streamingRef.current && abortRef.current) {
+                abortRef.current.abort();
+                queueRef.current = [];
+                setQueuedCount(0);
+                setItems((prev) => [
+                    ...prev,
+                    { kind: "system", content: "(stopped)" },
+                ]);
+            }
+            return;
+        }
         if (key.tab && key.shift && stateRef.current && !pendingPrompt) {
             const next = cycleMode(stateRef.current.mode);
             stateRef.current.mode = next;
@@ -160,6 +179,7 @@ export const App = ({ config }: AppProps) => {
 
     const sendNow = async (text: string): Promise<void> => {
         streamingRef.current = true;
+        abortRef.current = new AbortController();
         setStreaming(true);
         setStreamingText("");
 
@@ -183,6 +203,7 @@ export const App = ({ config }: AppProps) => {
                 state: stateRef.current!,
                 session: sessionRef.current!,
                 userPrompt: text,
+                signal: abortRef.current.signal,
             });
 
             for await (const evt of stream) {
@@ -266,10 +287,14 @@ export const App = ({ config }: AppProps) => {
                 }
             }
         } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
+            const aborted = abortRef.current?.signal.aborted === true;
+            if (!aborted) {
+                setError(e instanceof Error ? e.message : String(e));
+            }
         } finally {
             commitText();
             streamingRef.current = false;
+            abortRef.current = null;
             setStreaming(false);
             setStreamingText("");
         }
@@ -341,6 +366,7 @@ export const App = ({ config }: AppProps) => {
                 <>
                     <SlashPicker input={currentInput} />
                     <ChatInput
+                        ref={chatInputRef}
                         onSubmit={send}
                         disabled={false}
                         onValueChange={setCurrentInput}

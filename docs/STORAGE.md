@@ -147,12 +147,12 @@ src/memory/
 - [x] Smoke test: `randomPlanName()` produces two-word filenames; collision rate acceptable for our scale (no on-disk dedupe in v1)
 
 ### Phase 2 — Memory hierarchy
-- [ ] `hierarchy.ts` — concat managed/user/project/local notes in order, with delimiters defined in this file only
-- [ ] `~/.ye/CLAUDE.md` recognized at user level; `<root>/YE.local.md` at local level
-- [ ] `memoryIndex.ts` — parse MEMORY.md as a list of `{ path, hook }` entries
-- [ ] `select.ts` — auto-memory: list memory-file headers, ask the model to pick top-N (≤ 5)
-- [ ] Per-project memory directory created on first write
-- [ ] Pipeline step 3 (assemble) calls `hierarchy.read()` and `select.run()`; no other call sites
+- [x] `hierarchy.ts` — concat managed/user/project/local notes in order, with delimiters defined in this file only
+- [x] `~/.ye/CLAUDE.md` recognized at user level; `<root>/YE.local.md` at local level
+- [x] `memoryIndex.ts` — parse MEMORY.md as a list of `{ path, hook }` entries
+- [x] `select.ts` — auto-memory: list memory-file headers, ask the model to pick top-N (≤ 5)
+- [ ] Per-project memory directory created on first write (no first-write path yet — Ye only reads memory; defer until a memory.save tool exists)
+- [x] Pipeline step 3 (assemble) calls `hierarchy.read()` and `select.run()`; no other call sites
 
 ### Phase 4 — History + checkpoints + resume
 - [ ] `history.ts` — append on each prompt; reverse-read for Up-arrow

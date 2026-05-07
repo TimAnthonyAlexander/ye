@@ -140,9 +140,9 @@ src/permissions/
 - [ ] Smoke test: ExitPlanMode in PLAN, accept flow → mode is NORMAL afterwards; deny flow → mode is PLAN, plan file still on disk
 
 ### Phase 2 — Slash command + session-scoped allows + EnterPlanMode
-- [ ] `/mode <name>` slash command (NORMAL ↔ AUTO ↔ PLAN)
-- [ ] "Allow for session" appends an in-memory rule that lives until process exit
-- [ ] `EnterPlanMode` tool (model-initiated; symmetric to user's Shift+Tab into PLAN)
+- [x] `/mode <name>` slash command (NORMAL ↔ AUTO ↔ PLAN)
+- [x] "Allow for session" appends an in-memory rule that lives until process exit
+- [x] `EnterPlanMode` tool (model-initiated; symmetric to user's Shift+Tab into PLAN)
 
 ### Phase 5 — Full mode set + safety layers
 - [ ] Add `acceptEdits`, `dontAsk`, `bypassPermissions`, `bubble` branches in `decide()` (4 more, total 7)

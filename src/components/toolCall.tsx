@@ -25,6 +25,13 @@ const summarizeArgs = (name: string, args: unknown): string => {
             return typeof a["pattern"] === "string" ? (a["pattern"] as string) : "";
         case "Grep":
             return typeof a["pattern"] === "string" ? (a["pattern"] as string) : "";
+        case "AskUserQuestion":
+            return typeof a["question"] === "string" ? (a["question"] as string) : "";
+        case "Task": {
+            const kind = typeof a["kind"] === "string" ? (a["kind"] as string) : "";
+            const prompt = typeof a["prompt"] === "string" ? (a["prompt"] as string) : "";
+            return kind && prompt ? `${kind}: ${prompt}` : prompt;
+        }
         default:
             return "";
     }
@@ -33,6 +40,41 @@ const summarizeArgs = (name: string, args: unknown): string => {
 const summarizeResult = (result: ToolResult | undefined): string => {
     if (!result || result.ok) return "";
     return result.error.slice(0, 200) + (result.error.length > 200 ? "…" : "");
+};
+
+// Action-line answer (shown next to the tool name) for tools where the result
+// is a short, human-meaningful string. Returns null if not applicable.
+const actionLineAnswer = (
+    name: string,
+    args: unknown,
+    result: ToolResult | undefined,
+): string | null => {
+    if (!result || !result.ok) return null;
+    if (name !== "AskUserQuestion") return null;
+    if (typeof result.value !== "string") return null;
+    if (result.value.startsWith("User dismissed")) return "(dismissed — user typing reply)";
+    const labels = (() => {
+        if (typeof args !== "object" || args === null) return [] as string[];
+        const raw = (args as { options?: unknown }).options;
+        if (!Array.isArray(raw)) return [] as string[];
+        return raw
+            .map((o) => {
+                if (typeof o === "string") return o;
+                if (
+                    typeof o === "object" &&
+                    o !== null &&
+                    typeof (o as { label?: unknown }).label === "string"
+                ) {
+                    return (o as { label: string }).label;
+                }
+                return null;
+            })
+            .filter((s): s is string => s !== null);
+    })();
+    const idx = labels.findIndex((label) => label === result.value);
+    const truncated =
+        result.value.length > 60 ? `${result.value.slice(0, 60)}…` : result.value;
+    return idx >= 0 ? `[${idx + 1}] ${truncated}` : `(typed) ${truncated}`;
 };
 
 const MAX_DIFF_LINES = 20;
@@ -86,6 +128,7 @@ export const ToolCallView = ({ entry }: Props) => {
     const { ch, color } = statusGlyph(entry.status);
     const argSummary = summarizeArgs(entry.name, entry.args);
     const resultSummary = summarizeResult(entry.result);
+    const answerLine = actionLineAnswer(entry.name, entry.args, entry.result);
     const diff =
         entry.name === "Edit" && (entry.status === "done" || entry.status === "running")
             ? editDiff(entry.args)
@@ -101,6 +144,12 @@ export const ToolCallView = ({ entry }: Props) => {
                         {" "}
                         · {argSummary.slice(0, 80)}
                         {argSummary.length > 80 ? "…" : ""}
+                    </Text>
+                )}
+                {answerLine !== null && (
+                    <Text>
+                        {" "}
+                        → <Text color="cyan">{answerLine}</Text>
                     </Text>
                 )}
             </Box>

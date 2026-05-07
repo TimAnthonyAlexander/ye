@@ -112,9 +112,9 @@ Items here orchestrate across multiple subdocs or don't fit any single one. Doma
 - [ ] Quickstart in repo root `README.md` (only after Phase 1 acceptance)
 
 ### Phase 2 — gating items
-- [ ] Subagent demo: `Explore` returns a useful summary; parent's context size before-vs-after the subagent run is unchanged (this is the whole point of subagents)
-- [ ] CLAUDE.md hierarchy + auto-memory wired into context assembly (step 3)
-- [ ] At least three slash commands working: `/mode`, `/clear`, `/help`
+- [x] Subagent demo: `Explore` returns a useful summary; parent's context size before-vs-after the subagent run is unchanged (this is the whole point of subagents)
+- [x] CLAUDE.md hierarchy + auto-memory wired into context assembly (step 3)
+- [x] At least three slash commands working: `/mode`, `/clear`, `/help`
 
 ### Phase 3 — gating items
 - [ ] All three providers pass the same conformance suite: text round-trip, tool-call round-trip, multi-chunk streaming, cache-hit assertion (Anthropic only)
