@@ -17,6 +17,8 @@ This doc covers the on-disk layout, the canonical project resolver, the notes-fi
 │   └── <projectHash>/
 │       ├── meta.json            # original cwd, created_at, last_seen_at
 │       ├── memory/              # per-project memory files (Phase 2)
+│       ├── plans/               # PLAN-mode artifacts; persist by design
+│       │   └── <word>-<word>.md
 │       ├── sessions/
 │       │   ├── <sessionId>.jsonl
 │       │   └── <sessionId>/sidechains/<subId>.jsonl   # Phase 2
@@ -27,7 +29,7 @@ This doc covers the on-disk layout, the canonical project resolver, the notes-fi
 
 `projectHash` = first 12 hex chars of sha256 of the canonical absolute path to the **project root**.
 
-**Project root** = nearest ancestor directory that contains any of: `.git`, `package.json`, `CLAUDE.md`, `YE.md`. Falls back to `cwd` if none found.
+**Project root** = nearest ancestor directory that contains any of: `.git`, `package.json`, `composer.json`, `CLAUDE.md`, `YE.md`. Falls back to `cwd` if none found. (Cargo / pyproject / go.mod intentionally excluded — KISS, add only when a real project demands it.)
 
 Stability over uniqueness — collisions at 12 hex chars are negligible, and a stable folder name beats a long opaque one. `meta.json` records the original path so a manual disambiguation is always possible.
 
@@ -44,6 +46,24 @@ Implemented as `getProjectNotesFile(projectRoot): { path: string; existed: boole
 Reasoning: `CLAUDE.md` is already the de-facto convention for many existing repos. Ye respects it where it exists. Where it doesn't, Ye uses its own filename so it doesn't squat on a name that may later collide with Claude Code itself in shared environments.
 
 `format` is exposed so callers can render with the right header (`# CLAUDE.md` vs `# YE.md`) without re-deriving the decision.
+
+### Notes file: write triggers
+
+Three triggers cause a write to the project notes file. All three route through `notesFile.ts` and require permission unless the active mode covers it (AUTO auto-allows; NORMAL prompts; PLAN denies):
+
+1. **`/init` slash command (Phase 2).** User-initiated. Bootstraps the file with project conventions, scanning the repo for context.
+2. **User-told update.** User says "save that to CLAUDE.md / YE.md / project notes" in chat. Model writes via Edit/Write — the resolver decides which file.
+3. **Model-self-update on inconsistency.** When the model notices an outdated rule or contradicts the notes file mid-task, it proposes the update and writes via Edit. Same permission flow.
+
+No fourth path. Anything writing to the notes file goes through one of these three with permission.
+
+## Plans directory
+
+PLAN mode (see PERMISSIONS.md) writes proposed plans to `~/.ye/projects/<hash>/plans/<word>-<word>.md`. Plans persist deliberately, so I can revisit and reuse one days later.
+
+- **Path resolver:** `getProjectPlansDir(projectId): string` in `src/storage/paths.ts`. Single source. No literal `~/.ye/...plans/...` paths in any other module.
+- **Filename:** two random English words joined by a dash. Cheap memorability over UUIDs. Wordlist lives in `src/storage/wordlist.ts` (small bundled list of common nouns + adjectives, picked with `Math.random()`).
+- **Persistence on denial:** the `ExitPlanMode` tool writes the file *before* the permission prompt fires. If the user denies the mode flip, the plan stays on disk as an orphan — that matches the "plans persist" intent. Cleanup is manual (or a Phase 4+ pruner).
 
 ## CLAUDE.md hierarchy (Phase 2)
 
@@ -87,9 +107,10 @@ For `--rewind-files`-style rollbacks. Files are snapshot at change boundaries; s
 ```
 src/storage/
 ├── index.ts            # public API
-├── paths.ts            # ~/.ye paths (extends config/paths)
+├── paths.ts            # ~/.ye paths (extends config/paths); getProjectPlansDir, getProjectMemoryDir, etc.
 ├── project.ts          # canonicalize cwd → project root → hash → folder layout
 ├── session.ts          # open/append/close session JSONL transcript
+├── wordlist.ts         # bundled noun/adjective list for plan filenames
 ├── history.ts          # cross-session prompt history (Phase 4)
 └── checkpoints.ts      # file-history snapshots (Phase 4)
 
@@ -113,13 +134,17 @@ src/memory/
 ## Checklist
 
 ### Phase 1 — Storage foundation
-- [ ] `paths.ts` — `~/.ye`, `~/.ye/projects`, plus per-project path builders
-- [ ] `project.ts` — `canonicalize(cwd)` → project root (ancestor markers `.git`/`package.json`/`CLAUDE.md`/`YE.md`) → 12-char sha256 hash → folder layout. Single exported function `getProjectId()`.
+- [ ] `paths.ts` — `~/.ye`, `~/.ye/projects`, plus per-project path builders: `getProjectMemoryDir`, `getProjectSessionsDir`, `getProjectPlansDir`, `getProjectMetaPath`
+- [ ] `project.ts` — `canonicalize(cwd)` → project root (ancestor markers `.git`/`package.json`/`composer.json`/`CLAUDE.md`/`YE.md`) → 12-char sha256 hash → folder layout. Single exported function `getProjectId()`.
 - [ ] `notesFile.ts` — `getProjectNotesFile(root)` returns `CLAUDE.md` or `YE.md` per the rule. Single source of truth. Includes `existed` and `format` fields.
 - [ ] `session.ts` — `openSession()`, `appendEvent(event)`, `closeSession()` over an append-only JSONL handle
+- [ ] `wordlist.ts` — small bundled list of nouns + adjectives; export `randomPlanName(): string` returning `<word>-<word>`
+- [ ] `getProjectPlansDir(projectId)` ensures the directory exists on first call (lazy)
 - [ ] `meta.json` written on first project visit; `last_seen_at` bumped each session
 - [ ] Smoke test: from cwd inside a temp git repo, `getProjectId()` is stable across calls; `getProjectId()` from a subdirectory returns the same id; sessions land in `~/.ye/projects/<hash>/sessions/`
+- [ ] Smoke test: `getProjectId()` resolves correctly in a `composer.json`-only directory (PHP project)
 - [ ] Smoke test: `getProjectNotesFile()` returns `CLAUDE.md` when present, `YE.md` otherwise; `existed: false` when neither exists
+- [ ] Smoke test: `randomPlanName()` produces two-word filenames; collision rate acceptable for our scale (no on-disk dedupe in v1)
 
 ### Phase 2 — Memory hierarchy
 - [ ] `hierarchy.ts` — concat managed/user/project/local notes in order, with delimiters defined in this file only

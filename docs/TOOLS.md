@@ -40,7 +40,7 @@ type ToolResult<T = unknown> =
 
 ## V1 tools (Phase 1)
 
-Seven tools. Enough to be useful for daily work. No subagent stuff, no web, no MCP.
+Eight tools. Enough to be useful for daily work. No subagent stuff, no web, no MCP.
 
 | Tool | readOnly | Notes |
 |------|----------|-------|
@@ -51,6 +51,7 @@ Seven tools. Enough to be useful for daily work. No subagent stuff, no web, no M
 | Grep | yes | Wraps `rg`. Modes: `content`, `files_with_matches`, `count`. |
 | Glob | yes | File pattern match. Returns paths sorted by mtime. |
 | TodoWrite | no | States: `pending`, `in_progress`, `completed`. Exactly one `in_progress` at a time. In-memory in v1; flushes via session JSONL. |
+| ExitPlanMode | no | Writes the proposed plan to `getProjectPlansDir(projectId)/<word>-<word>.md`, then fires a permission prompt to flip out of PLAN mode. The **only state-modifying tool allowed in PLAN mode**. |
 
 ### Notable design calls
 
@@ -60,6 +61,8 @@ Seven tools. Enough to be useful for daily work. No subagent stuff, no web, no M
 - **TodoWrite is in-memory.** Persists to the session JSONL via standard transcript flush. Survives resume in Phase 4.
 - **Grep shells out to `rg`.** Documented dependency; install script checks for it. We do not implement a JS regex search — performance and correctness aren't worth re-deriving.
 - **No `dangerouslyDisableSandbox` flag in v1.** It only makes sense once we have a sandbox to disable. Phase 5.
+- **`ExitPlanMode` writes before it prompts.** The plan file lands on disk in `~/.ye/projects/<hash>/plans/<word>-<word>.md` *before* the permission prompt fires. If the user denies the mode-flip, the plan stays as an orphan — which matches the "plans persist deliberately" intent. Cleanup is manual. (Alternative was write-on-accept; rejected — adds a temp-file dance for a single-user tool.)
+- **Plan filename comes from `randomPlanName()`** in `src/storage/wordlist.ts`. No tool generates filenames inline.
 
 ## Tool pool assembly
 
@@ -77,7 +80,7 @@ This function is the single seam where new sources of tools get added (subagents
 
 Listed by phase so the roadmap is in one place. Checkbox items live in the per-phase checklist below.
 
-- **Phase 2:** `Task` (subagent), `TaskOutput`, `TaskStop`, `EnterPlanMode`, `ExitPlanMode`, `AskUserQuestion`.
+- **Phase 2:** `Task` (subagent), `TaskOutput`, `TaskStop`, `EnterPlanMode` (model-initiated mode flip; the user already has Shift+Tab from v1 — this is the symmetric path for the model), `AskUserQuestion`.
 - **Phase 5:** `Skill`, `EnterWorktree`, `ExitWorktree`, `NotebookEdit`.
 - **Phase 6:** `WebFetch`, `WebSearch`, `PowerShell`, `Sleep`.
 - **Phase 7+:** MCP (`mcp`, `ListMcpResources`, `ReadMcpResource`, `McpAuth`), `CronCreate`/`Delete`/`List` (KAIROS), `RemoteTrigger`, `LSP`, `StructuredOutput`, `REPL`, `ToolSearch`, `SendUserFile`, `PushNotification`, `SubscribePR`.
@@ -96,7 +99,8 @@ src/tools/
 ├── bash/
 ├── grep/
 ├── glob/
-└── todoWrite/
+├── todoWrite/
+└── exitPlanMode/
 ```
 
 ## Checklist
@@ -113,13 +117,15 @@ src/tools/
 - [ ] Tool: Grep (shell out to `rg`; `install.sh` warns if missing; three output modes)
 - [ ] Tool: Glob (Bun.Glob; sort by mtime)
 - [ ] Tool: TodoWrite (states pending/in_progress/completed; exactly one in_progress)
+- [ ] Tool: ExitPlanMode (write plan to `getProjectPlansDir(projectId)/<randomPlanName()>.md` then return a result that triggers a permission prompt to flip out of PLAN mode; on denial, plan stays on disk)
 - [ ] Each tool: unit test against a tmpdir
 - [ ] Smoke test: dispatcher runs Read → Edit → Bash in a single turn against a tmpdir, transcript captures all three
+- [ ] Smoke test: ExitPlanMode in PLAN mode writes a plan file, prompts, and on accept flips mode to NORMAL; on deny, mode stays PLAN and plan file remains
 
-### Phase 2 — Subagent + plan-mode tools
+### Phase 2 — Subagent + model-side mode tools
 - [ ] AskUserQuestion (1–4 questions, 2–4 options, multiSelect)
-- [ ] EnterPlanMode / ExitPlanMode
-- [ ] Task (spawns Explore/Plan/General-purpose; thin wrapper around `subagents.spawn()`)
+- [ ] EnterPlanMode (model-initiated flip into PLAN mode; ExitPlanMode is already Phase 1)
+- [ ] Task (spawns Explore / General-purpose; thin wrapper around `subagents.spawn()`)
 - [ ] TaskOutput, TaskStop
 
 ### Phase 5 — Skills, worktrees, notebooks

@@ -14,4 +14,17 @@ export const DEFAULT_CONFIG: Config = {
         providerOrder: ["DeepSeek"],
         allowFallbacks: false,
     },
+    compact: {
+        threshold: 0.5,
+    },
+    maxTurns: {
+        master: 100,
+        subagent: 25,
+    },
+    permissions: {
+        defaultMode: "NORMAL",
+        rules: [],
+    },
 };
+
+export const FALLBACK_CONTEXT_WINDOW = 128_000;

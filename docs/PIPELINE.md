@@ -9,12 +9,12 @@ Steps 5–9 are the "agent loop" people talk about. Steps 1–4 set the table fo
 1. **Settings resolution.** Load runtime settings: permission mode, model choice, allowed/denied tools, project paths, hooks (later). Pulled from `~/.ye/config.json`, merged with project-level overrides where present.
 2. **State initialization.** Session id, transcript file handle, token counters, retry budget. Ephemeral; lives for the turn (a subset persists across turns within the session).
 3. **Context assembly.** Gather the ordered context sources (see below). Returns a flat `messages[]` array ready for the model.
-4. **Pre-model shapers.** Run sequentially, cheapest first, each fires only if needed. v1: trim-oldest only. Phase 4: Budget Reduction → Snip → Microcompact → Context Collapse → Auto-Compact.
+4. **Pre-model shapers.** Run sequentially, cheapest first, each fires only if needed. **v1: one shaper, `autoCompact`** — fires when `currentTokens / contextWindow >= compact.threshold` (default 0.5, configurable in `~/.ye/config.json`). Phase 4: adds Budget Reduction → Snip → Microcompact → Context Collapse *before* Auto-Compact, so cheap shapers run first.
 5. **Model call.** Send messages + tool definitions to the active provider. Stream response.
 6. **Tool dispatch.** Parse tool calls from the stream. Read-only tools (Phase 2) queue parallel; state-modifying tools queue sequential. v1: serialize all.
 7. **Permission gate.** For each tool call: pre-filter (denied tools never reach here), evaluate deny-first rules, route through the active permission handler (interactive prompt in `default` mode, auto-allow in `acceptAll`).
 8. **Tool execution.** Run approved tools. Errors return as tool results, not crashes.
-9. **Stop condition check.** Exit if: model returned no tool calls (text done), max turns reached, context overflow, hook abort (Phase 5), explicit cancel. Otherwise loop back to step 3 with new tool results appended.
+9. **Stop condition check.** Exit if: model returned no tool calls (text done), max turns reached (`maxTurns.master` default 100; subagents use `maxTurns.subagent` default 25), context overflow, **PLAN-mode loop guard tripped** (two consecutive denials of the same tool in PLAN mode → terminate the turn with a "switch modes via Shift+Tab" message), hook abort (Phase 5), explicit cancel. Otherwise loop back to step 3 with new tool results appended.
 
 ## Context sources (assembly order)
 
@@ -31,6 +31,17 @@ system prompt
 ```
 
 Sources Ye resolves through the centralized resolvers (no duplicate logic): notes file (`memory/notesFile.ts`), project memory, global `MEMORY.md`. The pipeline does not re-decide which file to read.
+
+## Auto-compact in v1 (step 4 detail)
+
+The single v1 shaper. Logic:
+
+1. At step 4, compute `currentTokens` (sum of message token counts; estimate via `provider.countTokens?` if available, else heuristic).
+2. Compare against `contextWindow`, which is cached in `SessionState` from a one-time `provider.getContextSize(model)` call at session start. Fallback when the call fails: 128K.
+3. If `currentTokens / contextWindow >= config.compact.threshold` (default 0.5), run the auto-compact: a model-summary call that replaces older messages with a single summary message, preserving the system prompt and the most recent N turns intact.
+4. Each turn fires the shaper at most once (the same anti-runaway-loop rule as Claude Code's reactive compaction).
+
+> **Risk note (acknowledged):** 0.5 is aggressive — it triggers when half the window is empty. The threshold is config-driven so tuning costs nothing. Revisit after a week of real use.
 
 ## Recovery (Phase 4)
 
@@ -72,7 +83,7 @@ src/pipeline/
 ├── assemble.ts         # step 3: context assembly
 ├── shapers/            # step 4
 │   ├── index.ts        # runs shapers in order
-│   └── trimOldest.ts   # v1's only shaper
+│   └── autoCompact.ts  # v1's only shaper — threshold-triggered model summary
 ├── dispatch.ts         # step 6: parse + queue tool calls
 ├── stop.ts             # step 9: stop condition evaluation
 ├── events.ts           # event types
@@ -87,24 +98,28 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 - **One turn = one transcript flush.** Append at the end of step 9. If the process crashes mid-turn, the next session loses that turn but disk state stays consistent.
 - **No retry loops without budgets.** Every retry path has an explicit max.
 - **Steps are functions, not classes.** Each step is a pure-ish function that takes turn state and returns turn state (or yields events). Easier to test in isolation, easier to reorder later if needed.
+- **Context-window size is cached per session.** `provider.getContextSize(model)` runs once at session start; the result lives in `SessionState`. The auto-compact shaper reads from the cache, never re-fetches.
+- **PLAN-mode loop guard at the pipeline layer, not the permission layer.** Tracking "two consecutive same-tool denials" is turn-state, so it lives next to the stop-condition check.
 
 ## Checklist
 
 ### Phase 1 — MVP pipeline
-- [ ] `events.ts` — `Event` and `StopReason` types
-- [ ] `state.ts` — `TurnState`, `SessionState`
+- [ ] `events.ts` — `Event` and `StopReason` types (include `plan_loop_guard` reason)
+- [ ] `state.ts` — `TurnState`, `SessionState` (SessionState carries cached `contextWindow`, current `mode`, recent denial trail for the PLAN-mode loop guard)
 - [ ] `index.ts` — `queryLoop(input): AsyncGenerator<Event>` skeleton
 - [ ] Step 1: settings resolution — read `~/.ye/config.json`, merge with project overrides if present
-- [ ] Step 2: turn-local state (session id, transcript handle, retry budget = 0 for v1)
+- [ ] Step 2: turn-local state (session id, transcript handle, retry budget = 0 for v1); on first turn of a session, call `provider.getContextSize(model)` and cache the result
 - [ ] Step 3: `assemble()` — system prompt + env + resolved notes file (via `memory/notesFile.ts`) + history
-- [ ] Step 4: single shaper, `shapers/trimOldest.ts` — drops oldest non-system messages above a hard token cap
+- [ ] Step 4: single shaper, `shapers/autoCompact.ts` — fires when `currentTokens / contextWindow >= config.compact.threshold` (default 0.5); at most once per turn
 - [ ] Step 5: model call via active provider; emits `model.text` and `model.toolCall`
 - [ ] Step 6: `dispatch.ts` — parse tool calls, serialize all (no parallelism in v1)
 - [ ] Step 7: route through `permissions.decide()`; emit `permission.prompt` when needed
 - [ ] Step 8: execute tool, emit `tool.start`/`tool.end`, append result to history
-- [ ] Step 9: stop conditions — no-tool-calls, max-turns (default 50), explicit cancel
+- [ ] Step 9: stop conditions — no-tool-calls, max-turns (`maxTurns.master` default 100; `maxTurns.subagent` default 25), explicit cancel, PLAN-mode loop guard (two consecutive denials of the same tool in PLAN mode)
+- [ ] PLAN-mode denial trail tracked in `TurnState`; reset on mode flip
 - [ ] Transcript flush at end of each turn (append-only JSONL via storage layer)
 - [ ] Smoke test: a turn with one Read tool call completes and produces a parseable JSONL transcript
+- [ ] Smoke test: in PLAN mode, two Edit attempts in a row terminate the turn with the loop-guard reason
 
 ### Phase 2 — Subagents in the loop
 - [ ] Step 6: classify read-only vs state-modifying via `Tool.annotations.readOnlyHint`; parallel-dispatch read-only
@@ -113,7 +128,7 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 - [ ] CLAUDE.md hierarchy concatenated in step 3
 
 ### Phase 4 — Recovery & full compaction
-- [ ] Add Snip, Microcompact, Context Collapse, Auto-Compact shapers (in that order, cheapest first)
+- [ ] Add Budget Reduction, Snip, Microcompact, Context Collapse shapers *before* the existing Auto-Compact (cheapest first); Auto-Compact becomes the last-resort backstop
 - [ ] Token-budget escalation in step 5 with explicit retry budget (max 3)
 - [ ] Prompt-too-long → Context Collapse → Auto-Compact → terminate path
 - [ ] Streaming fallback to non-streaming on stream errors

@@ -1,4 +1,15 @@
-import type { Config, ModelSetting, ProviderConfig } from "./types.ts";
+import type {
+  CompactConfig,
+  Config,
+  MaxTurnsConfig,
+  ModelSetting,
+  PermissionMode,
+  PermissionRule,
+  PermissionsConfig,
+  ProviderConfig,
+} from "./types.ts";
+
+const PERMISSION_MODES: readonly PermissionMode[] = ["AUTO", "NORMAL", "PLAN"];
 
 class ConfigValidationError extends Error {
   constructor(message: string) {
@@ -60,6 +71,71 @@ const validateModelSetting = (value: unknown): ModelSetting => {
   };
 };
 
+const validateCompactConfig = (value: unknown): CompactConfig => {
+  if (!isObject(value)) {
+    throw new ConfigValidationError("compact must be an object");
+  }
+  if (typeof value.threshold !== "number") {
+    throw new ConfigValidationError("compact.threshold must be a number");
+  }
+  if (value.threshold <= 0 || value.threshold > 1) {
+    throw new ConfigValidationError("compact.threshold must be in (0, 1]");
+  }
+  return { threshold: value.threshold };
+};
+
+const validateMaxTurnsConfig = (value: unknown): MaxTurnsConfig => {
+  if (!isObject(value)) {
+    throw new ConfigValidationError("maxTurns must be an object");
+  }
+  if (typeof value.master !== "number" || !Number.isInteger(value.master) || value.master <= 0) {
+    throw new ConfigValidationError("maxTurns.master must be a positive integer");
+  }
+  if (typeof value.subagent !== "number" || !Number.isInteger(value.subagent) || value.subagent <= 0) {
+    throw new ConfigValidationError("maxTurns.subagent must be a positive integer");
+  }
+  return { master: value.master, subagent: value.subagent };
+};
+
+const validatePermissionRule = (index: number, value: unknown): PermissionRule => {
+  if (!isObject(value)) {
+    throw new ConfigValidationError(`permissions.rules[${index}] must be an object`);
+  }
+  if (value.effect !== "allow" && value.effect !== "deny") {
+    throw new ConfigValidationError(`permissions.rules[${index}].effect must be "allow" or "deny"`);
+  }
+  if (!isString(value.tool)) {
+    throw new ConfigValidationError(`permissions.rules[${index}].tool must be a string`);
+  }
+  if (value.pattern !== undefined && !isString(value.pattern)) {
+    throw new ConfigValidationError(`permissions.rules[${index}].pattern must be a string`);
+  }
+  return {
+    effect: value.effect,
+    tool: value.tool,
+    ...(value.pattern !== undefined ? { pattern: value.pattern } : {}),
+  };
+};
+
+const validatePermissionsConfig = (value: unknown): PermissionsConfig => {
+  if (!isObject(value)) {
+    throw new ConfigValidationError("permissions must be an object");
+  }
+  if (
+    !isString(value.defaultMode) ||
+    !PERMISSION_MODES.includes(value.defaultMode as PermissionMode)
+  ) {
+    throw new ConfigValidationError(
+      `permissions.defaultMode must be one of ${PERMISSION_MODES.join(" | ")}`,
+    );
+  }
+  if (!Array.isArray(value.rules)) {
+    throw new ConfigValidationError("permissions.rules must be an array");
+  }
+  const rules = value.rules.map((rule, i) => validatePermissionRule(i, rule));
+  return { defaultMode: value.defaultMode as PermissionMode, rules };
+};
+
 export const validateConfig = (raw: unknown): Config => {
   if (!isObject(raw)) {
     throw new ConfigValidationError("root must be an object");
@@ -80,6 +156,11 @@ export const validateConfig = (raw: unknown): Config => {
     defaultProvider: raw.defaultProvider,
     providers,
     defaultModel: validateModelSetting(raw.defaultModel),
+    ...(raw.compact !== undefined ? { compact: validateCompactConfig(raw.compact) } : {}),
+    ...(raw.maxTurns !== undefined ? { maxTurns: validateMaxTurnsConfig(raw.maxTurns) } : {}),
+    ...(raw.permissions !== undefined
+      ? { permissions: validatePermissionsConfig(raw.permissions) }
+      : {}),
   };
 };
 

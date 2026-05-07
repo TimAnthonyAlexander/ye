@@ -9,6 +9,7 @@ interface Provider {
   id: string;                              // "openrouter" | "anthropic" | "openai"
   stream(input: ProviderInput): AsyncIterable<ProviderEvent>;
   countTokens?(messages: Message[]): Promise<number>;
+  getContextSize(model: string): Promise<number>;   // tokens; falls back to 128_000 on failure
   capabilities: ProviderCapabilities;
 }
 
@@ -40,6 +41,17 @@ interface ProviderCapabilities {
 - **Inbound:** vendor stream chunks → Ye `ProviderEvent`s.
 
 **Tool-call format normalization happens in the provider, not in the pipeline.** This is the firewall against vendor drift.
+
+## Context-window discovery
+
+`getContextSize(model)` returns the model's max context window in tokens. Used by the pipeline's auto-compact shaper to compute the trigger threshold (`currentTokens / contextWindow >= config.compact.threshold`).
+
+- **OpenRouter:** `GET https://openrouter.ai/api/v1/models` exposes `context_length` per model.
+- **Anthropic:** hardcoded per-model lookup table (vendor doesn't expose a discovery endpoint).
+- **OpenAI:** hardcoded per-model lookup table.
+- **Fallback on any failure:** `128_000`. Logged but not surfaced to the user.
+
+The pipeline calls `getContextSize` **once per session**, on first turn, and caches the result in `SessionState.contextWindow`. No per-turn refetch.
 
 ## Capabilities flag
 
@@ -98,7 +110,8 @@ src/providers/
 - **No SDKs.** Direct `fetch` for each provider. Keeps deps minimal, keeps adapter logic obvious, makes prompt-cache control explicit. Revisit only if a provider's protocol becomes too painful by hand.
 - **Env var name lives in config, not in code.** A user can run multiple OpenRouter keys side by side by editing `apiKeyEnv` in `~/.ye/config.json`. (Already supported in the existing config schema.)
 - **One canonical Message shape.** Adapters convert at the edges. Pipeline never sees vendor-shaped data.
-- **`provider.id` checks are forbidden outside `src/providers/`.** Capability-flag based dispatch only. Caught by lint rule (Phase 2+).
+- **`provider.id` checks are forbidden outside `src/providers/`.** Capability-flag based dispatch only. Convention; reviewed manually. Promote to ESLint when contributors join.
+- **Default config is not redefined here.** Source of truth: `src/config/defaults.ts`. This doc references field names; it does not duplicate the values.
 
 ## Checklist
 
@@ -109,6 +122,7 @@ src/providers/
 - [ ] OpenRouter `adapt.ts` — Ye Message[] + Tools → OpenAI-compatible body; passes `provider.order` + `allow_fallbacks` from `providerOptions`
 - [ ] OpenRouter `stream.ts` — SSE → `text.delta` / `tool_call` / `stop`; handles incremental tool-call argument streaming (chunks merge by `id`)
 - [ ] OpenRouter `index.ts` — `stream()` posts, returns async iterable
+- [ ] OpenRouter `getContextSize(model)` — `GET /models`, parse `context_length`; fallback to 128_000 on any failure
 - [ ] Reads API key from env var named in `config.providers.openrouter.apiKeyEnv`
 - [ ] Surfaces a clean error if the env var is missing (no silent failure)
 - [ ] Smoke test: a real call returns at least one `text.delta` and a `stop`

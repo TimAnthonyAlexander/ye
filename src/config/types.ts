@@ -8,6 +8,8 @@ export type OpenRouterProviderSlug =
   | "SiliconFlow"
   | "Parasail";
 
+export type PermissionMode = "AUTO" | "NORMAL" | "PLAN";
+
 export interface ProviderConfig {
   readonly baseUrl: string;
   readonly apiKeyEnv: string;
@@ -20,8 +22,31 @@ export interface ModelSetting {
   readonly allowFallbacks?: boolean;
 }
 
+export interface CompactConfig {
+  readonly threshold: number;
+}
+
+export interface MaxTurnsConfig {
+  readonly master: number;
+  readonly subagent: number;
+}
+
+export interface PermissionRule {
+  readonly effect: "allow" | "deny";
+  readonly tool: string;
+  readonly pattern?: string;
+}
+
+export interface PermissionsConfig {
+  readonly defaultMode: PermissionMode;
+  readonly rules: readonly PermissionRule[];
+}
+
 export interface Config {
   readonly defaultProvider: ProviderId;
   readonly providers: Readonly<Record<string, ProviderConfig>>;
   readonly defaultModel: ModelSetting;
+  readonly compact?: CompactConfig;
+  readonly maxTurns?: MaxTurnsConfig;
+  readonly permissions?: PermissionsConfig;
 }

@@ -6,18 +6,19 @@ Definitely v2 territory. This doc is the design so Phase 2 is a thin step, not a
 
 ## Built-in types
 
-Phase 2 minimum: Explore, Plan, General-purpose. Others come in Phase 5.
+Phase 2 minimum: **Explore, General-purpose**. Others come in Phase 3 (Verification, likely earlier than originally planned) and Phase 5 (Statusline-setup, custom agents).
 
-| Type | Purpose | Tools |
-|------|---------|-------|
-| Explore | Codebase search/exploration. Read-only. | Read, Glob, Grep |
-| Plan | Returns a step-by-step implementation plan. Read-only. | Read, Glob, Grep |
-| General-purpose | Multi-step research / open-ended task. | Read, Glob, Grep, Edit, Write, Bash (configurable) |
-| Verification | Verifies completion against the original plan. Adversarial — does not trust the implementer. | depends |
-| Statusline-setup | Help configure Ye's status line. | minimal |
-| Custom | `.ye/agents/*.md` with YAML frontmatter — same shape as Claude Code's `.claude/agents/`. | per-frontmatter |
+| Type | Purpose | Tools | Phase |
+|------|---------|-------|-------|
+| Explore | Codebase search/exploration. Read-only. | Read, Glob, Grep | 2 |
+| General-purpose | Multi-step research / open-ended task. | Read, Glob, Grep, Edit, Write, Bash (configurable) | 2 |
+| Verification | Verifies completion against the original plan. Adversarial — does not trust the implementer. | depends | likely 3 (was 5; expected to want it earlier) |
+| Statusline-setup | Help configure Ye's status line. | minimal | 5 |
+| Custom | `.ye/agents/*.md` with YAML frontmatter — same shape as Claude Code's `.claude/agents/`. | per-frontmatter | 5 (low priority — solo project) |
 
-Explore takes a `thoroughness` param: `quick` | `medium` | `very thorough`. Affects max turns and tool budget.
+> **PLAN-the-mode lives in `src/permissions/`. Plan-the-subagent is intentionally absent.** Planning is the user's primary mode flip via Shift+Tab; a separate Plan subagent preset would duplicate that responsibility with a worse UX.
+
+Explore takes a `thoroughness` param: `quick` | `medium` | `very thorough`. Maps to a per-Explore max-turns budget *within* the global `maxTurns.subagent` cap (e.g., 5 / 15 / 25).
 
 ## Isolation modes
 
@@ -65,7 +66,6 @@ src/subagents/                  # Phase 2
 ├── types.ts                    # SubagentSpec, SubagentResult
 ├── kinds/
 │   ├── explore.ts              # tools, base prompt, thoroughness levels
-│   ├── plan.ts
 │   └── general.ts
 ├── isolate/
 │   ├── inProcess.ts
@@ -89,8 +89,7 @@ The `Task` tool lives in `src/tools/task/` — wire-only, calls into `subagents.
 - [ ] `types.ts` — SubagentSpec, SubagentResult (single summary string)
 - [ ] `sidechain.ts` — sidechain JSONL writer (delegates to `storage.session` for the file handle)
 - [ ] `inProcess.ts` — runs `queryLoop` with isolated state, tools, abort signal, transcript handle
-- [ ] `kinds/explore.ts` — Explore prompt, tool set (Read/Glob/Grep), thoroughness param mapping to max-turns
-- [ ] `kinds/plan.ts` — Plan prompt, tool set (Read/Glob/Grep), output instruction (return a step-by-step plan)
+- [ ] `kinds/explore.ts` — Explore prompt, tool set (Read/Glob/Grep), thoroughness param mapping to max-turns inside the `maxTurns.subagent` cap
 - [ ] `kinds/general.ts` — General-purpose prompt, configurable tool set
 - [ ] Tool: `Task` (in `src/tools/task/`) — thin wire to `subagents.spawn()`; no logic
 - [ ] `index.ts` — `spawn()`, `wait()`, `abort()`
@@ -98,11 +97,16 @@ The `Task` tool lives in `src/tools/task/` — wire-only, calls into `subagents.
 - [ ] Subagent inherits parent's permission mode in Phase 2
 - [ ] Smoke test: parent runs Explore against the Ye repo, gets a non-empty summary; parent's pre-Task vs post-Task message count differs only by the single Task tool result (no leaked sidechain history)
 
-### Phase 5 — Worktree + custom agents + verification
+### Phase 3 — Verification (likely-earlier-than-Phase-5)
+- [ ] `kinds/verification.ts` — adversarial verifier; ships with the anti-skipping prompt (see Phase 5 row in design)
+- [ ] Wire Verification into the `Task` tool's allowed types
+
+### Phase 5 — Worktree + custom agents + statusline-setup
 - [ ] `worktree.ts` — git worktree setup/teardown, auto-cleanup if no changes were made
-- [ ] `.ye/agents/*.md` parser (YAML frontmatter: tools, model, permissionMode, hooks, maxTurns, isolation, etc.)
-- [ ] `kinds/verification.ts` — adversarial verifier; ships with the anti-skipping prompt from `verificationAgent.ts`:
-  > "You will feel the urge to skip checks. … Run it."
+- [ ] `.ye/agents/*.md` parser (YAML frontmatter: tools, model, permissionMode, hooks, maxTurns, isolation, etc.) — low priority for solo project
+- [ ] `kinds/statuslineSetup.ts`
 - [ ] POSIX `flock`-based coordination for multi-subagent runs
 - [ ] Permission override rule: subagent mode applies unless parent is in `bypassPermissions`/`acceptEdits`/`auto`
 - [ ] Recursion: allow up to depth 2 with an explicit budget
+- [ ] Anti-skipping prompt baked into the Verification kind (already shipped Phase 3):
+  > "You will feel the urge to skip checks. … Run it."

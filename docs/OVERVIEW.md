@@ -11,6 +11,7 @@ It exists because Claude Code is great but closed. Ye is the same shape — a Re
 - **Architect for deferred features.** MCP, hooks, KAIROS, telemetry, anti-distillation, undercover mode — none of these are in v1. The seams where they will live are documented in their respective docs so we don't trap ourselves.
 - **Immutability.** New objects, never mutate.
 - **Many small files.** 200–400 lines typical, 800 max. Organize by domain, not by type.
+- **Convention enforcement is solo-review.** Mode strings, env var names, and file paths live in their resolvers, not inline. Self-reviewed for now; promote to ESLint when contributors join.
 
 ## Architecture (top-down)
 
@@ -19,8 +20,8 @@ Layers, in dependency order. Each is a folder under `src/` and a doc here.
 1. **Storage** (`storage/`, `memory/`) — `~/.ye/` filesystem layout, project hashing, session/history transcripts, the centralized `CLAUDE.md`/`YE.md` resolver, global `MEMORY.md`. See `STORAGE.md`.
 2. **Config** (`config/`) — `~/.ye/config.json` (default provider, default model). Already implemented.
 3. **Providers** (`providers/`) — abstract `Provider` interface; OpenRouter v1, Anthropic + OpenAI Phase 3. See `PROVIDERS.md`.
-4. **Permissions** (`permissions/`) — deny-first rule evaluation; `default` + `acceptAll` modes in v1. See `PERMISSIONS.md`.
-5. **Tools** (`tools/`) — Read, Edit, Write, Bash, Grep, Glob, TodoWrite for v1. See `TOOLS.md`.
+4. **Permissions** (`permissions/`) — deny-first rule evaluation; `AUTO` + `NORMAL` + `PLAN` modes in v1 (Shift+Tab cycles). See `PERMISSIONS.md`.
+5. **Tools** (`tools/`) — Read, Edit, Write, Bash, Grep, Glob, TodoWrite, ExitPlanMode for v1. See `TOOLS.md`.
 6. **Pipeline** (`pipeline/`) — the 9-step turn pipeline + agent loop. Streams events. See `PIPELINE.md`.
 7. **Subagents** (`subagents/`, Phase 2) — same pipeline, isolated state, sidechain transcripts. See `SUBAGENTS.md`.
 8. **UI** (`ui/`, `components/`) — Ink/React TUI. Interactive only in v1; headless via the same event stream later.
@@ -30,16 +31,16 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 ## Phase plan
 
 ### Phase 1 — MVP (target: usable for solo coding work on macOS)
-- `~/.ye/` layout + project hash + centralized notes-file resolver + session JSONL
-- OpenRouter provider
-- `default` + `acceptAll` permission modes
-- 7 v1 tools (Read, Edit, Write, Bash, Grep, Glob, TodoWrite)
-- 9-step pipeline (lean: shaper = trim oldest only)
-- Ink UI: streaming output, tool-call display, y/n prompts
+- `~/.ye/` layout + project hash + centralized notes-file resolver + session JSONL + plans directory at `~/.ye/projects/<hash>/plans/`
+- OpenRouter provider (with `getContextSize()` for the auto-compact threshold)
+- `AUTO` + `NORMAL` + `PLAN` permission modes (Shift+Tab cycles between them)
+- 8 v1 tools (Read, Edit, Write, Bash, Grep, Glob, TodoWrite, ExitPlanMode)
+- 9-step pipeline with one shaper: auto-compact at a configurable threshold (default 50% of context window)
+- Ink UI: streaming output, tool-call display, y/n prompts, Shift+Tab mode cycler
 - `ye` installable in `$PATH`
 
 ### Phase 2 — Depth
-- Subagents (Explore, Plan, General-purpose)
+- Subagents (Explore, General-purpose) — Plan-the-subagent is intentionally absent; PLAN-the-mode covers planning
 - Sidechain JSONL transcripts
 - Auto-memory (LLM scan of memory-file headers, top-N)
 - 4-level CLAUDE.md hierarchy
@@ -52,7 +53,7 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 - Conformance suite across all three
 
 ### Phase 4 — Compaction & recovery
-- Full 5-stage compaction (Snip → Microcompact → Context Collapse → Auto-Compact)
+- Add the four cheaper compaction shapers (Budget Reduction → Snip → Microcompact → Context Collapse) before v1's Auto-Compact, so Auto-Compact becomes the last resort instead of the only resort
 - Token-budget escalation, retries, fallback model
 - Session resume + cross-session prompt history (`~/.ye/history.jsonl`)
 - File-history checkpoints
@@ -60,9 +61,8 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 ### Phase 5 — Extensibility
 - Skills (`SKILL.md`, SkillTool)
 - Hooks (PreToolUse, PostToolUse, Stop)
-- Plan mode
 - Worktree isolation for subagents
-- Full 7-mode permission set + auto-classifier
+- Remaining permission modes (acceptEdits, dontAsk, bypassPermissions, bubble) + auto-classifier
 
 ### Phase 6 — Headless + cross-platform
 - `ye -p "prompt"` headless mode
@@ -130,4 +130,3 @@ Items here orchestrate across multiple subdocs or don't fit any single one. Doma
 - [ ] One assertion lib only (Bun's `expect`); set in stone before tests proliferate
 - [ ] Lint rule: no relative imports going up more than two `..`
 - [ ] No file > 800 lines (CI check)
-- [ ] No tool/file references mode strings, env var names, or paths inline — they live in their respective resolvers
