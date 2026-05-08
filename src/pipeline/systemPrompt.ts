@@ -399,15 +399,38 @@ Default marketplaces (search these first, in order, unless the user names a diff
 
 You can also use \`https://claudeskills.info\` or any other marketplace the user mentions.
 
-Workflow:
-1. WebFetch or WebSearch to find the skill the user wants.
-2. Locate the SKILL.md file for that skill on the marketplace (typically \`<repo>/skills/<name>/SKILL.md\` or similar).
-3. WebFetch the raw SKILL.md text. For GitHub, use the \`raw.githubusercontent.com\` URL — e.g. \`https://raw.githubusercontent.com/<owner>/<repo>/<branch>/path/to/SKILL.md\`. Use the \`gh\` CLI via Bash for repos requiring auth.
-4. Validate that it parses as a SKILL.md (has \`---\` frontmatter with \`name\` and \`description\`).
-5. Write it to \`~/.ye/skills/<name>/SKILL.md\` with \`Write\`. Create the directory first via \`Bash mkdir -p\`.
-6. Tell the user the skill is installed and they need to restart Ye for it to load (the registry is loaded once per session).
+**WebFetch is banned for installation.** It runs the page through a summariser and will silently mangle file contents. Use Bash for everything from step 2 onward.
 
-If the marketplace ships supporting files (\`scripts/\`, \`references/\`, \`assets/\`), copy those too — clone the relevant subdirectory or fetch each file individually.
+Canonical workflow — clone-then-copy. Don't curl files one at a time:
+
+1. WebSearch (and WebFetch only for browsing human-readable marketplace pages, never for downloading files) to find the source repo and the skill's path within it.
+
+2. Clone the whole repo to a temp dir, shallow:
+   \`\`\`
+   TMP=$(mktemp -d)
+   git clone --depth=1 https://github.com/<owner>/<repo> "$TMP"
+   \`\`\`
+   Use \`gh repo clone <owner>/<repo> "$TMP" -- --depth=1\` if auth is needed. Cloning is one command and gives you the entire directory structure (SKILL.md plus any \`scripts/\`, \`references/\`, \`assets/\`) — never enumerate via the GitHub trees API and curl files one at a time.
+
+3. Locate the skill's directory inside the clone. Two shapes you'll see:
+   - **Single-skill repo**: the SKILL.md sits at the repo root. The skill directory is "$TMP".
+   - **Multi-skill repo** (e.g. \`anthropics/skills\`): the repo contains many skills under per-skill subdirectories. The skill directory is "$TMP/<some-path>/<skill-name>". Use \`find "$TMP" -name SKILL.md\` if you don't already know the path.
+
+4. Validate the SKILL.md: starts with \`---\`, frontmatter has \`name\` and \`description\` and a closing \`---\` before the body. Read the \`name\` field — that's the install name, and the directory MUST match it exactly (mismatches are silently skipped at load).
+
+5. Copy the entire skill directory to \`~/.ye/skills/<name>/\`:
+   \`\`\`
+   mkdir -p ~/.ye/skills/<name>
+   cp -R "$TMP/<path-to-skill-dir>/." ~/.ye/skills/<name>/
+   rm -rf "$TMP"
+   \`\`\`
+   The trailing \`/.\` after the source path copies the directory's contents (including hidden files, but not the directory itself). All supporting files (scripts/, references/, assets/) come along automatically — that's the point of cloning the whole tree first.
+
+6. Tell the user the skill is installed and they need to restart Ye for it to load. Mention the path you wrote to.
+
+If the skill is genuinely a single SKILL.md file with no supporting tree (rare — most real skills have references/), \`curl -sSfL <raw-url> -o ~/.ye/skills/<name>/SKILL.md\` is fine. Default to clone-and-copy anyway; the cost difference is negligible and the bookkeeping is simpler.
+
+General rule: **WebFetch is for research and reading; Bash+git/curl/gh is for verbatim downloads.** Anything you'll Write to disk byte-for-byte should be fetched via Bash, not WebFetch.
 
 ### 2. Author a skill from a codebase pattern
 
