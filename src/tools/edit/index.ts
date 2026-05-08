@@ -4,6 +4,7 @@ import { prettyPath } from "../../ui/path.ts";
 import { atomicWrite, hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
+import { evaluate as evaluateHeuristics } from "./heuristics.ts";
 
 interface EditArgs {
     readonly path: string;
@@ -16,6 +17,7 @@ interface EditValue {
     readonly replacements: number;
     readonly line: number;
     readonly preview: string;
+    readonly feedback?: readonly string[];
 }
 
 const PREVIEW_RADIUS = 3;
@@ -202,12 +204,21 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<E
     const newStringLineSpan = new_string.split("\n").length;
     const { line, preview } = buildPreview(updated, siteLineIdx, newStringLineSpan);
 
+    const feedback = evaluateHeuristics({
+        original,
+        updated,
+        old_string,
+        new_string,
+        replace_all,
+    });
+
     return {
         ok: true,
         value: {
             replacements: replace_all ? total : 1,
             line,
             preview,
+            ...(feedback.length > 0 ? { feedback } : {}),
         },
     };
 };

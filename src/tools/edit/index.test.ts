@@ -227,7 +227,41 @@ describe("EditTool", () => {
         expect(updated.endsWith("\n")).toBe(true);
     });
 
-    test("E13 subagent isolation: parent's Read does not satisfy child's Edit", async () => {
+    test("E13a forwards heuristic feedback onto EditValue when warnings fire", async () => {
+        const path = join(workDir, "stub.txt");
+        await writeFile(path, "function existing() { return 1; }\n", "utf8");
+        const ctx = makeCtx();
+        await readInto(ctx, path);
+        const r = await EditTool.execute(
+            {
+                path,
+                old_string: "function existing() { return 1; }",
+                new_string: "function existing() {\n  // ...existing code...\n  return 1;\n}",
+            },
+            ctx,
+        );
+        expect(r.ok).toBe(true);
+        if (r.ok) {
+            const v = r.value as { feedback?: readonly string[] };
+            expect(v.feedback).toBeDefined();
+            expect(v.feedback?.some((m) => m.startsWith("stub:"))).toBe(true);
+        }
+    });
+
+    test("E13b omits feedback field entirely when no warnings fire", async () => {
+        const path = join(workDir, "clean.txt");
+        await writeFile(path, "alpha beta gamma\n", "utf8");
+        const ctx = makeCtx();
+        await readInto(ctx, path);
+        const r = await EditTool.execute({ path, old_string: "beta", new_string: "BETA" }, ctx);
+        expect(r.ok).toBe(true);
+        if (r.ok) {
+            const v = r.value as { feedback?: readonly string[] };
+            expect("feedback" in v).toBe(false);
+        }
+    });
+
+    test("E14 subagent isolation: parent's Read does not satisfy child's Edit", async () => {
         const path = join(workDir, "shared.txt");
         await writeFile(path, "shared content", "utf8");
         const parentCtx = makeCtx();
