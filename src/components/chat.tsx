@@ -2,6 +2,7 @@ import { Box, Static, Text } from "ink";
 import { memo } from "react";
 import { AssistantLine, MessageView } from "./message.tsx";
 import { Thinking } from "./thinking.tsx";
+import { ThinkingDone, ThinkingLive } from "./thinkingBlock.tsx";
 import { summarizeArgs, ToolCallView, type ToolCallEntry } from "./toolCall.tsx";
 import { Welcome } from "./welcome.tsx";
 
@@ -14,6 +15,14 @@ export type ChatItem =
       }
     | { readonly kind: "system"; readonly id: string; readonly content: string }
     | { readonly kind: "toolCall"; readonly entry: ToolCallEntry }
+    | {
+          readonly kind: "thinking";
+          readonly id: string;
+          readonly content: string;
+          readonly status: "live" | "done";
+          readonly startedAt: number;
+          readonly elapsedMs?: number;
+      }
     | {
           readonly kind: "welcome";
           readonly id: string;
@@ -74,8 +83,9 @@ export const computeDynamicStart = (items: readonly ChatItem[]): number => {
     while (i > 0) {
         const item = items[i - 1]!;
         const mustStayDynamic =
-            item.kind === "toolCall" &&
-            (item.entry.status === "running" || BUNDLEABLE.has(item.entry.name));
+            (item.kind === "toolCall" &&
+                (item.entry.status === "running" || BUNDLEABLE.has(item.entry.name))) ||
+            (item.kind === "thinking" && item.status === "live");
         if (!mustStayDynamic) break;
         i--;
     }
@@ -151,6 +161,12 @@ const RenderItem = memo(({ item }: RenderItemProps) => {
                 username={item.username}
             />
         );
+    }
+    if (item.kind === "thinking") {
+        if (item.status === "live") {
+            return <ThinkingLive content={item.content} startedAt={item.startedAt} />;
+        }
+        return <ThinkingDone elapsedMs={item.elapsedMs ?? 0} />;
     }
     return <ToolCallView entry={item.entry} />;
 });
@@ -259,6 +275,9 @@ export const Chat = ({
     const hasRunningTool = dynamicItems.some(
         (item) => item.kind === "toolCall" && item.entry.status === "running",
     );
+    const hasLiveThinking = dynamicItems.some(
+        (item) => item.kind === "thinking" && item.status === "live",
+    );
 
     return (
         <>
@@ -282,9 +301,9 @@ export const Chat = ({
                     !hasRunningTool &&
                     (streamingText.length > 0 ? (
                         <AssistantLine content={streamingText} />
-                    ) : (
+                    ) : !hasLiveThinking ? (
                         <Thinking />
-                    ))}
+                    ) : null)}
             </Box>
         </>
     );

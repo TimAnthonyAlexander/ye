@@ -501,6 +501,50 @@ export const App = ({ config }: AppProps) => {
             ]);
         };
 
+        // Reasoning ("thinking") accumulator. Mirrors the text accumulator but
+        // owns a live ChatItem that we mutate in place via setItems map. When
+        // the model starts emitting visible text or a tool_call we finalize
+        // the item to status "done" so it collapses to a one-liner above the
+        // streaming text.
+        let liveThinking: { id: string; content: string; startedAt: number } | null = null;
+        let pendingThinkingFlush: ReturnType<typeof setTimeout> | null = null;
+
+        const scheduleThinkingFlush = (): void => {
+            if (pendingThinkingFlush !== null) return;
+            pendingThinkingFlush = setTimeout(() => {
+                pendingThinkingFlush = null;
+                if (!liveThinking) return;
+                const { id, content } = liveThinking;
+                setItems((prev) =>
+                    prev.map((item) =>
+                        item.kind === "thinking" && item.id === id ? { ...item, content } : item,
+                    ),
+                );
+            }, 16);
+        };
+
+        const cancelThinkingFlush = (): void => {
+            if (pendingThinkingFlush !== null) {
+                clearTimeout(pendingThinkingFlush);
+                pendingThinkingFlush = null;
+            }
+        };
+
+        const finalizeThinking = (): void => {
+            cancelThinkingFlush();
+            if (!liveThinking) return;
+            const { id, content, startedAt } = liveThinking;
+            const elapsedMs = Date.now() - startedAt;
+            liveThinking = null;
+            setItems((prev) =>
+                prev.map((item) =>
+                    item.kind === "thinking" && item.id === id
+                        ? { ...item, content, status: "done", elapsedMs }
+                        : item,
+                ),
+            );
+        };
+
         try {
             const stream = queryLoop({
                 provider: providerRef.current!,
@@ -513,12 +557,34 @@ export const App = ({ config }: AppProps) => {
 
             for await (const evt of stream) {
                 switch (evt.type) {
+                    case "model.reasoning": {
+                        if (!liveThinking) {
+                            const id = newChatItemId();
+                            const startedAt = Date.now();
+                            liveThinking = { id, content: "", startedAt };
+                            setItems((prev) => [
+                                ...prev,
+                                {
+                                    kind: "thinking",
+                                    id,
+                                    content: "",
+                                    status: "live",
+                                    startedAt,
+                                },
+                            ]);
+                        }
+                        liveThinking.content += evt.delta;
+                        scheduleThinkingFlush();
+                        break;
+                    }
                     case "model.text": {
+                        finalizeThinking();
                         currentText += evt.delta;
                         scheduleStreamFlush();
                         break;
                     }
                     case "model.toolCall": {
+                        finalizeThinking();
                         commitText();
                         const entry: ToolCallEntry = {
                             id: evt.id,
@@ -598,6 +664,7 @@ export const App = ({ config }: AppProps) => {
                         break;
                     }
                     case "turn.end": {
+                        finalizeThinking();
                         commitText();
                         if (evt.error) {
                             setError(evt.error);
@@ -614,6 +681,7 @@ export const App = ({ config }: AppProps) => {
             }
             chainFailedRef.current = true;
         } finally {
+            finalizeThinking();
             commitText();
             streamingRef.current = false;
             abortRef.current = null;

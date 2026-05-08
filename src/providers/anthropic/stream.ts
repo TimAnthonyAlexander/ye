@@ -84,11 +84,17 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
                 if (!d) break;
                 if (d.type === "text_delta" && typeof d.text === "string" && d.text.length > 0) {
                     yield { type: "text.delta", text: d.text };
+                } else if (
+                    d.type === "thinking_delta" &&
+                    typeof d.thinking === "string" &&
+                    d.thinking.length > 0
+                ) {
+                    yield { type: "reasoning.delta", text: d.thinking };
                 } else if (d.type === "input_json_delta" && typeof d.partial_json === "string") {
                     const acc = toolBlocks.get(idx);
                     if (acc) acc.args += d.partial_json;
                 }
-                // thinking_delta / signature_delta / citations_delta — ignored for v1.
+                // signature_delta / citations_delta — ignored for v1.
                 break;
             }
             case "message_delta": {

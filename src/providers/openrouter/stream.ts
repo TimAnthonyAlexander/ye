@@ -7,9 +7,20 @@ interface ToolCallAccumulator {
     args: string;
 }
 
+interface ReasoningDetail {
+    type?: string;
+    text?: string;
+    summary?: string;
+    format?: string;
+    id?: string;
+}
+
 interface ChunkChoiceDelta {
     role?: string;
     content?: string;
+    reasoning?: string;
+    reasoning_content?: string;
+    reasoning_details?: ReadonlyArray<ReasoningDetail>;
     tool_calls?: ReadonlyArray<{
         index?: number;
         id?: string;
@@ -72,6 +83,24 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
         if (!choice) continue;
 
         const delta = choice.delta ?? {};
+
+        let reasoningOut = "";
+        if (typeof delta.reasoning === "string" && delta.reasoning.length > 0) {
+            reasoningOut = delta.reasoning;
+        } else if (
+            typeof delta.reasoning_content === "string" &&
+            delta.reasoning_content.length > 0
+        ) {
+            reasoningOut = delta.reasoning_content;
+        } else if (Array.isArray(delta.reasoning_details)) {
+            for (const d of delta.reasoning_details) {
+                if (typeof d.text === "string") reasoningOut += d.text;
+                else if (typeof d.summary === "string") reasoningOut += d.summary;
+            }
+        }
+        if (reasoningOut.length > 0) {
+            yield { type: "reasoning.delta", text: reasoningOut };
+        }
 
         if (typeof delta.content === "string" && delta.content.length > 0) {
             yield { type: "text.delta", text: delta.content };

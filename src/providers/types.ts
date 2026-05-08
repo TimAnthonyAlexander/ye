@@ -37,6 +37,7 @@ export type StopReason = "end_turn" | "tool_use" | "max_tokens" | "error" | "abo
 
 export type ProviderEvent =
     | { readonly type: "text.delta"; readonly text: string }
+    | { readonly type: "reasoning.delta"; readonly text: string }
     | {
           readonly type: "tool_call";
           readonly id: string;

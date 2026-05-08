@@ -19,6 +19,7 @@ export type StopReason =
 export type Event =
     | { readonly type: "turn.start"; readonly turnIndex: number }
     | { readonly type: "model.text"; readonly delta: string }
+    | { readonly type: "model.reasoning"; readonly delta: string }
     | {
           readonly type: "model.toolCall";
           readonly id: string;

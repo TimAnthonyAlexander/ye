@@ -32,6 +32,9 @@ export async function* streamFromProvider(
                 text += evt.text;
                 yield { type: "model.text", delta: evt.text };
                 break;
+            case "reasoning.delta":
+                yield { type: "model.reasoning", delta: evt.text };
+                break;
             case "tool_call":
                 toolCalls.push({ id: evt.id, name: evt.name, args: evt.args });
                 yield { type: "model.toolCall", id: evt.id, name: evt.name, args: evt.args };
