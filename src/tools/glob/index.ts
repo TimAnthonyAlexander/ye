@@ -1,5 +1,6 @@
 import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
@@ -8,6 +9,15 @@ interface GlobArgs {
     readonly pattern: string;
     readonly path?: string;
 }
+
+// The model frequently passes `~/.ye/...` or similar in path-style args. Shells
+// expand these; raw path joins do not. Expand at the boundary so the tool
+// behaves the way the model expects.
+const expandTilde = (p: string): string => {
+    if (p === "~") return homedir();
+    if (p.startsWith("~/")) return join(homedir(), p.slice(2));
+    return p;
+};
 
 const RESULT_CAP = 200;
 
@@ -77,7 +87,12 @@ const execute = async (
     if (!v.ok) return v;
     const { pattern, path } = v.value;
 
-    const root = path ? (isAbsolute(path) ? path : join(ctx.cwd, path)) : ctx.cwd;
+    const expandedPath = path ? expandTilde(path) : undefined;
+    const root = expandedPath
+        ? isAbsolute(expandedPath)
+            ? expandedPath
+            : join(ctx.cwd, expandedPath)
+        : ctx.cwd;
     const glob = new Bun.Glob(pattern);
 
     const matches = await collectMatches(root, glob);
@@ -92,7 +107,9 @@ export const GlobTool: Tool = {
     name: "Glob",
     description:
         "Match files by glob pattern (e.g. `**/*.ts`). Returns absolute paths sorted by mtime descending. " +
-        "Search root defaults to cwd; pass `path` to override. " +
+        "Search root defaults to cwd; pass `path` to override (supports `~/...` for home, " +
+        "or absolute paths like `/Users/foo/...`). The pattern itself should be relative to the " +
+        "search root — do not put absolute paths in `pattern` (they will not match). " +
         "Skips common noise (.git, node_modules, Library, .Trash, etc.) and tolerates permission errors silently.",
     annotations: { readOnlyHint: true },
     schema: {

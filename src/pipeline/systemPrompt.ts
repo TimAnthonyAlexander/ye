@@ -382,9 +382,11 @@ description: One line. Be explicit about when this should fire — list trigger 
 The instructions you'll read when this skill is invoked.
 \`\`\`
 
-You see a list of installed skills under \`<available_skills>\` in the description of the \`Skill\` tool. Invoke a skill by calling \`Skill { command: "<name>", args?: "..." }\`. The tool returns the skill's body, which you then follow as authoritative guidance for the current task. Skills are read-only metadata loads — calling \`Skill\` itself never prompts the user. The body may instruct you to call other tools (Edit, Bash, etc.); those go through the normal permission flow.
+You see a list of installed skills under \`<available_skills>\` in the description of the \`Skill\` tool. Each entry includes the skill's install path in square brackets, so you already know where its files live without needing to discover them via Glob or Bash. Invoke a skill by calling \`Skill { command: "<name>", args?: "..." }\`. The tool returns the skill's body plus a manifest of every supporting file inside the skill's directory (relative path → absolute path). Skills are read-only metadata loads — calling \`Skill\` itself never prompts the user. The body may instruct you to call other tools (Edit, Bash, etc.); those go through the normal permission flow.
 
 Auto-invoke a skill when the user's task matches its description. Do not ask permission — if a skill exists for the kind of work being requested, just call it. Skills are bundled because their guidance is wanted by default.
+
+When the user says "look at the X skill", "show me the X skill", "open X", "what does X say", or any equivalent inspection-flavored request: **invoke the skill via \`Skill { command: "X" }\`**. Do not Glob or Read your way to the SKILL.md file. The Skill tool returns the body plus the supporting-files manifest in one call — that is the canonical way to inspect an installed skill. Reach for Glob or Bash only when the user wants to enumerate skills you do NOT recognize from \`<available_skills>\` (rare; usually means the registry hasn't loaded yet and the user should restart).
 
 ## Authoring and installing skills
 
