@@ -20,3 +20,12 @@ export const getProjectMemoryDir = (projectId: string): string =>
     join(getProjectDir(projectId), "memory");
 export const getSidechainSessionsDir = (projectId: string, parentSessionId: string): string =>
     join(getProjectSessionsDir(projectId), parentSessionId, "sidechains");
+export const getProjectCheckpointsDir = (projectId: string): string =>
+    join(getProjectDir(projectId), "checkpoints");
+export const getSessionCheckpointsDir = (projectId: string, sessionId: string): string =>
+    join(getProjectCheckpointsDir(projectId), sessionId);
+export const getTurnCheckpointDir = (
+    projectId: string,
+    sessionId: string,
+    turnIndex: number,
+): string => join(getSessionCheckpointsDir(projectId, sessionId), String(turnIndex));

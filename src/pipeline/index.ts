@@ -40,6 +40,7 @@ export const createSessionState = async (
         denialTrail: null,
         compactedThisTurn: false,
         shapingFlags: newShapingFlags(),
+        globalTurnIndex: 0,
         selectedMemory: null,
         turnState: newTurnState(),
     };
@@ -62,7 +63,16 @@ export interface QueryLoopInput {
 export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
     const userMessage: Message = { role: "user", content: input.userPrompt };
     input.state.history.push(userMessage);
+    // The first runTurn inside this prompt will bump globalTurnIndex by 1.
+    // Recording it now lets /rewind map "user message N" → "first turn that
+    // ran for it = checkpoint to revert against".
+    const firstTurnGlobalIdx = input.state.globalTurnIndex + 1;
     await input.session.appendEvent({ type: "user.message", content: input.userPrompt });
+    await input.session.appendEvent({
+        type: "prompt.start",
+        firstTurnGlobalIdx,
+        preview: input.userPrompt.slice(0, 80),
+    });
 
     const maxTurns = input.maxTurnsOverride ?? input.config.maxTurns?.master ?? 100;
     const signal = input.signal ?? new AbortController().signal;

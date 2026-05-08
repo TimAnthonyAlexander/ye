@@ -19,7 +19,7 @@ interface OpenRouterReasoningParam {
 interface OpenRouterRequestBody {
     model: string;
     messages: ProviderInput["messages"];
-    stream: true;
+    stream: boolean;
     tools?: OpenRouterToolDef[];
     tool_choice?: "auto" | "none";
     parallel_tool_calls?: boolean;
@@ -47,7 +47,7 @@ export const buildRequestBody = (input: ProviderInput): OpenRouterRequestBody =>
     const body: OpenRouterRequestBody = {
         model: input.model,
         messages: input.messages,
-        stream: true,
+        stream: input.stream !== false,
     };
 
     if (input.tools && input.tools.length > 0) {

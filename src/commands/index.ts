@@ -6,6 +6,8 @@ import { InitCommand } from "./init.ts";
 import { ModeCommand } from "./mode.ts";
 import { ModelCommand } from "./model.ts";
 import { ProviderCommand } from "./provider.ts";
+import { ResumeCommand } from "./resume.ts";
+import { RewindCommand } from "./rewind.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
 
 export type {
@@ -39,6 +41,8 @@ const buildRegistry = (): ReadonlyMap<string, SlashCommand> => {
         ModeCommand,
         ProviderCommand,
         ModelCommand,
+        ResumeCommand,
+        RewindCommand,
         InitCommand,
         ExitCommand,
     ];

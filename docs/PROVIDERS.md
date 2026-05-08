@@ -53,6 +53,49 @@ interface ProviderCapabilities {
 
 The pipeline calls `getContextSize` **once per session**, on first turn, and caches the result in `SessionState.contextWindow`. No per-turn refetch. **A `/provider` or `/model` switch refetches and updates the cache** — different providers report different windows for the same model, and Anthropic's table is per-model.
 
+## Errors
+
+`stream()`'s terminal `stop` event carries a structured `ProviderError` instead
+of a free-form string. Defined in `src/providers/types.ts`:
+
+```ts
+type ProviderErrorKind =
+  | "rate_limit"        // 429
+  | "overloaded"        // Anthropic 529 / OpenRouter "overloaded"
+  | "server"            // 5xx
+  | "auth"              // 401 / 403
+  | "bad_request"       // 400 — generic
+  | "max_tokens_invalid" // 400 — max_tokens parameter rejected
+  | "prompt_too_long"   // 400 — prompt exceeds context window
+  | "network"           // fetch-level (DNS, TLS, connection refused)
+  | "stream_error"      // mid-stream parse/disconnect
+  | "unknown";
+
+interface ProviderError {
+  readonly kind: ProviderErrorKind;
+  readonly message: string;
+  readonly retryable: boolean;
+  readonly status?: number;
+}
+```
+
+Helpers live in `src/providers/errors.ts`: `classifyHttpError({status, body, fallbackMessage})`,
+`networkError(msg)`, `streamError(msg)`, `classifyMidStreamError(msg)` (sniffs
+mid-stream `error` chunks for known kinds), and `isRetryable(err)`.
+
+The recovery layer in `src/pipeline/recovery.ts` consumes these — see
+PIPELINE.md "Recovery (Phase 4 — shipped)". Branching on `err.kind` outside
+the providers/recovery modules is fine; branching on `provider.id` is still
+forbidden.
+
+## Non-streaming fallback
+
+`ProviderInput.stream` is an optional flag. Default `true`. When `false`, the
+provider POSTs without `stream: true` in the body and synthesises ProviderEvents
+from the single non-streamed JSON via `parseBatch()`. Both providers expose
+this. The recovery layer flips this on the first stream_error retry — the
+transport switch is treated as a free retry (no attempt-counter bump).
+
 ## Capabilities flag
 
 The pipeline asks `provider.capabilities` before deciding to:

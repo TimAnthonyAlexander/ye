@@ -1,4 +1,5 @@
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
+import type { ProviderError } from "../providers/index.ts";
 import type { ToolResult, UserQuestionOption } from "../tools/index.ts";
 
 export interface UserQuestionPayload {
@@ -55,12 +56,28 @@ export type Event =
           readonly tokensFreed: number;
       }
     | {
+          readonly type: "recovery.retry";
+          readonly attempt: number;
+          readonly kind: string;
+          readonly action:
+              | "lowered_max_tokens"
+              | "non_streaming"
+              | "force_shaper"
+              | "fallback_model"
+              | "backoff";
+          readonly waitMs?: number;
+      }
+    | {
           readonly type: "userQuestion.prompt";
           readonly id: string;
           readonly payload: UserQuestionPayload;
           respond(answer: string): void;
       }
-    | { readonly type: "turn.end"; readonly stopReason: StopReason; readonly error?: string };
+    | {
+          readonly type: "turn.end";
+          readonly stopReason: StopReason;
+          readonly error?: ProviderError;
+      };
 
 // A subset of Event that's safe to persist to the JSONL transcript (no callbacks).
 export interface TranscriptEvent {

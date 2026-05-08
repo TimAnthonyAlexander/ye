@@ -36,6 +36,11 @@ export interface SessionState {
     denialTrail: DenialTrail | null;
     compactedThisTurn: boolean;
     shapingFlags: ShapingFlags;
+    // Session-monotonic turn counter, incremented at the top of every runTurn.
+    // Distinct from queryLoop's per-prompt turnIndex (which resets each user
+    // message). Used as the checkpoint id for state-modifying tools so file
+    // snapshots from different user prompts don't collide.
+    globalTurnIndex: number;
     // Per-session model override. When undefined, runTurn falls back to
     // config.defaultModel.model. /model and /provider mutate this; provider
     // switches also clear it (the new provider gets its registry default).

@@ -1,5 +1,6 @@
+import { classifyMidStreamError } from "../errors.ts";
 import { sseDataLines } from "../sse.ts";
-import type { ProviderEvent, StopReason } from "../types.ts";
+import type { ProviderError, ProviderEvent, StopReason } from "../types.ts";
 
 interface ToolCallAccumulator {
     id?: string;
@@ -102,10 +103,96 @@ const safeParseJson = (raw: string): ChunkPayload | null => {
     }
 };
 
+interface NonStreamMessage {
+    role?: string;
+    content?: string | null;
+    reasoning?: string;
+    reasoning_content?: string;
+    tool_calls?: ReadonlyArray<{
+        id?: string;
+        type?: string;
+        function?: { name?: string; arguments?: string };
+    }>;
+}
+
+interface NonStreamChoice {
+    index?: number;
+    message?: NonStreamMessage;
+    finish_reason?: string | null;
+}
+
+interface NonStreamResponse {
+    choices?: ReadonlyArray<NonStreamChoice>;
+    error?: OpenRouterErrorPayload;
+}
+
+// Synthesize a one-shot event sequence from a non-streamed JSON response.
+// Used by the recovery layer's stream→batch fallback.
+export async function* parseBatch(response: Response): AsyncGenerator<ProviderEvent> {
+    let json: NonStreamResponse;
+    try {
+        json = (await response.json()) as NonStreamResponse;
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        yield {
+            type: "stop",
+            reason: "error",
+            error: classifyMidStreamError(`failed to parse non-streaming response: ${msg}`),
+        };
+        return;
+    }
+
+    if (json.error) {
+        yield {
+            type: "stop",
+            reason: "error",
+            error: classifyMidStreamError(formatOpenRouterError(json.error)),
+        };
+        return;
+    }
+
+    const choice = json.choices?.[0];
+    const message = choice?.message ?? {};
+    const stopReason: StopReason = mapFinishReason(choice?.finish_reason);
+
+    let reasoningOut = "";
+    if (typeof message.reasoning === "string" && message.reasoning.length > 0) {
+        reasoningOut = message.reasoning;
+    } else if (
+        typeof message.reasoning_content === "string" &&
+        message.reasoning_content.length > 0
+    ) {
+        reasoningOut = message.reasoning_content;
+    }
+    if (reasoningOut.length > 0) {
+        yield { type: "reasoning.delta", text: reasoningOut };
+    }
+
+    if (typeof message.content === "string" && message.content.length > 0) {
+        yield { type: "text.delta", text: message.content };
+    }
+
+    if (Array.isArray(message.tool_calls)) {
+        for (const tc of message.tool_calls) {
+            if (!tc.id || !tc.function?.name) continue;
+            const argText = tc.function.arguments ?? "";
+            let args: unknown;
+            try {
+                args = JSON.parse(argText.length > 0 ? argText : "{}");
+            } catch {
+                args = { _raw: argText };
+            }
+            yield { type: "tool_call", id: tc.id, name: tc.function.name, args };
+        }
+    }
+
+    yield { type: "stop", reason: stopReason };
+}
+
 export async function* parseStream(response: Response): AsyncGenerator<ProviderEvent> {
     const toolCalls = new Map<number, ToolCallAccumulator>();
     let stopReason: StopReason = "end_turn";
-    let errorMessage: string | undefined;
+    let errorPayload: ProviderError | undefined;
 
     for await (const data of sseDataLines(response)) {
         const chunk = safeParseJson(data);
@@ -113,7 +200,7 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
 
         if (chunk.error) {
             stopReason = "error";
-            errorMessage = formatOpenRouterError(chunk.error);
+            errorPayload = classifyMidStreamError(formatOpenRouterError(chunk.error));
             break;
         }
 
@@ -175,7 +262,7 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
         }
     }
 
-    yield errorMessage !== undefined
-        ? { type: "stop", reason: stopReason, error: errorMessage }
+    yield errorPayload !== undefined
+        ? { type: "stop", reason: stopReason, error: errorPayload }
         : { type: "stop", reason: stopReason };
 }

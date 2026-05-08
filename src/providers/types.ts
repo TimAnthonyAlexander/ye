@@ -31,9 +31,35 @@ export interface ProviderInput {
     readonly maxTokens?: number;
     readonly signal?: AbortSignal;
     readonly providerOptions?: Readonly<Record<string, unknown>>;
+    // When false, the provider performs a non-streaming POST and synthesizes
+    // ProviderEvent emissions from the single response. Default true. Used by
+    // the recovery layer's "streaming → batch" fallback after a stream_error.
+    readonly stream?: boolean;
 }
 
 export type StopReason = "end_turn" | "tool_use" | "max_tokens" | "error" | "abort";
+
+export type ProviderErrorKind =
+    | "rate_limit" // 429
+    | "overloaded" // provider-side capacity (Anthropic 529, OpenRouter "overloaded")
+    | "server" // 5xx
+    | "auth" // 401/403
+    | "bad_request" // 400 — generic
+    | "max_tokens_invalid" // 400 — maxTokens parameter rejected
+    | "prompt_too_long" // 400 — prompt exceeds context window
+    | "network" // fetch-level (DNS, connection refused, TLS)
+    | "stream_error" // mid-stream parse/disconnect
+    | "unknown";
+
+export interface ProviderError {
+    readonly kind: ProviderErrorKind;
+    readonly message: string;
+    // True when the recovery layer can usefully retry. False = surface to user.
+    readonly retryable: boolean;
+    // HTTP status when the error came from a response. Absent for network /
+    // stream errors that never produced a response.
+    readonly status?: number;
+}
 
 export type ProviderEvent =
     | { readonly type: "text.delta"; readonly text: string }
@@ -44,7 +70,7 @@ export type ProviderEvent =
           readonly name: string;
           readonly args: unknown;
       }
-    | { readonly type: "stop"; readonly reason: StopReason; readonly error?: string };
+    | { readonly type: "stop"; readonly reason: StopReason; readonly error?: ProviderError };
 
 export interface ProviderCapabilities {
     readonly promptCache: boolean;

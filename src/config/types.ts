@@ -52,6 +52,26 @@ export interface MaxTurnsConfig {
     readonly subagent: number;
 }
 
+export interface RecoveryFallbackModel {
+    readonly provider: ProviderId;
+    readonly model: string;
+}
+
+export interface RecoveryConfig {
+    // Max retries per turn for retryable provider errors (rate_limit, overloaded,
+    // server, network, max_tokens_invalid). Excludes the streaming→batch
+    // fallback, which is a single free retry, and prompt-too-long shaper
+    // escalation, which counts each forced shaper as one retry.
+    readonly maxRetries?: number;
+    // Initial backoff in ms; subsequent attempts double up to backoffMaxMs.
+    readonly backoffBaseMs?: number;
+    readonly backoffMaxMs?: number;
+    // Fallback model used after the primary model exhausts retries. When the
+    // provider differs, the recovery layer builds the fallback provider from
+    // the same config.providers map.
+    readonly fallbackModel?: RecoveryFallbackModel;
+}
+
 export interface PermissionRule {
     readonly effect: "allow" | "deny";
     readonly tool: string;
@@ -84,4 +104,5 @@ export interface Config {
     readonly maxTurns?: MaxTurnsConfig;
     readonly permissions?: PermissionsConfig;
     readonly webTools?: WebToolsConfig;
+    readonly recovery?: RecoveryConfig;
 }

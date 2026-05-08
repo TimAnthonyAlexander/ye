@@ -44,3 +44,27 @@ export const openSidechainSession = (
     projectId: string,
     parentSessionId: string,
 ): Promise<SessionHandle> => openSessionInDir(getSidechainSessionsDir(projectId, parentSessionId));
+
+// Re-open an existing session JSONL in append mode. Used by --resume / /resume
+// so the resumed conversation continues writing to the same transcript.
+export const openExistingSession = async (
+    projectId: string,
+    sessionId: string,
+): Promise<SessionHandle> => {
+    const dir = getProjectSessionsDir(projectId);
+    await mkdir(dir, { recursive: true });
+    const path = join(dir, `${sessionId}.jsonl`);
+    let closed = false;
+    return {
+        sessionId,
+        path,
+        async appendEvent(event: SessionEvent): Promise<void> {
+            if (closed) throw new Error("session closed");
+            const line = `${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`;
+            await appendFile(path, line);
+        },
+        async close(): Promise<void> {
+            closed = true;
+        },
+    };
+};

@@ -7,6 +7,7 @@ import type {
     PermissionRule,
     PermissionsConfig,
     ProviderConfig,
+    RecoveryConfig,
     WebSearchFallback,
     WebToolsConfig,
 } from "./types.ts";
@@ -255,6 +256,50 @@ const validateWebToolsConfig = (value: unknown): WebToolsConfig => {
     return out;
 };
 
+const validateRecoveryConfig = (value: unknown): RecoveryConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError("recovery must be an object");
+    }
+    const out: {
+        maxRetries?: number;
+        backoffBaseMs?: number;
+        backoffMaxMs?: number;
+        fallbackModel?: { provider: string; model: string };
+    } = {};
+    if (value.maxRetries !== undefined) {
+        if (
+            typeof value.maxRetries !== "number" ||
+            !Number.isInteger(value.maxRetries) ||
+            value.maxRetries < 0
+        ) {
+            throw new ConfigValidationError("recovery.maxRetries must be a non-negative integer");
+        }
+        out.maxRetries = value.maxRetries;
+    }
+    if (value.backoffBaseMs !== undefined) {
+        out.backoffBaseMs = validatePositiveInt("recovery.backoffBaseMs", value.backoffBaseMs);
+    }
+    if (value.backoffMaxMs !== undefined) {
+        out.backoffMaxMs = validatePositiveInt("recovery.backoffMaxMs", value.backoffMaxMs);
+    }
+    if (value.fallbackModel !== undefined) {
+        if (!isObject(value.fallbackModel)) {
+            throw new ConfigValidationError("recovery.fallbackModel must be an object");
+        }
+        if (!isString(value.fallbackModel.provider)) {
+            throw new ConfigValidationError("recovery.fallbackModel.provider must be a string");
+        }
+        if (!isString(value.fallbackModel.model)) {
+            throw new ConfigValidationError("recovery.fallbackModel.model must be a string");
+        }
+        out.fallbackModel = {
+            provider: value.fallbackModel.provider,
+            model: value.fallbackModel.model,
+        };
+    }
+    return out;
+};
+
 export const validateConfig = (raw: unknown): Config => {
     if (!isObject(raw)) {
         throw new ConfigValidationError("root must be an object");
@@ -281,6 +326,7 @@ export const validateConfig = (raw: unknown): Config => {
             ? { permissions: validatePermissionsConfig(raw.permissions) }
             : {}),
         ...(raw.webTools !== undefined ? { webTools: validateWebToolsConfig(raw.webTools) } : {}),
+        ...(raw.recovery !== undefined ? { recovery: validateRecoveryConfig(raw.recovery) } : {}),
     };
 };
 

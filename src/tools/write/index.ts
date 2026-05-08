@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { checkpointFile } from "../../storage/index.ts";
 import { prettyPath } from "../../ui/path.ts";
 import { atomicWrite, hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
@@ -41,6 +42,12 @@ const execute = async (
         }
     }
 
+    await checkpointFile({
+        projectId: ctx.projectId,
+        sessionId: ctx.sessionId,
+        turnIndex: ctx.turnIndex,
+        path,
+    });
     await atomicWrite(path, content, { preserveMode: fileExists });
     // Once written, this counts as read for subsequent edits in the same turn.
     ctx.turnState.readFiles.set(path, { hash: hashContent(content) });

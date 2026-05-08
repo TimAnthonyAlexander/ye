@@ -39,6 +39,7 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
         denialTrail: null,
         compactedThisTurn: false,
         shapingFlags: newShapingFlags(),
+        globalTurnIndex: 0,
         selectedMemory: [],
         turnState: newTurnState(),
         parentSessionId: input.parentSessionId,
@@ -61,7 +62,8 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
         })) {
             input.onChildEvent?.(evt);
             if (evt.type === "turn.start") turnCount = evt.turnIndex + 1;
-            if (evt.type === "turn.end" && evt.error !== undefined) errorMessage = evt.error;
+            if (evt.type === "turn.end" && evt.error !== undefined)
+                errorMessage = evt.error.message;
             // Subagents force AUTO mode and have a narrowed tool pool, so prompts
             // shouldn't fire. Defensive: deny anything that does.
             if (evt.type === "permission.prompt") evt.respond("deny");

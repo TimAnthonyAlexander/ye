@@ -49,9 +49,7 @@ export interface RunShapersOutput {
 // view of state.history. Yields shaper.applied events for observability and
 // runs a final clampBudget pass to take advantage of space freed by prompt-
 // shrinking shapers.
-export async function* runShapers(
-    input: RunShapersInput,
-): AsyncGenerator<Event, RunShapersOutput> {
+export async function* runShapers(input: RunShapersInput): AsyncGenerator<Event, RunShapersOutput> {
     const initialMaxTokens = input.config.compact?.defaultMaxTokens ?? DEFAULT_MAX_TOKENS;
     const budget: RequestBudget = {
         maxTokens: initialMaxTokens,

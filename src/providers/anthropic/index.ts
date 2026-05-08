@@ -1,10 +1,11 @@
 import { FALLBACK_CONTEXT_WINDOW } from "../../config/index.ts";
 import type { Config } from "../../config/index.ts";
 import { resolveApiKey } from "../build.ts";
+import { classifyHttpError, networkError, streamError } from "../errors.ts";
 import type { Provider, ProviderEvent, ProviderInput } from "../types.ts";
 import { buildRequestBody } from "./adapt.ts";
 import { ANTHROPIC_CONTEXT_SIZES } from "./models.ts";
-import { parseStream } from "./stream.ts";
+import { parseBatch, parseStream } from "./stream.ts";
 
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const ANTHROPIC_VERSION = "2023-06-01";
@@ -48,7 +49,7 @@ export const createAnthropicProvider = (deps: AnthropicDeps): Provider => {
                     return;
                 }
                 const msg = err instanceof Error ? err.message : String(err);
-                yield { type: "stop", reason: "error", error: `network: ${msg}` };
+                yield { type: "stop", reason: "error", error: networkError(`network: ${msg}`) };
                 return;
             }
 
@@ -61,19 +62,31 @@ export const createAnthropicProvider = (deps: AnthropicDeps): Provider => {
                 } catch {
                     if (text.length > 0) msg = `${msg}: ${text}`;
                 }
-                yield { type: "stop", reason: "error", error: msg };
+                yield {
+                    type: "stop",
+                    reason: "error",
+                    error: classifyHttpError({
+                        status: res.status,
+                        body: text,
+                        fallbackMessage: msg,
+                    }),
+                };
                 return;
             }
 
             try {
-                yield* parseStream(res);
+                if (input.stream === false) {
+                    yield* parseBatch(res);
+                } else {
+                    yield* parseStream(res);
+                }
             } catch (err) {
                 if (input.signal?.aborted) {
                     yield { type: "stop", reason: "abort" };
                     return;
                 }
                 const msg = err instanceof Error ? err.message : String(err);
-                yield { type: "stop", reason: "error", error: `stream: ${msg}` };
+                yield { type: "stop", reason: "error", error: streamError(`stream: ${msg}`) };
             }
         },
 

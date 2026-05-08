@@ -34,10 +34,7 @@ const makeBudget = (): RequestBudget => ({
     tokensFreedThisTurn: 0,
 });
 
-const makeCtx = (
-    state: SessionState,
-    config: Config = {} as unknown as Config,
-): ShaperContext => ({
+const makeCtx = (state: SessionState, config: Config = {} as unknown as Config): ShaperContext => ({
     state,
     messages: state.history,
     provider: stubProvider,

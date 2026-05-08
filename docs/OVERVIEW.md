@@ -55,9 +55,9 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 
 ### Phase 4 — Compaction & recovery
 - The four cheaper compaction shapers (Budget Reduction → Snip → Microcompact → Context Collapse) shipped — Auto-Compact is now the last resort instead of the only resort. See `PIPELINE.md` for thresholds, mechanics, and Phase 4.5 deferrals (smart-staleness Snip, LLM-summary Microcompact, message UUIDs + read-time projection)
-- Token-budget escalation, retries, fallback model — Phase 4.5
-- Session resume + cross-session prompt history (`~/.ye/history.jsonl`) — Phase 4.5
-- File-history checkpoints — Phase 4.5
+- **Recovery layer shipped** — `src/pipeline/recovery.ts` wraps step 5/6 with a typed retry orchestrator over `ProviderError`: token-budget escalation, streaming → batch fallback, prompt-too-long shaper escalation, and cross-provider fallback model. Configurable via `recovery.{maxRetries, backoffBaseMs, backoffMaxMs, fallbackModel}`. See PIPELINE.md "Recovery (Phase 4 — shipped)"
+- **Session resume shipped** — `ye --resume [<sessionId>]` flag + `/resume` slash command. Replays the session JSONL into a `Message[]` history via `replaySessionFile()`; permissions are not restored (hard rule). Cross-session prompt history (`~/.ye/history.jsonl`) was already in
+- **File-history checkpoints shipped** — Edit/Write snapshot the original before mutating into `~/.ye/projects/<hash>/checkpoints/<sessionId>/<globalTurnIndex>/`. `/rewind` opens a picker over user prompts in the current session, restores files via `rewindToTurn()`, and truncates conversation history with an append-only `rewind` JSONL marker honored at replay time
 
 ### Phase 5 — Extensibility
 - Skills (`SKILL.md`, SkillTool)

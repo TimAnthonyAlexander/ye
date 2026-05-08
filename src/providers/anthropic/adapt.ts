@@ -49,7 +49,7 @@ interface AnthropicRequestBody {
     model: string;
     messages: AnthropicMessage[];
     max_tokens: number;
-    stream: true;
+    stream: boolean;
     system?: AnthropicSystemBlock[];
     tools?: (AnthropicTool | AnthropicBuiltinTool)[];
     temperature?: number;
@@ -166,7 +166,7 @@ export const buildRequestBody = (input: ProviderInput): AnthropicRequestBody => 
         model: input.model,
         messages,
         max_tokens: input.maxTokens ?? DEFAULT_MAX_TOKENS,
-        stream: true,
+        stream: input.stream !== false,
     };
 
     if (system) body.system = system;

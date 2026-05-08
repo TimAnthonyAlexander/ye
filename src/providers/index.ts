@@ -7,6 +7,8 @@ export type {
     Message,
     Provider,
     ProviderCapabilities,
+    ProviderError,
+    ProviderErrorKind,
     ProviderEvent,
     ProviderInput,
     Role,

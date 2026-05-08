@@ -12,6 +12,8 @@ export type {
     PermissionsConfig,
     ProviderConfig,
     ProviderId,
+    RecoveryConfig,
+    RecoveryFallbackModel,
     WebSearchFallback,
     WebToolsConfig,
 } from "./types.ts";

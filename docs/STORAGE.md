@@ -94,13 +94,53 @@ One file per session, append-only, JSONL: `~/.ye/projects/<hash>/sessions/<sessi
 
 Compaction (Phase 4) records `headUuid`, `anchorUuid`, `tailUuid` on a "compact boundary" event. Reading patches the chain at load time. **Disk is never destructively edited.**
 
-## Cross-session prompt history (Phase 4)
+## Cross-session prompt history (Phase 4 — shipped)
 
 `~/.ye/history.jsonl`, append-only, one line per user prompt. Up-arrow in the UI scans backwards.
 
-## Checkpoints (Phase 4)
+## Checkpoints (Phase 4 — shipped)
 
-For `--rewind-files`-style rollbacks. Files are snapshot at change boundaries; stored under `~/.ye/projects/<hash>/checkpoints/`.
+For `/rewind`-style rollbacks. Edit and Write call `checkpointFile()` before
+mutating; the original content is copied into
+`~/.ye/projects/<hash>/checkpoints/<sessionId>/<globalTurnIndex>/file-N.snap`,
+indexed by a per-turn `manifest.json`. A `null` snapshot name signals "file did
+not exist before this turn" — `/rewind` deletes those files instead of
+restoring them.
+
+The turn id used here is the **session-monotonic** `state.globalTurnIndex`,
+not queryLoop's per-prompt `turnIndex`. Per-prompt indexing would collide
+across user prompts and silently drop checkpoints (the dedup-by-path inside a
+manifest would skip later turns' originals). globalTurnIndex bumps once per
+runTurn invocation across the whole session and resumes from `maxGlobalTurnIndex`
+on session resume so post-resume edits don't write into already-occupied
+checkpoint dirs.
+
+## Resume (Phase 4 — shipped)
+
+`ye --resume [<sessionId>]` and `/resume` both project the session JSONL back
+into a `Message[]` history via `replaySessionFile()`. The handle reopens the
+existing JSONL in append mode (`openExistingSession`) — the resumed
+conversation continues writing to the same transcript. Permissions are NOT
+restored: re-prompt always, by hard rule (PERMISSIONS.md §"Future-proofing").
+
+Replay also extracts:
+- `prompts[]`: `(ordinal, firstTurnGlobalIdx, preview, ts, historyIdx)` per
+  user prompt — used by `/rewind`'s picker.
+- `maxGlobalTurnIndex`: highest globalTurnIndex observed; restored into
+  `state.globalTurnIndex` so subsequent checkpoints don't collide.
+- `mode`: last-seen mode change (replay only — permissions never restore).
+
+## Rewind (Phase 4 — shipped)
+
+`/rewind` opens a picker over the current session's prompts. On selection it
+calls `rewindToTurn(projectId, sessionId, firstTurnGlobalIdx)` to restore
+files (walks turn checkpoints in reverse, applying each manifest), truncates
+`state.history` at the chosen prompt's `historyIdx`, and appends a `rewind`
+event to the JSONL: `{type: "rewind", upToPrompt, firstTurnGlobalIdx}`.
+
+The append-only invariant is preserved — the marker is honored at read-time
+by `replaySessionFile`, which discards events from the rewound prompt onward.
+A future `/resume` of the same session sees the post-rewind state.
 
 ## Files
 
@@ -156,6 +196,9 @@ src/memory/
 
 ### Phase 4 — History + checkpoints + resume
 - [x] `history.ts` — append on each prompt; reverse-read for Up-arrow
-- [ ] Compact-boundary events on session JSONL; load-time chain patching in `session.ts`
-- [ ] `checkpoints.ts` — file snapshots at change boundaries
-- [ ] `ye --resume <sessionId>` reconstructs history from JSONL (permissions are NOT restored — re-prompt as needed; this is a hard rule)
+- [x] `checkpoints.ts` — file snapshots at change boundaries; `checkpointFile`, `listSessionCheckpoints`, `rewindToTurn`. Uses session-monotonic `globalTurnIndex` so per-prompt turnIndex collisions don't drop captures
+- [x] `replay.ts` — `replaySessionFile()` projects events back to `Message[]`, extracts prompt boundaries and `maxGlobalTurnIndex`; `listProjectSessions()` for the resume picker
+- [x] `openExistingSession()` — append-mode handle for the resumed JSONL
+- [x] `ye --resume [<sessionId>]` flag + `/resume` slash command (permissions NOT restored — hard rule)
+- [x] `/rewind` slash command — files via `rewindToTurn`, history via append-only `rewind` marker honored at replay time
+- [ ] Compact-boundary events on session JSONL; load-time chain patching in `session.ts` (Phase 4.5; needs message UUIDs)

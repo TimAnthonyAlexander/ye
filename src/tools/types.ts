@@ -41,6 +41,10 @@ export interface ToolContext {
     readonly signal: AbortSignal;
     readonly sessionId: string;
     readonly projectId: string;
+    // Index of the current turn within the session, 0-based. State-modifying
+    // tools (Edit, Write) use it to scope file-history checkpoints so /rewind
+    // can undo a turn's mutations.
+    readonly turnIndex: number;
     readonly turnState: TurnState;
     // Active provider + config for the current turn. Tools that need to make
     // their own LLM calls (WebFetch's summariser) or read tool-scoped config

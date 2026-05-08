@@ -24,6 +24,8 @@ import { type Config, type LoadResult, type PermissionMode, saveConfig } from ".
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
 import { createSessionState, queryLoop, type SessionState } from "../pipeline/index.ts";
 import { resetShapingFlags } from "../pipeline/state.ts";
+import type { Message, ToolCallRequest } from "../providers/index.ts";
+import type { ReplayedSession } from "../storage/index.ts";
 import { estimateTokens } from "../pipeline/shapers/tokens.ts";
 import {
     defaultModelFor,
@@ -35,9 +37,14 @@ import {
 import {
     appendHistory,
     getProjectId,
+    listProjectSessions,
     loadHistory,
+    openExistingSession,
     openSession,
+    replaySessionFile,
+    rewindToTurn,
     type SessionHandle,
+    type SessionSummary,
 } from "../storage/index.ts";
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
@@ -70,6 +77,10 @@ interface QueuedDisplayItem {
 
 interface AppProps {
     readonly config: LoadResult;
+    // When set, App opens the resume picker (or loads the named session
+    // directly) instead of starting a fresh transcript on mount.
+    readonly resumeOnStart?: boolean;
+    readonly resumeSessionId?: string | null;
 }
 
 interface PendingPrompt {
@@ -129,7 +140,76 @@ const formatElapsed = (totalSec: number): string => {
     return s === 0 ? `${m}m` : `${m}m ${s}s`;
 };
 
-export const App = ({ config }: AppProps) => {
+const safeParseArgs = (raw: string): unknown => {
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return {};
+    }
+};
+
+// Convert a replayed Message[] back into the ChatItem[] the live UI uses.
+// Tool messages are skipped — their content is already captured by the tool
+// call entry's result. Tool calls inherit ok/error status and result text from
+// the replay's parallel toolCalls array (looked up by id).
+const buildItemsFromReplay = (replayed: ReplayedSession): ChatItem[] => {
+    const items: ChatItem[] = [];
+    interface ResultRow {
+        readonly ok: boolean;
+        readonly text: string;
+        readonly args: unknown;
+    }
+    const resultsById = new Map<string, ResultRow>();
+    for (const tc of replayed.toolCalls) {
+        resultsById.set(tc.id, { ok: tc.resultOk, text: tc.resultText, args: tc.args });
+    }
+
+    for (const msg of replayed.history as readonly Message[]) {
+        if (msg.role === "user" && typeof msg.content === "string") {
+            items.push({
+                kind: "message",
+                id: newChatItemId(),
+                role: "user",
+                content: msg.content,
+            });
+            continue;
+        }
+        if (msg.role === "assistant") {
+            const text = typeof msg.content === "string" ? msg.content : "";
+            if (text.length > 0) {
+                items.push({
+                    kind: "message",
+                    id: newChatItemId(),
+                    role: "assistant",
+                    content: text,
+                });
+            }
+            for (const tc of (msg.tool_calls ?? []) as readonly ToolCallRequest[]) {
+                const row = resultsById.get(tc.id);
+                const args = row?.args ?? safeParseArgs(tc.function.arguments);
+                items.push({
+                    kind: "toolCall",
+                    entry: {
+                        id: tc.id,
+                        name: tc.function.name,
+                        args,
+                        status: row ? (row.ok ? "done" : "error") : "done",
+                        ...(row
+                            ? {
+                                  result: row.ok
+                                      ? { ok: true, value: row.text }
+                                      : { ok: false, error: row.text },
+                              }
+                            : {}),
+                    },
+                });
+            }
+        }
+    }
+    return items;
+};
+
+export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
     const initialCfg = config.config;
     const { exit } = useApp();
     const [mode, setMode] = useState<PermissionMode>(
@@ -247,10 +327,7 @@ export const App = ({ config }: AppProps) => {
         );
     };
 
-    const appendUserToChat = (
-        text: string,
-        attachments: readonly ExpandedAttachment[],
-    ): void => {
+    const appendUserToChat = (text: string, attachments: readonly ExpandedAttachment[]): void => {
         const userItem: ChatItem = {
             kind: "message",
             id: newChatItemId(),
@@ -291,6 +368,120 @@ export const App = ({ config }: AppProps) => {
         setTodos([]);
         setError(null);
         setUsedTokens(0);
+        // Items already promoted to <Static> live in terminal scrollback,
+        // outside React's tree — clearing items state alone won't reclaim
+        // those rows. ESC[2J clears the visible screen, ESC[3J the scrollback.
+        process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+    };
+
+    // Resume an existing session: replay its JSONL into history, swap the
+    // session handle to append-mode against the same file, and rebuild the
+    // chat view. Permissions are NOT restored — the user re-prompts on the
+    // first state-modifying call (PERMISSIONS.md hard rule).
+    const loadSession = async (sessionId: string): Promise<void> => {
+        const state = stateRef.current;
+        if (!state) throw new Error("session not ready");
+        const summaries = await listProjectSessions(state.projectId);
+        const summary = summaries.find((s) => s.sessionId === sessionId);
+        if (!summary) throw new Error(`session not found: ${sessionId}`);
+
+        const replayed = await replaySessionFile(summary.path);
+        const newSession = await openExistingSession(state.projectId, sessionId);
+        const oldSession = sessionRef.current;
+        sessionRef.current = newSession;
+        if (oldSession) await oldSession.close().catch(() => {});
+
+        state.history = [...(replayed.history as Message[])];
+        state.sessionRules = [];
+        state.denialTrail = null;
+        state.compactedThisTurn = false;
+        resetShapingFlags(state);
+        // Resume globalTurnIndex from the highest one observed in the JSONL
+        // so post-resume edits don't collide with already-written checkpoints.
+        state.globalTurnIndex = replayed.maxGlobalTurnIndex;
+        if (replayed.mode) {
+            state.mode = replayed.mode;
+            setMode(replayed.mode);
+        }
+
+        const replayItems = buildItemsFromReplay(replayed);
+        setItems(replayItems);
+        setCommittedCount(replayItems.length);
+        setTodos([]);
+        setError(null);
+        setUsedTokens(estimateTokens(state.history));
+        process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+    };
+
+    const buildResumeOptions = (
+        summaries: readonly SessionSummary[],
+    ): readonly { id: string; label: string; description: string }[] =>
+        summaries.map((s) => ({
+            id: s.sessionId,
+            label: `${s.modifiedAt.slice(0, 16).replace("T", " ")} · ${s.userMessageCount} msg`,
+            description: s.preview || "(no preview)",
+        }));
+
+    const runResumePicker = async (): Promise<string | null> => {
+        const state = stateRef.current;
+        if (!state) return null;
+        const summaries = await listProjectSessions(state.projectId);
+        if (summaries.length === 0) {
+            addSystemMessage("No previous sessions to resume.");
+            return null;
+        }
+        return await pick({
+            title: "Resume session",
+            options: buildResumeOptions(summaries),
+        });
+    };
+
+    const runRewindFlow = async (): Promise<boolean> => {
+        const state = stateRef.current;
+        const session = sessionRef.current;
+        if (!state || !session) return false;
+        const replayed = await replaySessionFile(session.path);
+        if (replayed.prompts.length === 0) {
+            addSystemMessage("No earlier prompts to rewind to.");
+            return false;
+        }
+        const options = replayed.prompts.map((p) => ({
+            id: String(p.ordinal),
+            label: `${p.ts.slice(0, 16).replace("T", " ")} · prompt ${p.ordinal + 1}`,
+            description: p.preview || "(no preview)",
+        }));
+        const choice = await pick({ title: "Rewind to before…", options });
+        if (!choice) return false;
+        const ordinal = Number.parseInt(choice, 10);
+        const target = replayed.prompts[ordinal];
+        if (!target) return false;
+
+        await rewindToTurn(state.projectId, state.sessionId, target.firstTurnGlobalIdx);
+        await session.appendEvent({
+            type: "rewind",
+            upToPrompt: target.ordinal,
+            firstTurnGlobalIdx: target.firstTurnGlobalIdx,
+        });
+
+        // Truncate in-memory state to before the chosen prompt's user message.
+        state.history = state.history.slice(0, target.historyIdx);
+        state.sessionRules = [];
+        state.denialTrail = null;
+        state.compactedThisTurn = false;
+        resetShapingFlags(state);
+
+        // Replace UI items with the post-truncation projection. Easiest path:
+        // re-replay the JSONL (which now has the rewind marker we just wrote)
+        // and rebuild items from scratch.
+        const after = await replaySessionFile(session.path);
+        const newItems = buildItemsFromReplay(after);
+        setItems(newItems);
+        setCommittedCount(newItems.length);
+        setTodos([]);
+        setError(null);
+        setUsedTokens(estimateTokens(state.history));
+        process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+        return true;
     };
 
     const askForKey = (payload: KeyPromptPayload): Promise<string | null> => {
@@ -413,6 +604,13 @@ export const App = ({ config }: AppProps) => {
             setProvider: switchProvider,
             setModel: switchModel,
             clearChat: rotateSession,
+            resume: async () => {
+                const targetId = await runResumePicker();
+                if (!targetId) return false;
+                await loadSession(targetId);
+                return true;
+            },
+            rewind: runRewindFlow,
             exitApp: exit,
             addSystemMessage,
             sendHiddenPrompt,
@@ -478,6 +676,21 @@ export const App = ({ config }: AppProps) => {
                         if (!cancelled) setFileIndex(idx);
                     })
                     .catch(() => {});
+
+                if (resumeOnStart) {
+                    try {
+                        const targetId = resumeSessionId
+                            ? resumeSessionId
+                            : await runResumePicker();
+                        if (!cancelled && targetId) await loadSession(targetId);
+                    } catch (e) {
+                        if (!cancelled) {
+                            setError(
+                                `resume failed: ${e instanceof Error ? e.message : String(e)}`,
+                            );
+                        }
+                    }
+                }
             } catch (e) {
                 setBootError(e instanceof Error ? e.message : String(e));
             }
@@ -748,7 +961,7 @@ export const App = ({ config }: AppProps) => {
                         finalizeThinking();
                         commitText();
                         if (evt.error) {
-                            setError(evt.error);
+                            setError(evt.error.message);
                             chainFailedRef.current = true;
                         }
                         break;

@@ -136,7 +136,9 @@ describe("contextCollapse", () => {
         history[17] = {
             role: "assistant",
             content: null,
-            tool_calls: [{ id: "c1", type: "function", function: { name: "Read", arguments: "{}" } }],
+            tool_calls: [
+                { id: "c1", type: "function", function: { name: "Read", arguments: "{}" } },
+            ],
         };
         history[18] = { role: "tool", tool_call_id: "c1", content: "result body" };
         const state = makeState(history, 500);

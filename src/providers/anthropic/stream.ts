@@ -1,5 +1,6 @@
+import { classifyMidStreamError } from "../errors.ts";
 import { sseDataLines } from "../sse.ts";
-import type { ProviderEvent, StopReason } from "../types.ts";
+import type { ProviderError, ProviderEvent, StopReason } from "../types.ts";
 
 interface ToolUseAccumulator {
     id: string;
@@ -53,6 +54,59 @@ const safeParseJson = (raw: string): AnthropicStreamEvent | null => {
     }
 };
 
+interface AnthropicBatchContentBlock {
+    type?: string;
+    text?: string;
+    id?: string;
+    name?: string;
+    input?: unknown;
+}
+
+interface AnthropicBatchResponse {
+    type?: string;
+    content?: ReadonlyArray<AnthropicBatchContentBlock>;
+    stop_reason?: string | null;
+    error?: { type?: string; message?: string };
+}
+
+// Synthesize a one-shot event sequence from a non-streamed JSON response.
+// Used by the recovery layer's stream→batch fallback.
+export async function* parseBatch(response: Response): AsyncGenerator<ProviderEvent> {
+    let json: AnthropicBatchResponse;
+    try {
+        json = (await response.json()) as AnthropicBatchResponse;
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        yield {
+            type: "stop",
+            reason: "error",
+            error: classifyMidStreamError(`failed to parse non-streaming response: ${msg}`),
+        };
+        return;
+    }
+
+    if (json.error) {
+        yield {
+            type: "stop",
+            reason: "error",
+            error: classifyMidStreamError(json.error.message ?? "unknown provider error"),
+        };
+        return;
+    }
+
+    const stopReason = mapStopReason(json.stop_reason);
+
+    for (const block of json.content ?? []) {
+        if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
+            yield { type: "text.delta", text: block.text };
+        } else if (block.type === "tool_use" && block.id && block.name) {
+            yield { type: "tool_call", id: block.id, name: block.name, args: block.input ?? {} };
+        }
+    }
+
+    yield { type: "stop", reason: stopReason };
+}
+
 // Anthropic SSE → Ye ProviderEvent stream.
 // Event flow:
 //   message_start → content_block_start (text) → content_block_delta (text_delta...)
@@ -63,7 +117,7 @@ const safeParseJson = (raw: string): AnthropicStreamEvent | null => {
 export async function* parseStream(response: Response): AsyncGenerator<ProviderEvent> {
     const toolBlocks = new Map<number, ToolUseAccumulator>();
     let stopReason: StopReason = "end_turn";
-    let errorMessage: string | undefined;
+    let errorPayload: ProviderError | undefined;
 
     for await (const data of sseDataLines(response)) {
         const evt = safeParseJson(data);
@@ -104,7 +158,9 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
             }
             case "error": {
                 stopReason = "error";
-                errorMessage = evt.error?.message ?? "unknown provider error";
+                errorPayload = classifyMidStreamError(
+                    evt.error?.message ?? "unknown provider error",
+                );
                 break;
             }
             // message_start, content_block_stop, ping, message_stop — no-op.
@@ -125,7 +181,7 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
         }
     }
 
-    yield errorMessage !== undefined
-        ? { type: "stop", reason: stopReason, error: errorMessage }
+    yield errorPayload !== undefined
+        ? { type: "stop", reason: stopReason, error: errorPayload }
         : { type: "stop", reason: stopReason };
 }

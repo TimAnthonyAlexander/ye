@@ -27,6 +27,14 @@ export interface SlashCommandContext {
     setProvider(next: string): Promise<void>;
     setModel(next: string): Promise<void>;
     clearChat(): Promise<void>;
+    // Open the resume picker and (if a session is chosen) replay it. Returns
+    // true when a session was loaded, false when the user cancelled or there
+    // are no sessions available.
+    resume(): Promise<boolean>;
+    // Open the rewind picker for the active session. On selection, restores
+    // file state to before the chosen user prompt and truncates conversation
+    // history. Returns true when a rewind was applied.
+    rewind(): Promise<boolean>;
     exitApp(): void;
     addSystemMessage(text: string): void;
     // Send a synthetic user prompt to the model without surfacing it in the

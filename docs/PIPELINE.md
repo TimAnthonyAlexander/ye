@@ -57,15 +57,30 @@ Each `"applied"` emits a `shaper.applied` event (`name`, `tokensFreed`) — pick
 
 > **Risk note (acknowledged):** 0.5 is aggressive — it triggers when half the window is empty. The threshold is config-driven so tuning costs nothing. Revisit after a week of real use.
 
-## Recovery (Phase 4)
+## Recovery (Phase 4 — shipped)
 
-- Max output token escalation, up to 3 retries per turn.
-- Reactive compaction fires at most once per turn.
-- Prompt-too-long: try Context Collapse → Auto-Compact → terminate with a clean error.
-- Streaming fallback (drop to non-streaming).
-- Fallback model switch.
+`src/pipeline/recovery.ts` wraps the model call with a retry orchestrator. It
+classifies provider errors via the `ProviderError` taxonomy (see PROVIDERS.md)
+and applies one of five strategies:
 
-v1 has none of this. v1's failure mode for an oversized prompt is "tell the user, exit cleanly". This is a known KISS choice; full recovery is a Phase 4 expansion.
+| Strategy | Trigger | Action |
+|---|---|---|
+| Lower max_tokens | `max_tokens_invalid` | Halve `budget.maxTokens` (floor 1024); retry |
+| Non-streaming | `stream_error`, first time | Re-call with `stream: false`; free retry (no attempt-count bump) |
+| Force shaper | `prompt_too_long`, first time | `runSummarizeAndReplace(preserveRecent=4)`; re-assemble; retry |
+| Fallback model | retry budget near-exhausted, `recovery.fallbackModel` set | Rebuild provider if needed, swap model; one shot |
+| Backoff | rate_limit / overloaded / server / network | Exponential backoff (`backoffBaseMs * 2^attempt`, capped at `backoffMaxMs`); retry |
+
+Hard rule: **retries only fire when no model content has streamed yet** in the
+failed attempt. Once any text or tool call has been yielded, the result commits
+as-is — replaying would duplicate output in the UI. This is the seam that lets
+us run streaming retries safely without buffering deltas.
+
+Retry budget defaults: `recovery.maxRetries: 3`, `backoffBaseMs: 500`,
+`backoffMaxMs: 8000`. All configurable.
+
+Recovery emits `recovery.retry` events for the UI: `{ attempt, kind, action,
+waitMs? }`. The session JSONL captures them too.
 
 > Direct lesson from the leaked Claude Code compaction bug: every retry path has an explicit budget. No silent infinite-retry loops.
 
@@ -84,7 +99,8 @@ type Event =
   | { type: "tool.start"; id: string; name: string }
   | { type: "tool.end"; id: string; result: ToolResult }
   | { type: "shaper.applied"; name: string; tokensFreed: number }  // step 4 mutation
-  | { type: "turn.end"; stopReason: StopReason };
+  | { type: "recovery.retry"; attempt: number; kind: string; action: "lowered_max_tokens" | "non_streaming" | "force_shaper" | "fallback_model" | "backoff"; waitMs?: number }
+  | { type: "turn.end"; stopReason: StopReason; error?: ProviderError };
 ```
 
 The permission prompt is the only event that *expects a response*. It's modeled as a request/response pair via a `respond(decision)` function attached to the event.
@@ -159,10 +175,10 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 - [x] `runShapers` is an `AsyncGenerator<Event, RunShapersOutput>`; emits `shaper.applied` events as shapers fire; `MAX_SHAPER_APPLIED_PER_TURN = 4` orchestrator cap (belt-and-suspenders against the leaked-Claude-Code retry-loop bug)
 - [x] Per-shaper one-shot `state.shapingFlags`; `clampBudget()` finalizer runs after the chain when any shaper applied, so prompt-shrinking results in a higher reply budget
 - [x] Shared `summarize.ts` with boundary-pairing guard (prevents orphaned `tool_call_id` across the older/recent split — used by both `autoCompact` and `contextCollapse`)
-- [ ] Token-budget escalation in step 5 with explicit retry budget (max 3) — Phase 4.5
-- [ ] Prompt-too-long → Context Collapse → Auto-Compact → terminate path — Phase 4.5
-- [ ] Streaming fallback to non-streaming on stream errors — Phase 4.5
-- [ ] Fallback model switch on persistent provider errors — Phase 4.5
+- [x] Token-budget escalation in step 5 with explicit retry budget (default 3, configurable in `recovery.maxRetries`); `max_tokens_invalid` halves and retries
+- [x] Prompt-too-long → forced summarize-and-replace → retry; surfaces typed error if shaper escalation can't free enough room
+- [x] Streaming fallback to non-streaming on stream errors — `ProviderInput.stream` flag plumbed through OpenRouter and Anthropic; both providers now expose a `parseBatch()` non-stream code path
+- [x] Fallback model switch on persistent provider errors — `recovery.fallbackModel` config; cross-provider fallback supported (recovery rebuilds via `getProvider`)
 - [ ] Compact-boundary events on session JSONL (`headUuid`/`anchorUuid`/`tailUuid`) — Phase 4.5 (needs message UUIDs + read-time projection layer; Phase 4 shapers mutate `state.history` in place instead)
 - [ ] Smart-staleness Snip (path-aware: drop a Read result on file X if a later operation supersedes it) — Phase 4.5; needs a `Tool → "what file did this affect?"` resolver
 - [ ] LLM-summarization variant of Microcompact — Phase 4.5; gated behind a config flag, default off (current Microcompact is local-truncation-only to stay genuinely cheaper than Auto-Compact)

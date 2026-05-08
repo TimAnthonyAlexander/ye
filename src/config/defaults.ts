@@ -36,6 +36,11 @@ export const DEFAULT_CONFIG: Config = {
         maxContentChars: 100_000,
         searchFallback: "duckduckgo",
     },
+    recovery: {
+        maxRetries: 3,
+        backoffBaseMs: 500,
+        backoffMaxMs: 8_000,
+    },
 };
 
 export const FALLBACK_CONTEXT_WINDOW = 128_000;

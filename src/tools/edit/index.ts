@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { checkpointFile } from "../../storage/index.ts";
 import { prettyPath } from "../../ui/path.ts";
 import { atomicWrite, hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
@@ -188,6 +189,12 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<E
         ? original.split(old_string).join(new_string)
         : original.slice(0, firstIdx) + new_string + original.slice(firstIdx + old_string.length);
 
+    await checkpointFile({
+        projectId: ctx.projectId,
+        sessionId: ctx.sessionId,
+        turnIndex: ctx.turnIndex,
+        path,
+    });
     await atomicWrite(path, updated, { preserveMode: true });
     ctx.turnState.readFiles.set(path, { hash: hashContent(updated) });
 

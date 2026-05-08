@@ -1,4 +1,4 @@
-import type { Provider, ProviderInput } from "../providers/index.ts";
+import type { Provider, ProviderError, ProviderInput } from "../providers/index.ts";
 import type { Event } from "./events.ts";
 
 export interface CollectedToolCall {
@@ -11,7 +11,7 @@ export interface ModelStreamResult {
     readonly text: string;
     readonly toolCalls: readonly CollectedToolCall[];
     readonly stopReason: "end_turn" | "tool_use" | "max_tokens" | "error" | "abort";
-    readonly error?: string;
+    readonly error?: ProviderError;
 }
 
 // Step 5 + early-step 6. Runs the model stream, yielding text deltas and
@@ -24,7 +24,7 @@ export async function* streamFromProvider(
     let text = "";
     const toolCalls: CollectedToolCall[] = [];
     let stopReason: ModelStreamResult["stopReason"] = "end_turn";
-    let error: string | undefined;
+    let error: ProviderError | undefined;
 
     for await (const evt of provider.stream(input)) {
         switch (evt.type) {

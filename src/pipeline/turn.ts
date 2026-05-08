@@ -20,15 +20,11 @@ import {
     type TurnState,
 } from "../tools/index.ts";
 import { assemble } from "./assemble.ts";
-import { type CollectedToolCall, streamFromProvider } from "./dispatch.ts";
+import { type CollectedToolCall } from "./dispatch.ts";
 import { transcriptable, type Event, type StopReason } from "./events.ts";
+import { runModelCallWithRecovery } from "./recovery.ts";
 import { runShapers } from "./shapers/index.ts";
-import {
-    recordDenial,
-    resetDenialTrail,
-    resetShapingFlags,
-    type SessionState,
-} from "./state.ts";
+import { recordDenial, resetDenialTrail, resetShapingFlags, type SessionState } from "./state.ts";
 import { evaluateStop } from "./stop.ts";
 
 export interface TurnDeps {
@@ -87,6 +83,9 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     // Reset per-turn flags.
     state.compactedThisTurn = false;
     resetShapingFlags(state);
+    // Monotonic counter — used by Edit/Write to scope file checkpoints. Each
+    // turn (across all user prompts in this session) gets a unique value.
+    state.globalTurnIndex += 1;
 
     yield { type: "turn.start", turnIndex };
     await session.appendEvent({ type: "turn.start", turnIndex });
@@ -141,12 +140,15 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         webSearchAvailable,
         ...(state.allowedTools ? { allowedTools: state.allowedTools } : {}),
     });
-    const streamGen = streamFromProvider(provider, {
-        model: activeModel,
-        messages,
+    const recoveryGen = runModelCallWithRecovery({
+        state,
+        config,
+        initialProvider: provider,
+        initialModel: activeModel,
+        budget,
+        initialMessages: messages,
         tools,
         signal,
-        maxTokens: budget.maxTokens,
         providerOptions: {
             providerOrder: config.defaultModel.providerOrder,
             allowFallbacks: config.defaultModel.allowFallbacks,
@@ -157,21 +159,27 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     let toolCalls: readonly CollectedToolCall[] = [];
 
     while (true) {
-        const next = await streamGen.next();
+        const next = await recoveryGen.next();
         if (next.done) {
-            modelText = next.value.text;
-            toolCalls = next.value.toolCalls;
-            if (next.value.stopReason === "error") {
+            const out = next.value;
+            modelText = out.result.text;
+            toolCalls = out.result.toolCalls;
+            // Persist any model/provider switch the recovery layer decided so
+            // the rest of the turn (and the next turn) sees the new state.
+            if (out.finalModel !== activeModel) {
+                state.activeModel = out.finalModel;
+            }
+            if (out.result.stopReason === "error") {
                 const errorEvent: Event = {
                     type: "turn.end",
                     stopReason: "error",
-                    ...(next.value.error !== undefined ? { error: next.value.error } : {}),
+                    ...(out.result.error !== undefined ? { error: out.result.error } : {}),
                 };
                 yield errorEvent;
                 await session.appendEvent(transcriptable(errorEvent));
                 return "error";
             }
-            if (next.value.stopReason === "abort") {
+            if (out.result.stopReason === "abort") {
                 const cancelEvent: Event = { type: "turn.end", stopReason: "user_cancel" };
                 yield cancelEvent;
                 await session.appendEvent(transcriptable(cancelEvent));
@@ -322,6 +330,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             signal,
             sessionId: state.sessionId,
             projectId: state.projectId,
+            turnIndex: state.globalTurnIndex,
             turnState,
             provider,
             config,
