@@ -53,6 +53,7 @@ import {
 } from "../storage/index.ts";
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
+import { refreshUpdateStatus, type UpdateStatus } from "../update/check.ts";
 import { Chat, type ChatItem, computeDynamicStart, newChatItemId } from "./chat.tsx";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
 import { KeyPrompt } from "./keyPrompt.tsx";
@@ -262,6 +263,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
     // Toggled with Ctrl+O. Only affects groups in the dynamic section —
     // anything in scrollback already committed in collapsed form.
     const [groupsExpanded, setGroupsExpanded] = useState(false);
+    const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
 
     const stateRef = useRef<SessionState | null>(null);
     const sessionRef = useRef<SessionHandle | null>(null);
@@ -1198,6 +1200,18 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
         }
     }, [activeMention?.query, dismissedMentionQuery]);
 
+    useEffect(() => {
+        let cancelled = false;
+        void refreshUpdateStatus()
+            .then((s) => {
+                if (!cancelled && s) setUpdateStatus(s);
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     const handleValueChange = (value: string, cursor: number): void => {
         setCurrentInput(value);
         setCurrentCursor(cursor);
@@ -1303,6 +1317,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
                 queuedCount={queuedCount}
                 usedTokens={usedTokens}
                 contextWindow={contextWindow}
+                updateStatus={updateStatus}
             />
         </Box>
     );

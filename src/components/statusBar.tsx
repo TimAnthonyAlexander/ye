@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import type { PermissionMode } from "../config/index.ts";
 import { modeColor } from "../ui/keybinds.ts";
+import type { UpdateStatus } from "../update/check.ts";
 
 interface StatusBarProps {
     readonly mode: PermissionMode;
@@ -10,6 +11,7 @@ interface StatusBarProps {
     readonly queuedCount?: number;
     readonly usedTokens: number;
     readonly contextWindow: number;
+    readonly updateStatus?: UpdateStatus | null;
 }
 
 const usageColor = (pct: number): string => {
@@ -33,8 +35,10 @@ export const StatusBar = ({
     queuedCount = 0,
     usedTokens,
     contextWindow,
+    updateStatus,
 }: StatusBarProps) => {
     const pct = contextWindow > 0 ? (usedTokens / contextWindow) * 100 : 0;
+    const showUpdate = updateStatus?.hasUpdate === true;
     return (
         <Box justifyContent="space-between" paddingX={1}>
             <Box>
@@ -43,6 +47,14 @@ export const StatusBar = ({
                 </Text>
                 <Text dimColor> · Shift+Tab cycles · </Text>
                 <Text color={usageColor(pct)}>{formatPct(pct)} context</Text>
+                {showUpdate && (
+                    <>
+                        <Text dimColor> · </Text>
+                        <Text color="cyan">
+                            update {updateStatus.current} → {updateStatus.latest} (ye --update)
+                        </Text>
+                    </>
+                )}
             </Box>
             <Box>
                 {streaming && <Text color="yellow">streaming </Text>}
