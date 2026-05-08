@@ -32,9 +32,18 @@ export const parseSlash = (input: string): ParsedSlash | null => {
     return { name: match[1].toLowerCase(), args: match[2] ?? "" };
 };
 
-const buildRegistry = (): ReadonlyMap<string, SlashCommand> => {
+let extraCommands: readonly SlashCommand[] = [];
+
+// Register dynamic slash commands (e.g. skill-bound). Built-in commands always
+// win on name conflict — a same-named extra is silently dropped from the slash
+// surface, though the skill itself remains model-invocable via the Skill tool.
+export const setExtraCommands = (cmds: readonly SlashCommand[]): void => {
+    extraCommands = cmds;
+};
+
+const buildBuiltins = (): readonly SlashCommand[] => {
     const helpCommand = buildHelpCommand(() => listCommands());
-    const commands: readonly SlashCommand[] = [
+    return [
         helpCommand,
         ClearCommand,
         CopyCommand,
@@ -46,25 +55,37 @@ const buildRegistry = (): ReadonlyMap<string, SlashCommand> => {
         InitCommand,
         ExitCommand,
     ];
+};
+
+const buildRegistry = (): ReadonlyMap<string, SlashCommand> => {
+    const builtins = buildBuiltins();
+    const reservedNames = new Set<string>();
+    for (const cmd of builtins) {
+        reservedNames.add(cmd.name.toLowerCase());
+        for (const alias of cmd.aliases ?? []) reservedNames.add(alias.toLowerCase());
+    }
+
     const map = new Map<string, SlashCommand>();
-    for (const cmd of commands) {
-        map.set(cmd.name, cmd);
-        for (const alias of cmd.aliases ?? []) {
-            map.set(alias, cmd);
-        }
+    for (const cmd of builtins) {
+        map.set(cmd.name.toLowerCase(), cmd);
+        for (const alias of cmd.aliases ?? []) map.set(alias.toLowerCase(), cmd);
+    }
+    for (const cmd of extraCommands) {
+        const key = cmd.name.toLowerCase();
+        if (reservedNames.has(key)) continue;
+        map.set(key, cmd);
     }
     return map;
 };
 
-const REGISTRY = buildRegistry();
-
 export const getCommand = (name: string): SlashCommand | undefined =>
-    REGISTRY.get(name.toLowerCase());
+    buildRegistry().get(name.toLowerCase());
 
 export const listCommands = (): readonly SlashCommand[] => {
+    const registry = buildRegistry();
     const seen = new Set<string>();
     const out: SlashCommand[] = [];
-    for (const cmd of REGISTRY.values()) {
+    for (const cmd of registry.values()) {
         if (seen.has(cmd.name)) continue;
         seen.add(cmd.name);
         out.push(cmd);

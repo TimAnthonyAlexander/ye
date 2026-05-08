@@ -3,6 +3,10 @@ import { PLAN_MODE_BLOCKED } from "./messages.ts";
 import type { Decision, ToolCall } from "./types.ts";
 
 // Tools allowed in PLAN mode. Data, not code branches.
+// Skill is included because invoking it is a read-only metadata load (the body
+// markdown is injected into context); any side-effecting tool the skill body
+// asks the model to call still goes through this same evaluator and gets
+// blocked if it isn't on the list.
 export const PLAN_ALLOWED: readonly string[] = [
     "Read",
     "Glob",
@@ -11,6 +15,7 @@ export const PLAN_ALLOWED: readonly string[] = [
     "WebFetch",
     "WebSearch",
     "ExitPlanMode",
+    "Skill",
 ];
 
 interface ModeContext {

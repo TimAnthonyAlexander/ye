@@ -22,7 +22,12 @@ const FALLBACK_EXCLUDE = new Set([
     "target",
 ]);
 
-const cache = new Map<string, readonly IndexEntry[]>();
+interface CacheEntry {
+    readonly entries: readonly IndexEntry[];
+    readonly ts: number;
+}
+
+const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<readonly IndexEntry[]>>();
 
 const runRipgrep = async (root: string): Promise<readonly string[] | null> => {
@@ -83,9 +88,20 @@ const buildIndex = (files: readonly string[]): readonly IndexEntry[] => {
     return entries;
 };
 
-export const loadFileIndex = async (root: string): Promise<readonly IndexEntry[]> => {
+// `maxAgeMs` lets callers opt into freshness checks. Omit it and the cache is
+// returned indefinitely (boot-time load). Pass a value and an entry older than
+// that triggers a re-scan — used when the mention picker opens, so newly
+// created files (by the user or the model) show up without a restart.
+export const loadFileIndex = async (
+    root: string,
+    options: { readonly maxAgeMs?: number } = {},
+): Promise<readonly IndexEntry[]> => {
     const cached = cache.get(root);
-    if (cached) return cached;
+    const fresh =
+        cached !== undefined &&
+        (options.maxAgeMs === undefined || Date.now() - cached.ts <= options.maxAgeMs);
+    if (cached !== undefined && fresh) return cached.entries;
+
     const pending = inflight.get(root);
     if (pending) return pending;
 
@@ -93,7 +109,7 @@ export const loadFileIndex = async (root: string): Promise<readonly IndexEntry[]
         const fromRg = await runRipgrep(root);
         const files = fromRg ?? (await runFallback(root));
         const result = buildIndex(files);
-        cache.set(root, result);
+        cache.set(root, { entries: result, ts: Date.now() });
         inflight.delete(root);
         return result;
     })();

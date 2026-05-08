@@ -8,9 +8,16 @@ import {
     completeCommand,
     dispatch,
     parseSlash,
+    setExtraCommands,
     type PickerPayload,
     type SlashCommandContext,
 } from "../commands/index.ts";
+import {
+    buildSkillToolDescription,
+    loadSkillRegistry,
+    skillToSlashCommand,
+} from "../skills/index.ts";
+import { setSkillRegistry } from "../tools/skill/index.ts";
 import {
     expandMentions,
     type ExpandedAttachment,
@@ -755,6 +762,16 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
                         if (!cancelled) setFileIndex(idx);
                     })
                     .catch(() => {});
+                loadSkillRegistry({
+                    projectRoot: state.projectRoot,
+                    enableClaudeInterop: cfgRef.current.skills?.enableClaudeInterop === true,
+                })
+                    .then((registry) => {
+                        if (cancelled) return;
+                        setSkillRegistry(registry, buildSkillToolDescription(registry));
+                        setExtraCommands(registry.slashBound.map(skillToSlashCommand));
+                    })
+                    .catch(() => {});
 
                 if (resumeOnStart) {
                     try {
@@ -1179,6 +1196,26 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
         [currentInput, currentCursor],
     );
     const mentionEnabled = activeMention !== null && dismissedMentionQuery !== activeMention.query;
+
+    // Refresh the file index whenever the picker opens, so files created since
+    // boot (by the user or the model) appear without a restart. The cached
+    // index is shown immediately; ripgrep runs in the background and updates
+    // state when it returns. A short TTL coalesces rapid open/close cycles.
+    useEffect(() => {
+        if (!mentionEnabled) return;
+        const root = stateRef.current?.projectRoot;
+        if (root === undefined) return;
+        let cancelled = false;
+        void loadFileIndex(root, { maxAgeMs: 1500 })
+            .then((idx) => {
+                if (!cancelled) setFileIndex(idx);
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, [mentionEnabled]);
+
     const mentionMatches: readonly MentionOption[] = useMemo(() => {
         if (!mentionEnabled || activeMention === null || fileIndex.length === 0) return [];
         return matchFiles(activeMention.query, fileIndex, 8);

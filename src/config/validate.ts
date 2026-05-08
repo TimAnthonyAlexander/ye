@@ -8,6 +8,7 @@ import type {
     PermissionsConfig,
     ProviderConfig,
     RecoveryConfig,
+    SkillsConfig,
     WebSearchFallback,
     WebToolsConfig,
 } from "./types.ts";
@@ -300,6 +301,20 @@ const validateRecoveryConfig = (value: unknown): RecoveryConfig => {
     return out;
 };
 
+const validateSkillsConfig = (value: unknown): SkillsConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError("skills must be an object");
+    }
+    const out: { enableClaudeInterop?: boolean } = {};
+    if (value.enableClaudeInterop !== undefined) {
+        if (typeof value.enableClaudeInterop !== "boolean") {
+            throw new ConfigValidationError("skills.enableClaudeInterop must be a boolean");
+        }
+        out.enableClaudeInterop = value.enableClaudeInterop;
+    }
+    return out;
+};
+
 export const validateConfig = (raw: unknown): Config => {
     if (!isObject(raw)) {
         throw new ConfigValidationError("root must be an object");
@@ -327,6 +342,7 @@ export const validateConfig = (raw: unknown): Config => {
             : {}),
         ...(raw.webTools !== undefined ? { webTools: validateWebToolsConfig(raw.webTools) } : {}),
         ...(raw.recovery !== undefined ? { recovery: validateRecoveryConfig(raw.recovery) } : {}),
+        ...(raw.skills !== undefined ? { skills: validateSkillsConfig(raw.skills) } : {}),
     };
 };
 

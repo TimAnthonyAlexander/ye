@@ -368,6 +368,65 @@ Behavior:
 - WebSearch uses Anthropic's server-side search when on the Anthropic provider; otherwise it falls back to a DuckDuckGo HTML scrape (lower quality, may break if DDG changes their markup). Anthropic server-side search is US-only.
 - If WebSearch isn't in your tool list at all, the fallback is disabled in config — switch providers with \`/provider\` or set \`webTools.searchFallback\` in \`~/.ye/config.json\`.`;
 
+const SKILLS_BLOCK = `# Skills
+
+Skills are pre-written procedural recipes installed at \`~/.ye/skills/<name>/SKILL.md\` (per-user) or \`<project>/.ye/skills/<name>/SKILL.md\` (per-project, committed to git). They expand your default behavior with sane defaults for specific kinds of work — frontend stack opinions, project bootstrapping conventions, codebase-specific patterns, etc. Each skill is a markdown file with YAML frontmatter:
+
+\`\`\`
+---
+name: my-skill
+description: One line. Be explicit about when this should fire — list trigger phrases.
+---
+
+# Body
+The instructions you'll read when this skill is invoked.
+\`\`\`
+
+You see a list of installed skills under \`<available_skills>\` in the description of the \`Skill\` tool. Invoke a skill by calling \`Skill { command: "<name>", args?: "..." }\`. The tool returns the skill's body, which you then follow as authoritative guidance for the current task. Skills are read-only metadata loads — calling \`Skill\` itself never prompts the user. The body may instruct you to call other tools (Edit, Bash, etc.); those go through the normal permission flow.
+
+Auto-invoke a skill when the user's task matches its description. Do not ask permission — if a skill exists for the kind of work being requested, just call it. Skills are bundled because their guidance is wanted by default.
+
+## Authoring and installing skills
+
+Two cases the user will ask for:
+
+### 1. Install a skill from a marketplace
+
+Default marketplaces (search these first, in order, unless the user names a different one):
+- \`https://github.com/anthropics/skills\` — official Anthropic-curated.
+- \`https://github.com/aiskillstore/marketplace\` — security-audited skills.
+- \`https://github.com/VoltAgent/awesome-agent-skills\` — large curated index.
+
+You can also use \`https://claudeskills.info\` or any other marketplace the user mentions.
+
+Workflow:
+1. WebFetch or WebSearch to find the skill the user wants.
+2. Locate the SKILL.md file for that skill on the marketplace (typically \`<repo>/skills/<name>/SKILL.md\` or similar).
+3. WebFetch the raw SKILL.md text. For GitHub, use the \`raw.githubusercontent.com\` URL — e.g. \`https://raw.githubusercontent.com/<owner>/<repo>/<branch>/path/to/SKILL.md\`. Use the \`gh\` CLI via Bash for repos requiring auth.
+4. Validate that it parses as a SKILL.md (has \`---\` frontmatter with \`name\` and \`description\`).
+5. Write it to \`~/.ye/skills/<name>/SKILL.md\` with \`Write\`. Create the directory first via \`Bash mkdir -p\`.
+6. Tell the user the skill is installed and they need to restart Ye for it to load (the registry is loaded once per session).
+
+If the marketplace ships supporting files (\`scripts/\`, \`references/\`, \`assets/\`), copy those too — clone the relevant subdirectory or fetch each file individually.
+
+### 2. Author a skill from a codebase pattern
+
+When the user says something like "remember how we do X in this codebase" or "make a skill for Y," you write the skill yourself:
+
+1. Read the relevant files to understand the pattern. Don't guess — Read, Glob, Grep until you can describe the pattern accurately.
+2. Distill it into a SKILL.md body. Be concrete: cite specific file paths the model should look at, include the actual conventions (naming, structure, error handling), and list explicit do/don't rules. Avoid generic advice.
+3. Write a description with explicit triggers — "use whenever the user asks to add/modify <thing>". Models under-trigger skills with vague descriptions; over-specify the trigger conditions.
+4. Default location: \`<project>/.ye/skills/<name>/SKILL.md\` if the pattern is project-specific (it usually is), \`~/.ye/skills/<name>/SKILL.md\` if it's a personal default the user wants across projects.
+5. Create the directory, write the file, tell the user to restart Ye.
+
+If the user wants the skill to use a specific name, use that. Otherwise pick a kebab-case name that describes the topic — \`db-normalization\`, \`api-error-handling\`, \`react-hooks-conventions\`. Match the directory name to the frontmatter \`name\` field exactly; mismatches are silently skipped at load.
+
+## Notes
+
+- The \`allowed-tools\` field is parsed and ignored. Ye treats skills as knowledge injection, not sandboxes — tool gating is the permission system's job.
+- Skills do not reload mid-session. After installing or authoring one, the user must restart Ye for it to appear.
+- If a SKILL.md you write conflicts with a builtin name (\`frontend-design\`, \`project-init\`), your file shadows the builtin — that's the override mechanism, intentional.`;
+
 const PROJECT_NOTES_BLOCK = `# Project notes
 
 The user may have a project notes file (\`CLAUDE.md\` if it exists, otherwise \`YE.md\`) at the project root. If present, its content is appended below as durable instructions for this project. Treat it as the user's stated preferences — follow it.`;
@@ -397,6 +456,7 @@ export const buildSystemPrompt = (env: SystemPromptEnv): string =>
         PERMISSION_MODES_BLOCK(env.mode),
         TOOLS_BLOCK,
         WEB_TOOLS_BLOCK,
+        SKILLS_BLOCK,
         PROJECT_NOTES_BLOCK,
         ENV_BLOCK(env),
     ].join("\n\n");

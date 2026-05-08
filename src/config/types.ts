@@ -96,6 +96,14 @@ export interface WebToolsConfig {
     readonly searchFallback?: WebSearchFallback;
 }
 
+// Reserved shape for the Skills system. enableClaudeInterop is a placeholder for
+// a future opt-in that walks ~/.claude/skills/ alongside ~/.ye/skills/ — the key
+// is shipped now (validated, default false) so adding the walker later does not
+// require a config-shape migration.
+export interface SkillsConfig {
+    readonly enableClaudeInterop?: boolean;
+}
+
 export interface Config {
     readonly defaultProvider: ProviderId;
     readonly providers: Readonly<Record<string, ProviderConfig>>;
@@ -105,4 +113,5 @@ export interface Config {
     readonly permissions?: PermissionsConfig;
     readonly webTools?: WebToolsConfig;
     readonly recovery?: RecoveryConfig;
+    readonly skills?: SkillsConfig;
 }
