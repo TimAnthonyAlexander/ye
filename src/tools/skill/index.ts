@@ -1,4 +1,5 @@
 import { substituteArgs } from "../../skills/argv.ts";
+import { formatSupportingFiles } from "../../skills/manifest.ts";
 import type { Skill, SkillRegistry } from "../../skills/types.ts";
 import type { Tool, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
@@ -28,8 +29,13 @@ const formatBody = (skill: Skill, body: string): string => {
     const sourceLine =
         skill.source.tier === "builtin"
             ? `(skill: ${skill.manifest.name}, builtin)`
-            : `(skill: ${skill.manifest.name}, ${skill.source.tier})`;
-    return `${sourceLine}\n\n${body}`;
+            : `(skill: ${skill.manifest.name}, ${skill.source.tier} — ${skill.source.directory})`;
+
+    const manifest =
+        skill.source.directory !== null ? formatSupportingFiles(skill.source.directory) : "";
+
+    const sections = [sourceLine, body, manifest].filter((s) => s.length > 0);
+    return sections.join("\n\n");
 };
 
 const execute = async (rawArgs: unknown): Promise<ToolResult<SkillResult>> => {
