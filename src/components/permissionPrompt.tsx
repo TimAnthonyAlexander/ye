@@ -54,6 +54,12 @@ export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) 
     });
 
     if (payload.reason === "exit_plan_mode") {
+        const planText = (payload.toolCall.args as { plan?: string } | null)?.plan ?? "";
+        const MAX_PLAN_CHARS = 8000;
+        const planDisplay =
+            planText.length > MAX_PLAN_CHARS
+                ? `${planText.slice(0, MAX_PLAN_CHARS)}\n\n… (${planText.length - MAX_PLAN_CHARS} more chars — full plan in the saved file)`
+                : planText;
         return (
             <Box
                 flexDirection="column"
@@ -63,12 +69,21 @@ export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) 
                 marginBottom={1}
             >
                 <Text bold color="magenta">
-                    Plan submitted — switch out of PLAN mode?
+                    Plan ready — review and accept?
                 </Text>
-                {payload.planPath && <Text dimColor>saved to {prettyPath(payload.planPath)}</Text>}
+                {payload.planPath && (
+                    <Text dimColor>saved to {prettyPath(payload.planPath)}</Text>
+                )}
+                {planDisplay.length > 0 && (
+                    <Box flexDirection="column" marginTop={1} marginBottom={1}>
+                        <Text>{planDisplay}</Text>
+                    </Box>
+                )}
                 <Text>
-                    Switch to <Text bold>{payload.target ?? "NORMAL"}</Text> and proceed?{" "}
-                    <Text dimColor>(y / n)</Text>
+                    <Text bold color="green">y</Text> accept &amp; switch to{" "}
+                    <Text bold>{payload.target ?? "NORMAL"}</Text>
+                    {"  ·  "}
+                    <Text bold color="red">n</Text> deny (stay in PLAN)
                 </Text>
             </Box>
         );

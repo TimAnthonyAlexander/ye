@@ -28,8 +28,14 @@ export const assembleToolPool = (ctx: PoolContext): readonly ToolDefinition[] =>
         ? base.filter((t) => ctx.allowedTools!.includes(t.name))
         : base;
 
+    // PLAN narrows to the allowlist; NORMAL/AUTO drop ExitPlanMode (it's PLAN-only —
+    // calling it from NORMAL/AUTO can't be a no-op because the prompt fires on any
+    // mode mismatch with the target). EnterPlanMode stays visible in NORMAL/AUTO so
+    // the model can request a switch into PLAN.
     const modeFiltered =
-        ctx.mode === "PLAN" ? allowed.filter((t) => PLAN_ALLOWED.includes(t.name)) : allowed;
+        ctx.mode === "PLAN"
+            ? allowed.filter((t) => PLAN_ALLOWED.includes(t.name))
+            : allowed.filter((t) => t.name !== "ExitPlanMode");
 
     const blanketDenied = new Set<string>();
     for (const rule of ctx.rules) {

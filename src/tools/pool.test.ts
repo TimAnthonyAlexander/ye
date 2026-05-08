@@ -8,9 +8,16 @@ const names = (pool: ReadonlyArray<{ name: string }>): string[] => pool.map((t) 
 const sorted = (xs: readonly string[]): string[] => [...xs].sort();
 
 describe("assembleToolPool", () => {
-    test("P1 NORMAL pool contains every registered tool by default", () => {
+    test("P1 NORMAL pool contains every registered tool except ExitPlanMode (PLAN-only)", () => {
         const pool = assembleToolPool({ mode: "NORMAL", rules: [] });
-        expect(sorted(names(pool))).toEqual(sorted(listTools().map((t) => t.name)));
+        const expected = sorted(
+            listTools()
+                .map((t) => t.name)
+                .filter((n) => n !== "ExitPlanMode"),
+        );
+        expect(sorted(names(pool))).toEqual(expected);
+        expect(names(pool)).not.toContain("ExitPlanMode");
+        expect(names(pool)).toContain("EnterPlanMode");
     });
 
     test("P2 PLAN pool contains exactly the PLAN_ALLOWED set (intersected with registry)", () => {
@@ -63,6 +70,15 @@ describe("assembleToolPool", () => {
         });
         expect(names(withSearch)).toContain("WebSearch");
         expect(names(withoutSearch)).not.toContain("WebSearch");
+    });
+
+    test("P8 ExitPlanMode is dropped from NORMAL and AUTO pools (PLAN-only tool)", () => {
+        for (const mode of ["NORMAL", "AUTO"] as const) {
+            const pool = assembleToolPool({ mode, rules: [] });
+            expect(names(pool)).not.toContain("ExitPlanMode");
+        }
+        // And of course it IS in PLAN.
+        expect(names(assembleToolPool({ mode: "PLAN", rules: [] }))).toContain("ExitPlanMode");
     });
 
     test("P7 deduplication: a tool is never returned twice", () => {
