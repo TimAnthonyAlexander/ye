@@ -197,8 +197,184 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     const assistantMessage = buildAssistantMessage(modelText, toolCalls);
     state.history.push(assistantMessage);
 
-    // Steps 7 + 8: permission gate + tool execution. Sequential in v1.
+    // Steps 7 + 8: permission gate + tool execution.
+    // Read-only tools that the gate allows fan out via Promise.all up front;
+    // everything else (state-modifying tools, prompts, denies, AskUserQuestion)
+    // runs in the sequential loop below. AskUserQuestion is read-only-annotated
+    // but its result triggers an interactive userQuestion.prompt, so it stays
+    // sequential.
+    const parallelIds = new Set<string>();
     for (const call of toolCalls) {
+        if (!isToolReadOnly(call.name)) continue;
+        if (call.name === "AskUserQuestion") continue;
+        const decision = decide({
+            toolCall: { id: call.id, name: call.name, args: call.args },
+            mode: state.mode,
+            rules: [...(config.permissions?.rules ?? []), ...state.sessionRules],
+            isReadOnly: true,
+        });
+        if (decision.kind === "allow") parallelIds.add(call.id);
+    }
+
+    const parallelResults = new Map<string, ToolResult>();
+    if (parallelIds.size > 0) {
+        for (const call of toolCalls) {
+            if (!parallelIds.has(call.id)) continue;
+            const startEvent: Event = {
+                type: "tool.start",
+                id: call.id,
+                name: call.name,
+                args: call.args,
+            };
+            yield startEvent;
+            await session.appendEvent(transcriptable(startEvent));
+        }
+
+        const parallelSubagentContext: SubagentToolContext | undefined =
+            state.parentSessionId === undefined
+                ? {
+                      projectId: state.projectId,
+                      projectRoot: state.projectRoot,
+                      parentSessionId: state.sessionId,
+                      contextWindow: state.contextWindow,
+                      provider,
+                      config,
+                  }
+                : undefined;
+
+        type ParallelEvent =
+            | {
+                  readonly kind: "progress";
+                  readonly id: string;
+                  readonly lines: readonly string[];
+              }
+            | { readonly kind: "done"; readonly id: string; readonly result: ToolResult }
+            | { readonly kind: "fatal"; readonly error: unknown };
+
+        const queue: ParallelEvent[] = [];
+        let wakeup = deferred<void>();
+
+        let pending = 0;
+        for (const call of toolCalls) {
+            if (!parallelIds.has(call.id)) continue;
+            pending += 1;
+            void (async () => {
+                try {
+                    const preHook = await runEventHooks(
+                        config.hooks,
+                        "PreToolUse",
+                        {
+                            tool_name: call.name,
+                            tool_args: call.args,
+                            project_dir: state.projectRoot,
+                        },
+                        signal,
+                    );
+                    if (preHook.blocked) {
+                        queue.push({
+                            kind: "done",
+                            id: call.id,
+                            result: { ok: false, error: preHook.reason ?? "hook blocked" },
+                        });
+                        wakeup.resolve();
+                        return;
+                    }
+                    const tool = getTool(call.name);
+                    if (!tool) {
+                        queue.push({
+                            kind: "done",
+                            id: call.id,
+                            result: { ok: false, error: `unknown tool: ${call.name}` },
+                        });
+                        wakeup.resolve();
+                        return;
+                    }
+                    const toolCtx: ToolContext = {
+                        cwd: state.projectRoot,
+                        signal,
+                        sessionId: state.sessionId,
+                        projectId: state.projectId,
+                        turnIndex: state.globalTurnIndex,
+                        turnState,
+                        provider,
+                        config,
+                        activeModel,
+                        log: () => {},
+                        emitProgress: (lines) => {
+                            queue.push({ kind: "progress", id: call.id, lines });
+                            wakeup.resolve();
+                        },
+                        ...(parallelSubagentContext
+                            ? { subagentContext: parallelSubagentContext }
+                            : {}),
+                    };
+                    const result = await tool.execute(call.args, toolCtx);
+                    queue.push({ kind: "done", id: call.id, result });
+                    wakeup.resolve();
+                } catch (error) {
+                    queue.push({ kind: "fatal", error });
+                    wakeup.resolve();
+                }
+            })();
+        }
+
+        let completed = 0;
+        let firstError: unknown = null;
+        while (completed < pending) {
+            await wakeup.promise;
+            wakeup = deferred<void>();
+            while (queue.length > 0) {
+                const ev = queue.shift()!;
+                if (ev.kind === "progress") {
+                    yield { type: "tool.progress", id: ev.id, lines: ev.lines };
+                } else if (ev.kind === "done") {
+                    parallelResults.set(ev.id, ev.result);
+                    completed += 1;
+                } else {
+                    if (firstError === null) firstError = ev.error;
+                    completed += 1;
+                }
+            }
+        }
+        if (firstError !== null) throw firstError;
+    }
+
+    for (const call of toolCalls) {
+        if (parallelIds.has(call.id)) {
+            const result = parallelResults.get(call.id);
+            if (!result) continue;
+            const endEvent: Event = {
+                type: "tool.end",
+                id: call.id,
+                name: call.name,
+                result,
+            };
+            yield endEvent;
+            await session.appendEvent(transcriptable(endEvent));
+            if (result.ok) {
+                const args = call.args as Record<string, unknown> | undefined;
+                const filePaths: string[] = [];
+                if (args && typeof args["path"] === "string") filePaths.push(args["path"]);
+                void runEventHooks(
+                    config.hooks,
+                    "PostToolUse",
+                    {
+                        tool_name: call.name,
+                        tool_args: call.args,
+                        ...(filePaths.length > 0 ? { file_paths: filePaths } : {}),
+                        project_dir: state.projectRoot,
+                    },
+                    signal,
+                );
+            }
+            state.history.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: renderToolResult(result),
+            });
+            if (state.mode === "PLAN") resetDenialTrail(state);
+            continue;
+        }
         const toolCall: ToolCall = { id: call.id, name: call.name, args: call.args };
         const decision = decide({
             toolCall,
