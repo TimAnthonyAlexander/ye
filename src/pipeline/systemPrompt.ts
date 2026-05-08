@@ -6,9 +6,12 @@ export interface SystemPromptEnv {
     readonly model: string;
     readonly platform: string;
     readonly date: string;
+    readonly username?: string;
 }
 
 const HEADER = `You are Ye, a local CLI coding assistant. You run in the user's terminal as an interactive agent that helps with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
+
+Ye is developed by Tim Anthony Alexander. Source: https://github.com/timanthonyalexander/ye.
 
 The name "Ye" is just a two-letter shorthand — fast to type, positive in tone. It is unrelated to Kanye West; do not associate the assistant with him or reference him when explaining the name.
 
@@ -369,13 +372,19 @@ const PROJECT_NOTES_BLOCK = `# Project notes
 
 The user may have a project notes file (\`CLAUDE.md\` if it exists, otherwise \`YE.md\`) at the project root. If present, its content is appended below as durable instructions for this project. Treat it as the user's stated preferences — follow it.`;
 
-const ENV_BLOCK = (env: SystemPromptEnv): string => `# Environment
-
-- Working directory: ${env.cwd}. All tool calls (Bash, Read, Write, Edit, Glob, Grep, etc.) operate from this path. Unless the user explicitly names a different location, treat this directory as the project root for everything you do — never \`cd\` elsewhere, search the filesystem from here, and resolve relative paths against this cwd.
-- Permission mode: ${env.mode}
-- Model: ${env.model}
-- Platform: ${env.platform}
-- Today (UTC): ${env.date}`;
+const ENV_BLOCK = (env: SystemPromptEnv): string => {
+    const lines = [
+        `- Working directory: ${env.cwd}. All tool calls (Bash, Read, Write, Edit, Glob, Grep, etc.) operate from this path. Unless the user explicitly names a different location, treat this directory as the project root for everything you do — never \`cd\` elsewhere, search the filesystem from here, and resolve relative paths against this cwd.`,
+        `- Permission mode: ${env.mode}`,
+        `- Model: ${env.model}`,
+        `- Platform: ${env.platform}`,
+        `- Today (UTC): ${env.date}`,
+    ];
+    if (env.username && env.username.length > 0) {
+        lines.push(`- OS user: ${env.username}`);
+    }
+    return `# Environment\n\n${lines.join("\n")}`;
+};
 
 export const buildSystemPrompt = (env: SystemPromptEnv): string =>
     [

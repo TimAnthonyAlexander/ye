@@ -1,7 +1,17 @@
+import { userInfo } from "node:os";
 import { readNotesHierarchy } from "../memory/index.ts";
 import type { Message } from "../providers/index.ts";
 import type { SelectedMemoryEntry, SessionState } from "./state.ts";
 import { buildSystemPrompt } from "./systemPrompt.ts";
+
+const safeUsername = (): string | undefined => {
+    try {
+        const u = userInfo().username;
+        return u.length > 0 ? u : undefined;
+    } catch {
+        return undefined;
+    }
+};
 
 const buildNotesBlock = async (projectRoot: string): Promise<string | null> => {
     const hierarchy = await readNotesHierarchy(projectRoot);
@@ -31,12 +41,14 @@ export const assemble = async ({ state, model }: AssembleInput): Promise<Message
         return [{ role: "system", content: state.systemPromptOverride }, ...state.history];
     }
 
+    const username = safeUsername();
     const systemBody = buildSystemPrompt({
         cwd: state.projectRoot,
         mode: state.mode,
         model,
         platform: process.platform,
         date: new Date().toISOString().slice(0, 10),
+        ...(username ? { username } : {}),
     });
     const notes = await buildNotesBlock(state.projectRoot);
     const memory = buildMemoryBlock(state.selectedMemory);
