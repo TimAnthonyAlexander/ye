@@ -1,5 +1,9 @@
 import { Box, Text, useInput } from "ink";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+
+// Visible-window cap. Pickers with more matches scroll within the window;
+// "↑ N more" / "↓ N more" hints flag the offscreen items.
+const MAX_VISIBLE = 5;
 
 export interface PickerOption {
     readonly id: string;
@@ -44,6 +48,28 @@ export const Picker = ({ payload, onRespond }: PickerProps) => {
     );
 
     const safeActive = filtered.length === 0 ? 0 : Math.min(active, filtered.length - 1);
+
+    // Sticky scroll window: shifts only when the cursor would otherwise leave
+    // it. Storing in a ref (not state) avoids extra renders — refs aren't
+    // reactive, but the next render computes a fresh windowStart from the
+    // up-to-date safeActive. Mutating during render is fine here since the
+    // ref isn't read by anything React tracks.
+    const lastWindowStart = useRef(0);
+    let windowStart = lastWindowStart.current;
+    if (filtered.length <= MAX_VISIBLE) {
+        windowStart = 0;
+    } else {
+        if (safeActive < windowStart) windowStart = safeActive;
+        if (safeActive >= windowStart + MAX_VISIBLE) {
+            windowStart = safeActive - MAX_VISIBLE + 1;
+        }
+        windowStart = Math.max(0, Math.min(windowStart, filtered.length - MAX_VISIBLE));
+    }
+    lastWindowStart.current = windowStart;
+    const windowEnd = Math.min(filtered.length, windowStart + MAX_VISIBLE);
+    const windowed = filtered.slice(windowStart, windowEnd);
+    const itemsBefore = windowStart;
+    const itemsAfter = filtered.length - windowEnd;
 
     useInput((input, key) => {
         if (key.escape) {
@@ -119,27 +145,32 @@ export const Picker = ({ payload, onRespond }: PickerProps) => {
             {filtered.length === 0 ? (
                 <Text dimColor>(no matches)</Text>
             ) : (
-                filtered.map((opt, i) => {
-                    const isActive = i === safeActive;
-                    const isInitial = opt.id === payload.initialId;
-                    const prefix = isActive ? "▸" : " ";
-                    const marker = isInitial ? "*" : " ";
-                    return (
-                        <Box key={opt.id} flexDirection="column">
-                            <Box>
-                                <Text color={isActive ? "cyan" : undefined}>
-                                    {prefix} {marker} {opt.label}
-                                </Text>
-                                {opt.label !== opt.id && <Text dimColor> — {opt.id}</Text>}
-                            </Box>
-                            {opt.description && (
-                                <Box paddingLeft={5}>
-                                    <Text dimColor>{opt.description}</Text>
+                <>
+                    {itemsBefore > 0 && <Text dimColor>↑ {itemsBefore} more</Text>}
+                    {windowed.map((opt, idxInWindow) => {
+                        const i = windowStart + idxInWindow;
+                        const isActive = i === safeActive;
+                        const isInitial = opt.id === payload.initialId;
+                        const prefix = isActive ? "▸" : " ";
+                        const marker = isInitial ? "*" : " ";
+                        return (
+                            <Box key={opt.id} flexDirection="column">
+                                <Box>
+                                    <Text color={isActive ? "cyan" : undefined}>
+                                        {prefix} {marker} {opt.label}
+                                    </Text>
+                                    {opt.label !== opt.id && <Text dimColor> — {opt.id}</Text>}
                                 </Box>
-                            )}
-                        </Box>
-                    );
-                })
+                                {opt.description && (
+                                    <Box paddingLeft={5}>
+                                        <Text dimColor>{opt.description}</Text>
+                                    </Box>
+                                )}
+                            </Box>
+                        );
+                    })}
+                    {itemsAfter > 0 && <Text dimColor>↓ {itemsAfter} more</Text>}
+                </>
             )}
             <Text dimColor>{helper}</Text>
         </Box>

@@ -252,6 +252,13 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
     // animation frame; keeping that region small is what prevents Ink from
     // falling back to clearTerminal-based redraws on a tall conversation.
     const [committedCount, setCommittedCount] = useState(items.length);
+    // Bumped whenever items are replaced wholesale (rotateSession, loadSession,
+    // runRewindFlow). Used as a key on <Chat> to force a remount — Ink's
+    // <Static> is append-only and won't re-emit items it has previously sent
+    // to scrollback, so after a terminal clear we need a fresh Static to
+    // reprint the new history.
+    const [chatKey, setChatKey] = useState(0);
+    const bumpChatKey = (): void => setChatKey((k) => k + 1);
     // Toggled with Ctrl+O. Only affects groups in the dynamic section —
     // anything in scrollback already committed in collapsed form.
     const [groupsExpanded, setGroupsExpanded] = useState(false);
@@ -379,6 +386,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
         setUsedTokens(0);
         titleGeneratedRef.current = false;
         resetTerminalTitle();
+        bumpChatKey();
         // Items already promoted to <Static> live in terminal scrollback,
         // outside React's tree — clearing items state alone won't reclaim
         // those rows. ESC[2J clears the visible screen, ESC[3J the scrollback.
@@ -451,6 +459,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
         }
 
         const replayItems = buildItemsFromReplay(replayed);
+        // Clear BEFORE queueing the state updates. Ink's <Static> writes items
+        // to terminal scrollback as React commits them — if we clear afterwards,
+        // we wipe the scrollback Ink just emitted, but Ink's internal
+        // "already-rendered" state still claims those items were sent. Result:
+        // Static refuses to re-emit on subsequent renders and the user sees
+        // only the trailing system message ("Session resumed.").
+        process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+        bumpChatKey();
         setItems(replayItems);
         setCommittedCount(replayItems.length);
         setTodos([]);
@@ -463,7 +479,6 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
             titleGeneratedRef.current = false;
             resetTerminalTitle();
         }
-        process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
     };
 
     const buildResumeOptions = (
@@ -532,12 +547,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
         // and rebuild items from scratch.
         const after = await replaySessionFile(session.path);
         const newItems = buildItemsFromReplay(after);
+        // Clear before queueing state updates — see loadSession for why.
+        process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+        bumpChatKey();
         setItems(newItems);
         setCommittedCount(newItems.length);
         setTodos([]);
         setError(null);
         setUsedTokens(estimateTokens(state.history));
-        process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
         return true;
     };
 
@@ -1199,6 +1216,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
     return (
         <Box flexDirection="column">
             <Chat
+                key={chatKey}
                 items={items}
                 streamingText={streamingText}
                 streaming={
