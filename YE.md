@@ -18,7 +18,8 @@
 
 - `bun install` — dependencies. Only two runtime deps: `ink` (^5.1.0) and `react` (^18.3.1).
 - `bun run typecheck` — `tsc --noEmit`.
-- `bun run build` — runs `scripts/install.sh`, which calls `bun build --compile` targeting `bun-darwin-arm64` or `bun-darwin-x64`, outputs `dist/ye`, symlinks onto `$PATH`.
+- `bun run build` — runs `scripts/install.sh` (macOS-only local install): `bun build --compile` for the host arch, outputs `dist/ye`, symlinks onto `$PATH`.
+- `bun run release [vX.Y.Z]` — runs `scripts/release.sh`: cross-compiles `ye-macos` (arm64), `ye-linux` (x64), `ye-windows.exe` (x64) and publishes them as a GitHub release via `gh`. Tag defaults to `v` + `package.json` version.
 - No test suite yet.
 - Requires `ripgrep` on `$PATH` (Grep tool). Install script warns if missing but doesn't block.
 
@@ -52,7 +53,7 @@ Memory: `src/memory/`. Hierarchy: `/etc/ye/CLAUDE.md` → `~/.ye/CLAUDE.md` → 
 ## Notes
 
 - The `performance-findings.txt` at root is a temporary analysis doc — not part of the build.
-- macOS-only v1. `scripts/install.sh` hardcodes `bun-darwin-arm64` / `bun-darwin-x64` targets.
+- `scripts/install.sh` is the macOS-only local-dev installer (symlinks `dist/ye` onto `$PATH`). Cross-platform release binaries (macOS arm64, Linux x64, Windows x64) come from `scripts/release.sh`, which uses `bun build --compile` to cross-compile from any host and uploads to GitHub Releases via `gh`.
 - Default model is `deepseek/deepseek-v4-pro` via OpenRouter (configurable in `~/.ye/config.json`).
 - Subagents run in-process (no sandboxing), write sidechain transcripts under `<sessionDir>/sidechains/`, return a single summary string to the parent. Explore subagents get Read/Glob/Grep only; general subagents get the full toolset.
 - Ctrl+C clears input first, then aborts the current stream — never exits. Use `/exit` to quit. Ctrl+O toggles tool-call group expansion.

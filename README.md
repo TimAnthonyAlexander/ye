@@ -6,7 +6,11 @@ An agent loop with deny-first permissions, append-only transcripts, and pluggabl
 
 ## Install
 
-Requires [Bun](https://bun.sh) and [ripgrep](https://github.com/BurntSushi/ripgrep) (`brew install ripgrep`). macOS arm64/x64 for now; Linux and Windows land later.
+Requires [Bun](https://bun.sh) and [ripgrep](https://github.com/BurntSushi/ripgrep) (`brew install ripgrep`).
+
+**Prebuilt binaries** for macOS (arm64), Linux (x64), and Windows (x64) are attached to each [GitHub release](https://github.com/TimAnthonyAlexander/ye/releases). Download `ye-macos`, `ye-linux`, or `ye-windows.exe`, `chmod +x` it (Unix), and put it on your `$PATH`.
+
+**From source** (macOS local dev):
 
 ```
 git clone <repo> ye && cd ye
