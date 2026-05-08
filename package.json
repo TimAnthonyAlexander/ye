@@ -1,6 +1,6 @@
 {
     "name": "ye",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "Ye CLI",
     "type": "module",
     "module": "src/cli.tsx",
