@@ -89,4 +89,13 @@ describe("assembleToolPool", () => {
             seen.add(t.name);
         }
     });
+
+    test("P9 headless drops AskUserQuestion and EnterPlanMode", () => {
+        const pool = assembleToolPool({ mode: "AUTO", rules: [], headless: true });
+        expect(names(pool)).not.toContain("AskUserQuestion");
+        expect(names(pool)).not.toContain("EnterPlanMode");
+        expect(names(pool)).toContain("Read");
+        // ExitPlanMode is dropped in AUTO regardless; headless shouldn't add it back.
+        expect(names(pool)).not.toContain("ExitPlanMode");
+    });
 });

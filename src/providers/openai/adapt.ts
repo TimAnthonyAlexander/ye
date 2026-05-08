@@ -93,7 +93,9 @@ export const buildRequestBody = (input: ProviderInput): OpenAIRequestBody => {
                 for (const tc of msg.tool_calls) {
                     messages.push({
                         type: "function_call",
-                        id: tc.id.startsWith("call_") ? tc.id.replace("call_", "fc_") : `fc_${tc.id}`,
+                        id: tc.id.startsWith("call_")
+                            ? tc.id.replace("call_", "fc_")
+                            : `fc_${tc.id}`,
                         call_id: tc.id,
                         name: tc.function.name,
                         arguments: tc.function.arguments,

@@ -139,6 +139,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         mode: state.mode,
         rules: [...(config.permissions?.rules ?? []), ...state.sessionRules],
         webSearchAvailable,
+        headless: state.headless,
         ...(state.allowedTools ? { allowedTools: state.allowedTools } : {}),
     });
     const recoveryGen = runModelCallWithRecovery({

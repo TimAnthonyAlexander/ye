@@ -32,6 +32,7 @@ const mkState = (): SessionState => ({
     shapingFlags: newShapingFlags(),
     globalTurnIndex: 0,
     selectedMemory: null,
+    headless: false,
     turnState: newTurnState(),
 });
 

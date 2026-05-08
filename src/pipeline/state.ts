@@ -57,6 +57,7 @@ export interface SessionState {
     turnState: TurnState;
     // Subagent fields. Set only when this state belongs to a subagent run.
     // The pipeline reads them to narrow the tool pool and override the system prompt.
+    headless: boolean;
     parentSessionId?: string;
     allowedTools?: readonly string[];
     systemPromptOverride?: string;

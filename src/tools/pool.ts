@@ -15,6 +15,9 @@ export interface PoolContext {
     // OR a fallback (DuckDuckGo) is configured. The pool drops it otherwise so
     // the model never tries to call an unavailable tool.
     readonly webSearchAvailable?: boolean;
+    // When true, drop interactive-only tools (AskUserQuestion, EnterPlanMode).
+    // Headless has no user to answer questions.
+    readonly headless?: boolean;
 }
 
 // Single seam where the tool list shown to the model is assembled.
@@ -48,9 +51,16 @@ export const assembleToolPool = (ctx: PoolContext): readonly ToolDefinition[] =>
             ? ruleFiltered.filter((t) => t.name !== "WebSearch")
             : ruleFiltered;
 
+    const headlessFiltered =
+        ctx.headless === true
+            ? capabilityFiltered.filter(
+                  (t) => t.name !== "AskUserQuestion" && t.name !== "EnterPlanMode",
+              )
+            : capabilityFiltered;
+
     const seen = new Set<string>();
     const deduped: Tool[] = [];
-    for (const t of capabilityFiltered) {
+    for (const t of headlessFiltered) {
         if (seen.has(t.name)) continue;
         seen.add(t.name);
         deduped.push(t);

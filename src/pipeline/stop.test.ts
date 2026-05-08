@@ -15,6 +15,7 @@ const makeState = (overrides: Partial<SessionState> = {}): SessionState => ({
     shapingFlags: newShapingFlags(),
     globalTurnIndex: 0,
     selectedMemory: null,
+    headless: false,
     turnState: newTurnState(),
     ...overrides,
 });

@@ -66,7 +66,7 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 - Remaining permission modes (acceptEdits, dontAsk, bypassPermissions, bubble) + auto-classifier
 
 ### Phase 6 — Headless + cross-platform
-- `ye -p "prompt"` headless mode
+- `ye -p "prompt"` headless mode — **shipped**
 - Linux x64 build, Windows x64 build — **shipped**
 - PowerShell tool
 

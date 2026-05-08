@@ -2,6 +2,7 @@
 import { render } from "ink";
 import { App } from "./components/app.tsx";
 import { ConfigValidationError, loadConfig } from "./config/index.ts";
+import { runHeadless } from "./pipeline/headless.ts";
 import { refreshUpdateStatus } from "./update/check.ts";
 import { cleanupWindowsOldBinary, runSelfUpdate, UpdateError } from "./update/install.ts";
 
@@ -9,12 +10,14 @@ interface CliFlags {
     readonly resume: boolean;
     readonly resumeSessionId: string | null;
     readonly update: boolean;
+    readonly prompt: string | null;
 }
 
 const parseFlags = (argv: readonly string[]): CliFlags => {
     let resume = false;
     let resumeSessionId: string | null = null;
     let update = false;
+    let prompt: string | null = null;
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--resume") {
@@ -26,9 +29,17 @@ const parseFlags = (argv: readonly string[]): CliFlags => {
             }
         } else if (a === "--update" || a === "--upgrade") {
             update = true;
+        } else if (a === "-p" || a === "--prompt") {
+            const next = argv[i + 1];
+            if (!next) {
+                process.stderr.write("ye: -p/--prompt requires a value\n");
+                process.exit(1);
+            }
+            prompt = next;
+            i += 1;
         }
     }
-    return { resume, resumeSessionId, update };
+    return { resume, resumeSessionId, update, prompt };
 };
 
 const runUpdateCommand = async (): Promise<void> => {
@@ -61,6 +72,10 @@ const main = async (): Promise<void> => {
         }
         await cleanupWindowsOldBinary();
         const config = await loadConfig();
+        if (flags.prompt !== null) {
+            await runHeadless(config, flags.prompt);
+            process.exit(0);
+        }
         // Background update check — fire-and-forget; status surfaces in StatusBar.
         void refreshUpdateStatus().catch(() => undefined);
         // App owns Ctrl+C handling: clear input → abort stream → no-op.

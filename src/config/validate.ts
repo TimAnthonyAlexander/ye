@@ -384,9 +384,7 @@ const validateHooksConfig = (value: unknown): HooksConfig => {
         if (!Array.isArray(val)) {
             throw new ConfigValidationError(`hooks.${key} must be an array`);
         }
-        out[key] = (val as unknown[]).map((g, i) =>
-            validateMatcherGroup(`hooks.${key}[${i}]`, g),
-        );
+        out[key] = (val as unknown[]).map((g, i) => validateMatcherGroup(`hooks.${key}[${i}]`, g));
     }
     return out;
 };

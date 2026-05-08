@@ -315,12 +315,7 @@ const findCursorRow = (rows: readonly VisualRow[], cursor: number): number => {
     return 0;
 };
 
-const renderWithCursor = (
-    value: string,
-    cursor: number,
-    disabled: boolean,
-    width: number,
-) => {
+const renderWithCursor = (value: string, cursor: number, disabled: boolean, width: number) => {
     if (disabled) {
         return <Text dimColor>{value.length > 0 ? value : "…"}</Text>;
     }

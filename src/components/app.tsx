@@ -1173,8 +1173,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
             for (const r of result.reads) {
                 stateRef.current.turnState.readFiles.set(r.abs, { hash: r.hash });
             }
-        } catch {
-        }
+        } catch {}
 
         // UserPromptSubmit hook: may inject context into the model-bound prompt.
         const promptHook = await runEventHooks(

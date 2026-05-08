@@ -30,9 +30,7 @@ export interface UpdateResult {
 
 export const runSelfUpdate = async (): Promise<UpdateResult> => {
     if (!isCompiledBinary()) {
-        throw new UpdateError(
-            "ye is running from source. Use `git pull` to update the checkout.",
-        );
+        throw new UpdateError("ye is running from source. Use `git pull` to update the checkout.");
     }
     const asset = getBinaryAsset();
     if (!asset) {

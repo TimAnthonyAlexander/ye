@@ -39,6 +39,7 @@ export const createSessionState = async (
         sessionRules: [],
         denialTrail: null,
         compactedThisTurn: false,
+        headless: false,
         shapingFlags: newShapingFlags(),
         globalTurnIndex: 0,
         selectedMemory: null,

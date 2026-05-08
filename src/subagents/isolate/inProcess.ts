@@ -42,6 +42,7 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
         shapingFlags: newShapingFlags(),
         globalTurnIndex: 0,
         selectedMemory: [],
+        headless: false,
         turnState: newTurnState(),
         parentSessionId: input.parentSessionId,
         allowedTools: input.allowedTools,

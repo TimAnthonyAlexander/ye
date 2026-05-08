@@ -151,7 +151,7 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
             case "response.failed":
                 stopReason = "error";
                 errorPayload = classifyMidStreamError(
-                    (event as any).error?.message || "OpenAI Response Failed"
+                    (event as any).error?.message || "OpenAI Response Failed",
                 );
                 break;
 
