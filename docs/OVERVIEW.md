@@ -54,10 +54,10 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 - Conformance suite across all three — pending
 
 ### Phase 4 — Compaction & recovery
-- Add the four cheaper compaction shapers (Budget Reduction → Snip → Microcompact → Context Collapse) before v1's Auto-Compact, so Auto-Compact becomes the last resort instead of the only resort
-- Token-budget escalation, retries, fallback model
-- Session resume + cross-session prompt history (`~/.ye/history.jsonl`)
-- File-history checkpoints
+- The four cheaper compaction shapers (Budget Reduction → Snip → Microcompact → Context Collapse) shipped — Auto-Compact is now the last resort instead of the only resort. See `PIPELINE.md` for thresholds, mechanics, and Phase 4.5 deferrals (smart-staleness Snip, LLM-summary Microcompact, message UUIDs + read-time projection)
+- Token-budget escalation, retries, fallback model — Phase 4.5
+- Session resume + cross-session prompt history (`~/.ye/history.jsonl`) — Phase 4.5
+- File-history checkpoints — Phase 4.5
 
 ### Phase 5 — Extensibility
 - Skills (`SKILL.md`, SkillTool)

@@ -97,10 +97,15 @@ src/pipeline/
 ├── turn.ts                 # one turn of the 9 steps
 ├── assemble.ts             # step 3: context assembly
 ├── shapers/                # step 4
-│   ├── index.ts            # runs shapers in declared order; owns the reply-budget object
+│   ├── index.ts            # runs shapers in declared order; owns the reply-budget object; emits shaper.applied events
 │   ├── types.ts            # Shaper interface + ShaperContext + RequestBudget
-│   ├── tokens.ts           # estimateTokens() — shared heuristic
-│   ├── budgetReduction.ts  # Phase 4 — clamps reply budget to fit window (cheapest)
+│   ├── tokens.ts           # estimateTokens() + estimateMessageTokens() — shared heuristic
+│   ├── budgetReduction.ts  # clamps reply budget to fit window (cheapest); also exports clampBudget() finalizer
+│   ├── snip.ts             # drops largest old tool results, replacing with stub
+│   ├── microcompact.ts     # truncates all eligible old tool results to descriptor stubs
+│   ├── contextCollapse.ts  # wider-window summarization (model call, lower threshold than autoCompact)
+│   ├── summarize.ts        # shared summarize-and-replace helper + boundary-pairing guard
+│   ├── toolCallLookup.ts   # findToolNameForCallId() — used by Microcompact's stubs
 │   └── autoCompact.ts      # last-resort — threshold-triggered model summary
 ├── dispatch.ts             # step 6: parse + queue tool calls
 ├── stop.ts                 # step 9: stop condition evaluation
@@ -148,14 +153,19 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 ### Phase 4 — Recovery & full compaction
 - [x] Shaper-ordering scaffold: `Shaper` interface + `runShapers()` orchestrator with mutable `RequestBudget`; replaces the single direct `autoCompact()` call in `turn.ts`
 - [x] **Budget Reduction** shaper — clamps reply `maxTokens` to fit the window before falling through to prompt-shrinking shapers; pipeline now plumbs `maxTokens` through to the provider
-- [ ] **Snip** shaper — drop large stale tool results (highest user-visible payoff per LOC)
-- [ ] **Microcompact** shaper — small targeted summaries
-- [ ] **Context Collapse** shaper — bigger collapse before falling through to Auto-Compact
-- [ ] Token-budget escalation in step 5 with explicit retry budget (max 3)
-- [ ] Prompt-too-long → Context Collapse → Auto-Compact → terminate path
-- [ ] Streaming fallback to non-streaming on stream errors
-- [ ] Fallback model switch on persistent provider errors
-- [ ] Compact-boundary events on session JSONL (`headUuid`/`anchorUuid`/`tailUuid`)
+- [x] **Snip** shaper — drop large stale tool results (highest user-visible payoff per LOC)
+- [x] **Microcompact** shaper — local truncation of old large tool results to descriptor stubs (Ye variant; no model call, no Anthropic `cache_edits` path)
+- [x] **Context Collapse** shaper — model summarize with wider preserve-recent window than Auto-Compact, fires earlier
+- [x] `runShapers` is an `AsyncGenerator<Event, RunShapersOutput>`; emits `shaper.applied` events as shapers fire; `MAX_SHAPER_APPLIED_PER_TURN = 4` orchestrator cap (belt-and-suspenders against the leaked-Claude-Code retry-loop bug)
+- [x] Per-shaper one-shot `state.shapingFlags`; `clampBudget()` finalizer runs after the chain when any shaper applied, so prompt-shrinking results in a higher reply budget
+- [x] Shared `summarize.ts` with boundary-pairing guard (prevents orphaned `tool_call_id` across the older/recent split — used by both `autoCompact` and `contextCollapse`)
+- [ ] Token-budget escalation in step 5 with explicit retry budget (max 3) — Phase 4.5
+- [ ] Prompt-too-long → Context Collapse → Auto-Compact → terminate path — Phase 4.5
+- [ ] Streaming fallback to non-streaming on stream errors — Phase 4.5
+- [ ] Fallback model switch on persistent provider errors — Phase 4.5
+- [ ] Compact-boundary events on session JSONL (`headUuid`/`anchorUuid`/`tailUuid`) — Phase 4.5 (needs message UUIDs + read-time projection layer; Phase 4 shapers mutate `state.history` in place instead)
+- [ ] Smart-staleness Snip (path-aware: drop a Read result on file X if a later operation supersedes it) — Phase 4.5; needs a `Tool → "what file did this affect?"` resolver
+- [ ] LLM-summarization variant of Microcompact — Phase 4.5; gated behind a config flag, default off (current Microcompact is local-truncation-only to stay genuinely cheaper than Auto-Compact)
 
 ### Phase 5 — Hooks
 - [ ] PreToolUse hook in step 7 (may return `permissionDecision`)
