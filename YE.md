@@ -12,11 +12,11 @@
 - No defensive programming against internal state — validate at system boundaries only (user input, external APIs, config load). Internal code is trusted.
 - `readonly` on all interface/type fields that aren't mutated after construction.
 - Async generators for streaming pipeline hooks (`queryLoop`, `runTurn`). Events flow as `AsyncGenerator<Event>`.
-- No `any`. Explicit error types for provider-specific failures (`MissingApiKeyError`, `MissingAnthropicKeyError`).
+- No `any`. Explicit error types for provider-specific failures (`MissingApiKeyError`, `MissingAnthropicKeyError`, `MissingOpenAIKeyError`).
 
 ## Build & test
 
-- `bun install` — dependencies. Only two runtime deps: `ink` (^5.1.0) and `react` (^18.3.1).
+- `bun install` — dependencies. Three runtime deps: `ink` (^5.1.0), `react` (^18.3.1), and `turndown` (^7.2.0).
 - `bun run typecheck` — `tsc --noEmit`.
 - `bun run build` — runs `scripts/install.sh` (macOS-only local install): `bun build --compile` for the host arch, outputs `dist/ye`, symlinks onto `$PATH`.
 - `bun run release [vX.Y.Z]` — runs `scripts/release.sh`: cross-compiles `ye-macos` (arm64), `ye-linux` (x64), `ye-windows.exe` (x64) and publishes them as a GitHub release via `gh`. Tag defaults to `v` + `package.json` version.

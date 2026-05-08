@@ -68,28 +68,31 @@ That's the whole thing. Ye opens an Ink session in the current directory, stream
 
 ## Tools
 
-Eight built-in tools — enough for daily work:
+Eleven built-in tools — enough for daily work:
 
 | Tool | What it does |
 |------|--------------|
 | **Read** | Read a file (default 2000 lines, `offset` + `limit` for slicing). Absolute paths only. |
-| **Edit** | Exact-string replace. Requires a prior Read of the same file in the turn. `replace_all` flag. |
+| **Edit** | Exact-string replace. Requires a prior Read of same file. `replace_all` flag. |
 | **Write** | Create or overwrite. If the file exists, prior Read is required. |
 | **Bash** | Run a shell command. 2-min default timeout, 10-min max. |
 | **Grep** | Wraps `rg`. Three modes: content, files-with-matches, count. |
 | **Glob** | File pattern match, sorted by mtime. |
 | **TodoWrite** | Lightweight task list. Exactly one `in_progress` at a time. |
-| **ExitPlanMode** | Writes the proposed plan and prompts to leave PLAN mode. The only state-modifying tool allowed in PLAN. |
+| **WebFetch** | Fetch URL, HTML→markdown, small-model summarise. 15-min cache. |
+| **WebSearch** | Anthropic server-side or DuckDuckGo fallback. Title + URL only. |
+| **AskUserQuestion** | Ask the user a structured 2-4 option question. |
+| **ExitPlanMode** | Write plan and prompt to leave PLAN mode. Only state-modifying tool in PLAN. |
 
-Read-only tools (Read, Grep, Glob) auto-allow in NORMAL mode. Everything else prompts.
+Read-only tools (Read, Grep, Glob, WebFetch, WebSearch, AskUserQuestion) auto-allow in NORMAL mode. Everything else prompts.
 
 ## Providers
 
 One canonical `Provider` interface; vendor differences live behind it. Tool-call format normalization happens in the provider module — the rest of Ye never sees vendor-shaped data.
 
 - **OpenRouter** — default. Streams via SSE, OpenAI-compatible tool calls, context window discovered via the `/models` endpoint.
-- **Anthropic direct** — native tool-use blocks, prompt caching at the static/dynamic boundary.
-- **OpenAI** — standard chat completions.
+- **Anthropic direct** — native tool-use blocks, prompt caching at the static/dynamic boundary. Uses `ANTHROPIC_API_KEY`.
+- **OpenAI** — latest **Responses API v1** (GPT-4.1/5 family). Interleaved reasoning & strict schema. Uses `OPENAI_API_KEY`.
 
 Set the active provider and model in `~/.ye/config.json`. Switching providers is one config change, no other code touches it.
 
