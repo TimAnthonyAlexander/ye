@@ -280,6 +280,17 @@ export const App = ({ config }: AppProps) => {
         setProviderId(nextId);
         setModelState(nextModel);
         setContextWindow(nextWindow);
+        const nextCfg: Config = {
+            ...built.cfg,
+            defaultProvider: nextId,
+            defaultModel: {
+                ...built.cfg.defaultModel,
+                provider: nextId,
+                model: nextModel,
+            },
+        };
+        cfgRef.current = nextCfg;
+        await saveConfig(nextCfg);
     };
 
     const switchModel = async (nextModel: string): Promise<void> => {
@@ -296,6 +307,16 @@ export const App = ({ config }: AppProps) => {
         state.contextWindow = nextWindow;
         setModelState(nextModel);
         setContextWindow(nextWindow);
+        const nextCfg: Config = {
+            ...cfgRef.current,
+            defaultModel: {
+                ...cfgRef.current.defaultModel,
+                provider: providerId,
+                model: nextModel,
+            },
+        };
+        cfgRef.current = nextCfg;
+        await saveConfig(nextCfg);
     };
 
     const pick = (payload: PickerPayload): Promise<string | null> => {
