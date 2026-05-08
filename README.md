@@ -1,52 +1,51 @@
 # Ye
 
-A local, open coding agent for the terminal. TypeScript on Bun, Ink TUI, multi-provider, all state on disk under `~/.ye/`.
+A coding agent that runs in your terminal. Local, open, multi-provider — TypeScript on Bun, Ink TUI, all state on disk under `~/.ye/`.
 
-An agent loop with deny-first permissions, append-only transcripts, and pluggable tools — built to be extended freely and run on whatever model you want.
+Fifteen tools, deny-first permissions, append-only transcripts, subagents for context isolation, skills for extensibility, streaming providers (OpenRouter, Anthropic, OpenAI), LLM-based memory selection, and a three-mode permission system (NORMAL / AUTO / PLAN).
 
 ## Install
 
-Requires [Bun](https://bun.sh) and [ripgrep](https://github.com/BurntSushi/ripgrep) (`brew install ripgrep`).
+Requires [Bun](https://bun.sh) and [ripgrep](https://github.com/BurntSushi/ripgrep).
 
-**Prebuilt binaries** for macOS (arm64), Linux (x64), and Windows (x64) are attached to each [GitHub release](https://github.com/TimAnthonyAlexander/ye/releases). One-liner install scripts grab the latest release and drop `ye` onto your `$PATH`:
+**Prebuilt binaries** per platform — grab the latest from [GitHub Releases](https://github.com/TimAnthonyAlexander/ye/releases):
 
-**macOS (arm64)**
+<details><summary>macOS (arm64)</summary>
 
 ```
 curl -fsSL https://github.com/TimAnthonyAlexander/ye/releases/latest/download/ye-macos -o ye && chmod +x ye && sudo mv ye /usr/local/bin/ye
 ```
 
-**Linux (x64)**
+</details>
+<details><summary>Linux (x64)</summary>
 
 ```
 curl -fsSL https://github.com/TimAnthonyAlexander/ye/releases/latest/download/ye-linux -o ye && chmod +x ye && sudo mv ye /usr/local/bin/ye
 ```
 
-**Windows (x64, PowerShell)**
+</details>
+<details><summary>Windows (x64, PowerShell)</summary>
 
 ```
 $dest = "$env:LOCALAPPDATA\Programs\ye"; New-Item -ItemType Directory -Force $dest | Out-Null; Invoke-WebRequest https://github.com/TimAnthonyAlexander/ye/releases/latest/download/ye-windows.exe -OutFile "$dest\ye.exe"; [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path","User") + ";$dest", "User")
 ```
 
-Restart the shell after the Windows install so the updated `Path` takes effect.
+Restart the shell after install.
+</details>
 
-**From source** (macOS local dev):
-
+**From source** (local dev):
 ```
 git clone <repo> ye && cd ye
 bun install
 ./scripts/install.sh
 ```
+Compiles via `bun build --compile` and symlinks onto `$PATH`.
 
-The install script compiles a single binary via `bun build --compile` and symlinks `ye` into the first writable directory on `$PATH` (`~/.local/bin`, `~/bin`, or `/usr/local/bin`).
-
-Set your provider key — by default Ye reads it from `OPENROUTER_API_KEY`:
-
+Set your API key:
 ```
 export OPENROUTER_API_KEY=sk-or-...
 ```
-
-The env var name is configurable in `~/.ye/config.json`, so you can run multiple keys side by side.
+The env var name is configurable in `~/.ye/config.json`.
 
 ## Usage
 
@@ -54,17 +53,17 @@ The env var name is configurable in `~/.ye/config.json`, so you can run multiple
 ye
 ```
 
-That's the whole thing. Ye opens an Ink session in the current directory, streams model output, and prompts for permission before any state-modifying tool call.
+Ye opens in the current directory, streams model output, prompts before state-modifying tool calls.
 
 **Modes** — cycle with `Shift+Tab`:
 
-- **NORMAL** — default. State-modifying tools fire a y/n prompt; read-only tools auto-allow.
-- **AUTO** — every tool auto-allows. Useful for trusted projects and long runs. Bash has no sandbox yet, so use it carefully.
-- **PLAN** — read-only. Only read-only tools plus `ExitPlanMode` are allowed. The model proposes a plan, you accept it, mode flips back to NORMAL. Plans are saved under `~/.ye/projects/<hash>/plans/` so you can revisit them later.
+- **NORMAL** — default. State-modifying tools prompt (y/n); read-only auto-allow.
+- **AUTO** — every tool auto-allows. For trusted projects and long sessions. Bash has no sandbox yet.
+- **PLAN** — read-only plus `ExitPlanMode`. Model proposes a plan, you accept it, mode flips back to NORMAL. Plans persist under `~/.ye/projects/<hash>/plans/`.
 
-**Per-session override** — `ye --mode AUTO` (or `NORMAL` / `PLAN`).
+Per-session override: `ye --mode AUTO` (or `NORMAL` / `PLAN`).
 
-**Project notes** — Ye reads `CLAUDE.md` if present in the project root, otherwise `YE.md`. One resolver, no surprises. Project memory and sessions live under `~/.ye/projects/<hash>/`, keyed by a stable 12-char hash of the project root.
+**Project notes** — reads `CLAUDE.md` if present, otherwise `YE.md`. Project memory and sessions under `~/.ye/projects/<hash>/`, keyed by a stable hash of the project root.
 
 ## Tools
 
@@ -129,4 +128,4 @@ Skills are pre-written procedural recipes that extend Ye's behavior for speciali
 
 ---
 
-**Status:** Ye is a work in progress. The design described above reflects the target end state per [`docs/`](./docs/). Many subsystems are partially implemented or still on the roadmap — see each doc's checklist for the current state.
+Ye is under active development. What's described above is running today — not a roadmap.

@@ -864,6 +864,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
 
         let currentText = "";
         let pendingFlush: ReturnType<typeof setTimeout> | null = null;
+        let pendingIdleCommit: ReturnType<typeof setTimeout> | null = null;
 
         // Coalesce token deltas to one render per frame (~16ms). Prevents the
         // render storm where every streamed token re-rendered the whole tree.
@@ -882,8 +883,29 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
             }
         };
 
+        // Promote streaming text to scrollback when deltas pause. Providers
+        // (especially OpenAI-compat SSE) have a 500ms–2s gap between the last
+        // text token and the first tool_call event; without this, streamingText
+        // sits in the buffer and the Thinking spinner stays suppressed even
+        // though the model is actively composing the next action.
+        const scheduleIdleCommit = (): void => {
+            if (pendingIdleCommit !== null) clearTimeout(pendingIdleCommit);
+            pendingIdleCommit = setTimeout(() => {
+                pendingIdleCommit = null;
+                commitText();
+            }, 400);
+        };
+
+        const cancelIdleCommit = (): void => {
+            if (pendingIdleCommit !== null) {
+                clearTimeout(pendingIdleCommit);
+                pendingIdleCommit = null;
+            }
+        };
+
         const commitText = (): void => {
             cancelPendingFlush();
+            cancelIdleCommit();
             if (currentText.length === 0) return;
             // Models routinely tack on trailing newlines after their last
             // sentence; those render as extra blank rows above the next item.
@@ -982,6 +1004,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
                         finalizeThinking();
                         currentText += evt.delta;
                         scheduleStreamFlush();
+                        scheduleIdleCommit();
                         break;
                     }
                     case "model.toolCall": {
