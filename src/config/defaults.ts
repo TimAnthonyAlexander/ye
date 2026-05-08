@@ -11,6 +11,10 @@ export const DEFAULT_CONFIG: Config = {
             baseUrl: "https://api.anthropic.com",
             apiKeyEnv: "ANTHROPIC_API_KEY",
         },
+        openai: {
+            baseUrl: "https://api.openai.com/v1",
+            apiKeyEnv: "OPENAI_API_KEY",
+        },
     },
     defaultModel: {
         provider: "openrouter",

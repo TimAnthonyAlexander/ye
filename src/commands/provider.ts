@@ -15,6 +15,10 @@ const PROVIDER_LABELS: Readonly<Record<string, { label: string; description?: st
         label: "Anthropic",
         description: "Claude direct. Default ANTHROPIC_API_KEY. Prompt caching enabled.",
     },
+    openai: {
+        label: "OpenAI",
+        description: "GPT-5 Responses API. Default OPENAI_API_KEY. Reasoning & prompt caching.",
+    },
 };
 
 const buildOptions = (): readonly PickerOption[] =>
@@ -46,7 +50,7 @@ const applyChoice = async (next: string, ctx: SlashCommandContext): Promise<Slas
 export const ProviderCommand: SlashCommand = {
     name: "provider",
     description: "Show or switch the active LLM provider.",
-    usage: "/provider [openrouter|anthropic]",
+    usage: "/provider [openrouter|anthropic|openai]",
     execute: async (args: string, ctx: SlashCommandContext): Promise<SlashCommandResult> => {
         const arg = args.trim().toLowerCase();
         if (arg.length === 0) {

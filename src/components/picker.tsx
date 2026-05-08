@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from "react";
 
 // Visible-window cap. Pickers with more matches scroll within the window;
 // "↑ N more" / "↓ N more" hints flag the offscreen items.
-const MAX_VISIBLE = 5;
+const MAX_VISIBLE = 8;
 
 export interface PickerOption {
     readonly id: string;

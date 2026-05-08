@@ -20,6 +20,22 @@ const MODELS: readonly ModelInfo[] = [
     { provider: "anthropic", id: "claude-opus-4-7", label: "Opus 4.7" },
     { provider: "anthropic", id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
     { provider: "anthropic", id: "claude-haiku-4-5", label: "Haiku 4.5" },
+    { provider: "openai", id: "gpt-5.5-pro", label: "GPT-5.5 Pro" },
+    { provider: "openai", id: "gpt-5.5", label: "GPT-5.5" },
+    { provider: "openai", id: "gpt-5.4", label: "GPT-5.4" },
+    { provider: "openai", id: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+    { provider: "openai", id: "gpt-5.2-pro", label: "GPT-5.2 Pro" },
+    { provider: "openai", id: "gpt-5.2-codex", label: "GPT-5.2 Codex" },
+    { provider: "openai", id: "gpt-5.2", label: "GPT-5.2" },
+    { provider: "openai", id: "gpt-5.1-codex-max", label: "GPT-5.1 Codex Max" },
+    { provider: "openai", id: "gpt-5.1-codex-mini", label: "GPT-5.1 Codex Mini" },
+    { provider: "openai", id: "gpt-5.1", label: "GPT-5.1" },
+    { provider: "openai", id: "gpt-5-codex-mini", label: "GPT-5 Codex Mini" },
+    { provider: "openai", id: "gpt-5", label: "GPT-5" },
+    { provider: "openai", id: "gpt-5-mini", label: "GPT-5 Mini" },
+    { provider: "openai", id: "codex-mini-latest", label: "Codex Mini Latest" },
+    { provider: "openai", id: "gpt-4.1", label: "GPT-4.1" },
+    { provider: "openai", id: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
 ];
 
 export const listModels = (providerId?: string): readonly ModelInfo[] =>

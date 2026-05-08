@@ -19,7 +19,7 @@ Layers, in dependency order. Each is a folder under `src/` and a doc here.
 
 1. **Storage** (`storage/`, `memory/`) — `~/.ye/` filesystem layout, project hashing, session/history transcripts, the centralized `CLAUDE.md`/`YE.md` resolver, global `MEMORY.md`. See `STORAGE.md`.
 2. **Config** (`config/`) — `~/.ye/config.json` (default provider, default model). Already implemented.
-3. **Providers** (`providers/`) — abstract `Provider` interface; OpenRouter v1, Anthropic + OpenAI Phase 3. See `PROVIDERS.md`.
+3. **Providers** (`providers/`) — abstract `Provider` interface; OpenRouter v1, Anthropic + OpenAI Phase 3 (shipped). See `PROVIDERS.md`.
 4. **Permissions** (`permissions/`) — deny-first rule evaluation; `AUTO` + `NORMAL` + `PLAN` modes in v1 (Shift+Tab cycles). See `PERMISSIONS.md`.
 5. **Tools** (`tools/`) — Read, Edit, Write, Bash, Grep, Glob, TodoWrite, ExitPlanMode for v1. See `TOOLS.md`.
 6. **Pipeline** (`pipeline/`) — the 9-step turn pipeline + agent loop. Streams events. See `PIPELINE.md`.
@@ -49,7 +49,7 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 
 ### Phase 3 — Provider parity
 - Anthropic direct (with prompt caching) — **shipped**
-- OpenAI — pending
+- OpenAI (via Responses API) — **shipped**
 - Tool-call format normalization layer — present per-provider via `adapt.ts`/`stream.ts`
 - Conformance suite across all three — pending
 
@@ -121,7 +121,7 @@ Items here orchestrate across multiple subdocs or don't fit any single one. Doma
 ### Phase 3 — gating items
 - [x] Anthropic provider shipped with prompt caching, tool_use/tool_result blocks, `event:`/`data:` SSE
 - [x] `/provider` and `/model` slash commands switch the active provider/model mid-session (refetches context window, swaps `state.activeModel`)
-- [ ] OpenAI provider
+- [x] OpenAI provider shipped (Responses API v1, recursive strict schema transformation)
 - [ ] All three providers pass the same conformance suite: text round-trip, tool-call round-trip, multi-chunk streaming, cache-hit assertion (Anthropic only)
 
 ### Build / distribute

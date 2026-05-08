@@ -1,6 +1,6 @@
 # Ye — Providers
 
-Ye talks to LLMs through a single `Provider` interface. **v1 + Phase 3 (Anthropic) shipped:** OpenRouter and Anthropic-direct (with prompt caching). OpenAI is the remaining Phase 3 item. Adding a fourth provider is a single new folder under `src/providers/` and a registry entry — no other code changes. **Web tools (WebFetch/WebSearch) shipped early** — originally Phase 6, pulled forward.
+Ye talks to LLMs through a single `Provider` interface. **v1 + Phase 3 (Anthropic + OpenAI) shipped:** OpenRouter, Anthropic-direct (with prompt caching), and OpenAI (via Responses API). Adding a fourth provider is a single new folder under `src/providers/` and a registry entry — no other code changes. **Web tools (WebFetch/WebSearch) shipped early** — originally Phase 6, pulled forward.
 
 ## The interface
 
@@ -48,7 +48,7 @@ interface ProviderCapabilities {
 
 - **OpenRouter:** `GET https://openrouter.ai/api/v1/models` exposes `context_length` per model.
 - **Anthropic:** hardcoded per-model lookup table (vendor doesn't expose a discovery endpoint). Lives in `src/providers/anthropic/models.ts`. Current values: 1M for opus 4.6/4.7 and sonnet 4.6 (the API exposes the 1M window on the same model ID; no beta header required as of 2026-03-13); 200K for haiku 4.5 (no 1M variant).
-- **OpenAI:** hardcoded per-model lookup table.
+- **OpenAI:** hardcoded per-model lookup table. Lives in `src/providers/openai/models.ts`.
 - **Fallback on any failure:** `128_000`. Logged but not surfaced to the user.
 
 The pipeline calls `getContextSize` **once per session**, on first turn, and caches the result in `SessionState.contextWindow`. No per-turn refetch. **A `/provider` or `/model` switch refetches and updates the cache** — different providers report different windows for the same model, and Anthropic's table is per-model.
@@ -126,11 +126,15 @@ New capabilities are added as boolean flags rather than `if (provider.id === ...
 - **Opus 4.7 sharp edges (handled in `adapt.ts`):** `temperature` is rejected on `claude-opus-4-7*` and is dropped from the request. `top_p`/`top_k` are not currently emitted by Ye.
 - **Message conversion:** Ye's canonical OpenAI-style messages → Anthropic shape. Adjacent `tool` results merge into a single `user` message with multiple `tool_result` blocks (Anthropic's required shape). Assistant turns with tool calls become content arrays of `[text?, tool_use, ...]`. `system` messages are pulled out and concatenated into the top-level `system` field.
 
-## OpenAI (Phase 3)
+## OpenAI (Phase 3 — shipped)
 
-- POST `https://api.openai.com/v1/chat/completions`
-- Auth: `Authorization: Bearer ...`
-- Tool calls = OpenAI standard (same shape as OpenRouter; the SSE adapter may share code).
+- POST `https://api.openai.com/v1/responses`
+- Auth: `Authorization: Bearer ...` (OPENAI_API_KEY)
+- **Responses API v1:** Uses explicit item types (`message`, `function_call`, `function_call_output`, `reasoning`). No server-side session stickiness in Ye (uses `store: false` + `previous_response_id` emulation via replaying items in `input`).
+- **Strict Schema:** Recursive schema transformation in `adapt.ts` ensures `additionalProperties: false` and `required` arrays include every property at every level to satisfy OpenAI's pedantic validator.
+- **Prompt caching:** `capabilities.promptCache = true` (automatic 90% discount on GPT-5 family).
+- **Reasoning:** `reasoning.delta` events emitted for thought summaries. `reasoning.effort` configurable via `providerOptions.reasoningEffort`.
+- **Tool calls:** Reconstructed from `response.output_item.added` + semantic argument deltas. Map `call_id` to Assistant tool calls and use `fc_` item prefixes in multi-turn history.
 
 ## Selection
 
@@ -148,6 +152,8 @@ Current entries:
 | anthropic | `claude-opus-4-7` | Opus 4.7 |
 | anthropic | `claude-sonnet-4-6` | Sonnet 4.6 |
 | anthropic | `claude-haiku-4-5` | Haiku 4.5 |
+| openai | `gpt-5.5-pro` | GPT-5.5 Pro |
+| openai | `codex-mini-latest` | Codex Mini Latest |
 
 `defaultModelFor(providerId)` returns the first entry — used by `/provider` to pick a sensible model when switching providers (don't carry a model across providers).
 
@@ -172,7 +178,11 @@ src/providers/
 │   ├── adapt.ts        # Ye Message[] → Anthropic body (system split, tool_use/tool_result blocks, cache marker)
 │   ├── stream.ts       # event: + data: SSE → ProviderEvent
 │   └── models.ts       # per-model context-size table + isOpus47() guard
-└── openai/             # Phase 3 — pending
+└── openai/             # Phase 3 — shipped
+    ├── index.ts        # Provider impl, MissingOpenAIKeyError
+    ├── adapt.ts        # Ye Message[] → Responses API body (recursive strict schema, instruction split)
+    ├── stream.ts       # semantic event SSE -> ProviderEvent (reasoning deltas, function_call item support)
+    └── models.ts       # per-model context-size table
 ```
 
 ## Decisions made
@@ -213,8 +223,11 @@ src/providers/
 - [ ] Cache-hit assertion in conformance suite
 
 ### Phase 3 — OpenAI
-- [ ] `openai/adapt.ts` (largely shared with OpenRouter; if a small shared helper has zero abstraction tax, extract; otherwise duplicate the ~30 LOC)
-- [ ] `openai/stream.ts`
+- [x] `openai/adapt.ts` — Responses API format, recursive strict schema transformation, instruction split, handle reasoning effort
+- [x] `openai/stream.ts` — Semantic SSE event parser, reasoning delta support, function_call item reconstruction
+- [x] `openai/index.ts` — Provider implementation, missing key handling
+- [x] `openai/models.ts` — Context size registry for GPT-4/5 families
+- [x] Registered in `PROVIDER_IDS` and model registry
 
 ### Conformance suite (Phase 3 gate)
 - [ ] Same prompt across all three: text-only round-trip
