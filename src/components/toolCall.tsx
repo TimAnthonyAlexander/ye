@@ -162,9 +162,7 @@ export const ToolCallView = ({ entry }: Props) => {
             : null;
     const showDiff = diff !== null && entry.result?.ok !== false;
     const showProgress =
-        entry.status === "running" &&
-        entry.progress !== undefined &&
-        entry.progress.length > 0;
+        entry.status === "running" && entry.progress !== undefined && entry.progress.length > 0;
     return (
         <Box flexDirection="column" marginBottom={1}>
             <Box>

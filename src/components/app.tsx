@@ -12,7 +12,9 @@ import {
     type SlashCommandContext,
 } from "../commands/index.ts";
 import {
+    expandMentions,
     findActiveMention,
+    type IndexEntry,
     loadFileIndex,
     matchFiles,
     type MentionOption,
@@ -135,7 +137,7 @@ export const App = ({ config }: AppProps) => {
     const [bootError, setBootError] = useState<string | null>(null);
     const [currentInput, setCurrentInput] = useState("");
     const [currentCursor, setCurrentCursor] = useState(0);
-    const [fileIndex, setFileIndex] = useState<readonly string[]>([]);
+    const [fileIndex, setFileIndex] = useState<readonly IndexEntry[]>([]);
     const [mentionActive, setMentionActive] = useState(0);
     // When set, the picker is suppressed for this exact query string until the
     // user edits the mention (causing the query to change) — that's how Esc
@@ -671,13 +673,23 @@ export const App = ({ config }: AppProps) => {
         };
         setItems((prev) => [...prev, userItem]);
 
+        // Resolve any `@<path>` tokens against the project root and append the
+        // file/folder content to the prompt the model sees. The chat UI keeps
+        // the original `@path` text — only the LLM-bound prompt is expanded.
+        let expanded = text;
+        try {
+            expanded = await expandMentions(text, stateRef.current.projectRoot);
+        } catch {
+            // fall back to raw text on any expansion failure
+        }
+
         if (streamingRef.current) {
-            queueRef.current.push(text);
+            queueRef.current.push(expanded);
             setQueuedCount(queueRef.current.length);
             return;
         }
 
-        await sendNow(text);
+        await sendNow(expanded);
     };
 
     const sendHiddenPrompt = (prompt: string): void => {

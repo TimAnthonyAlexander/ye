@@ -26,7 +26,10 @@ const truncate = (text: string): string =>
 // trick so backgrounded grandchildren (anything started with `&`) die with the
 // shell, not just the immediate sh process. Falls back to a plain proc.kill if
 // the group-kill throws (race with already-exited proc).
-const killGroup = (proc: { pid: number; kill: (sig?: number) => void }, sig: NodeJS.Signals): void => {
+const killGroup = (
+    proc: { pid: number; kill: (sig?: number) => void },
+    sig: NodeJS.Signals,
+): void => {
     try {
         process.kill(-proc.pid, sig);
         return;

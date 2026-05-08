@@ -1,9 +1,17 @@
-// A file the user can reference via `@`. `id` is the project-relative path
-// (forward-slashed, no leading `./`) — that's what gets inserted into the prompt.
+// A file or folder the user can reference via `@`. `id` is the project-relative
+// path (forward-slashed, no leading `./`); folders end with a trailing `/`.
+// `id` is what gets spliced into the prompt (with an `@` prefix added at insert
+// time).
 export interface MentionOption {
     readonly id: string;
     readonly basename: string;
     readonly parent: string;
+    readonly kind: "file" | "folder";
+}
+
+export interface IndexEntry {
+    readonly path: string;
+    readonly kind: "file" | "folder";
 }
 
 // The `@token` that the cursor is currently inside. `start` points at the `@`,

@@ -1,8 +1,11 @@
-// Project file index used by the `@`-mention picker. Prefers `rg --files`
-// (which honors .gitignore) and falls back to `Bun.Glob` with a hardcoded
-// exclude list when ripgrep is unavailable or fails.
+// Project file/folder index used by the `@`-mention picker. Files come from
+// `rg --files` (which honors .gitignore) with a `Bun.Glob` fallback; folders
+// are derived from the unique parent prefixes of the file list.
+
+import type { IndexEntry } from "./types.ts";
 
 const MAX_FILES = 5000;
+const MAX_FOLDERS = 2000;
 
 const FALLBACK_EXCLUDE = new Set([
     "node_modules",
@@ -19,8 +22,8 @@ const FALLBACK_EXCLUDE = new Set([
     "target",
 ]);
 
-const cache = new Map<string, readonly string[]>();
-const inflight = new Map<string, Promise<readonly string[]>>();
+const cache = new Map<string, readonly IndexEntry[]>();
+const inflight = new Map<string, Promise<readonly IndexEntry[]>>();
 
 const runRipgrep = async (root: string): Promise<readonly string[] | null> => {
     try {
@@ -59,7 +62,28 @@ const runFallback = async (root: string): Promise<readonly string[]> => {
     return out;
 };
 
-export const loadFileIndex = async (root: string): Promise<readonly string[]> => {
+const deriveFolders = (files: readonly string[]): string[] => {
+    const set = new Set<string>();
+    for (const f of files) {
+        const segments = f.split("/");
+        for (let i = 1; i < segments.length; i++) {
+            set.add(segments.slice(0, i).join("/") + "/");
+            if (set.size >= MAX_FOLDERS) break;
+        }
+        if (set.size >= MAX_FOLDERS) break;
+    }
+    return [...set].sort();
+};
+
+const buildIndex = (files: readonly string[]): readonly IndexEntry[] => {
+    const folders = deriveFolders(files);
+    const entries: IndexEntry[] = [];
+    for (const path of folders) entries.push({ path, kind: "folder" });
+    for (const path of files) entries.push({ path, kind: "file" });
+    return entries;
+};
+
+export const loadFileIndex = async (root: string): Promise<readonly IndexEntry[]> => {
     const cached = cache.get(root);
     if (cached) return cached;
     const pending = inflight.get(root);
@@ -67,7 +91,8 @@ export const loadFileIndex = async (root: string): Promise<readonly string[]> =>
 
     const promise = (async () => {
         const fromRg = await runRipgrep(root);
-        const result = fromRg ?? (await runFallback(root));
+        const files = fromRg ?? (await runFallback(root));
+        const result = buildIndex(files);
         cache.set(root, result);
         inflight.delete(root);
         return result;
@@ -83,4 +108,5 @@ export const refreshFileIndex = (root: string): void => {
 
 export { findActiveMention } from "./parse.ts";
 export { matchFiles } from "./match.ts";
-export type { ActiveMention, MentionOption } from "./types.ts";
+export { expandMentions } from "./expand.ts";
+export type { ActiveMention, IndexEntry, MentionOption } from "./types.ts";

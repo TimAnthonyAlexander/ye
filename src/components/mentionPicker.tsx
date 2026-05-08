@@ -21,11 +21,16 @@ export const MentionPicker = ({ matches, activeIndex }: MentionPickerProps) => {
             {visible.map((opt, i) => {
                 const isActive = i === safeActive;
                 const prefix = isActive ? "▸ " : "  ";
+                const folder = opt.kind === "folder";
+                const activeColor = folder ? "yellow" : "cyan";
                 return (
                     <Box key={opt.id}>
-                        <Text color={isActive ? "cyan" : undefined}>{prefix}</Text>
+                        <Text color={isActive ? activeColor : undefined}>{prefix}</Text>
                         {opt.parent.length > 0 && <Text dimColor>{opt.parent}</Text>}
-                        <Text bold={isActive} color={isActive ? "cyan" : undefined}>
+                        <Text
+                            bold={isActive}
+                            color={isActive ? activeColor : folder ? "yellow" : undefined}
+                        >
                             {opt.basename}
                         </Text>
                     </Box>

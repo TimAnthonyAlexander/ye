@@ -112,8 +112,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         const c = cursorRef.current;
         const mention = findActiveMention(v, c);
         if (!mention) return false;
-        const insert = `${replacement} `;
-        apply(v.slice(0, mention.start) + insert + v.slice(mention.end), mention.start + insert.length);
+        // Keep the `@` prefix on the inserted token. The token is what gets
+        // resolved on submit (see expandMentions), and a leading `@` is the
+        // signal that distinguishes a mention from any other path-shaped string.
+        const insert = `@${replacement} `;
+        apply(
+            v.slice(0, mention.start) + insert + v.slice(mention.end),
+            mention.start + insert.length,
+        );
         return true;
     };
 
