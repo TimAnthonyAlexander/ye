@@ -7,6 +7,29 @@ const SAFETY_MARGIN = 256;
 
 const DEFAULT_MIN_REPLY_TOKENS = 1024;
 
+export type ClampOutcome = "raised" | "lowered" | "skipped" | "infeasible";
+
+// The clamp body, factored out so the orchestrator can re-run it as a
+// finalizer after prompt-shrinking shapers free space. Sets
+// budget.maxTokens = min(initialMaxTokens, ceiling - promptTokens), bounded
+// below by minReplyTokens. Never raises past the initial budget.
+export const clampBudget = (ctx: ShaperContext): ClampOutcome => {
+    const { state, messages, config, budget } = ctx;
+    const minReplyTokens = config.compact?.minReplyTokens ?? DEFAULT_MIN_REPLY_TOKENS;
+
+    const promptTokens = estimateTokens(messages);
+    const ceiling = state.contextWindow - SAFETY_MARGIN;
+    const available = ceiling - promptTokens;
+
+    if (available < minReplyTokens) return "infeasible";
+
+    const target = Math.min(budget.initialMaxTokens, available);
+    if (target === budget.maxTokens) return "skipped";
+    const wasRaise = target > budget.maxTokens;
+    budget.maxTokens = target;
+    return wasRaise ? "raised" : "lowered";
+};
+
 // Cheapest shaper. Runs before any prompt-shrinking shaper. Logic:
 //
 //   - If `promptTokens + budget.maxTokens` already fits in the window: skip.
@@ -18,23 +41,9 @@ const DEFAULT_MIN_REPLY_TOKENS = 1024;
 //
 // No model call. No history mutation. Pure request-side knob.
 const run = async (ctx: ShaperContext): Promise<ShaperResult> => {
-    const { state, messages, config, budget } = ctx;
-    const minReplyTokens = config.compact?.minReplyTokens ?? DEFAULT_MIN_REPLY_TOKENS;
-
-    const promptTokens = estimateTokens(messages);
-    const ceiling = state.contextWindow - SAFETY_MARGIN;
-
-    if (promptTokens + budget.maxTokens <= ceiling) {
-        return "skip";
-    }
-
-    const available = ceiling - promptTokens;
-    if (available < minReplyTokens) {
-        return "skip";
-    }
-
-    budget.maxTokens = available;
-    return "done";
+    const outcome = clampBudget(ctx);
+    if (outcome === "lowered") return "done";
+    return "skip";
 };
 
 export const budgetReduction: Shaper = {

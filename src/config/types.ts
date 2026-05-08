@@ -33,6 +33,18 @@ export interface CompactConfig {
     // Floor below which Budget Reduction gives up — a too-cramped reply ceiling
     // is worse than letting the next (prompt-shrinking) shaper run.
     readonly minReplyTokens?: number;
+    // Snip shaper.
+    readonly snipThreshold?: number;
+    readonly snipFloor?: number;
+    readonly snipProtectedTail?: number;
+    readonly snipMaxPerTurn?: number;
+    // Microcompact shaper.
+    readonly microcompactThreshold?: number;
+    readonly microcompactHotTail?: number;
+    readonly microcompactMinBytes?: number;
+    // Context Collapse shaper.
+    readonly collapseThreshold?: number;
+    readonly collapsePreserveRecent?: number;
 }
 
 export interface MaxTurnsConfig {

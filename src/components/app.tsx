@@ -23,6 +23,7 @@ import {
 import { type Config, type LoadResult, type PermissionMode, saveConfig } from "../config/index.ts";
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
 import { createSessionState, queryLoop, type SessionState } from "../pipeline/index.ts";
+import { resetShapingFlags } from "../pipeline/state.ts";
 import { estimateTokens } from "../pipeline/shapers/tokens.ts";
 import {
     defaultModelFor,
@@ -229,6 +230,7 @@ export const App = ({ config }: AppProps) => {
         state.sessionRules = [];
         state.denialTrail = null;
         state.compactedThisTurn = false;
+        resetShapingFlags(state);
         setItems([]);
         setCommittedCount(0);
         setTodos([]);

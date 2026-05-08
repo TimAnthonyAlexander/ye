@@ -313,7 +313,7 @@ The user may have a project notes file (\`CLAUDE.md\` if it exists, otherwise \`
 
 const ENV_BLOCK = (env: SystemPromptEnv): string => `# Environment
 
-- Working directory: ${env.cwd}
+- Working directory: ${env.cwd}. All tool calls (Bash, Read, Write, Edit, Glob, Grep, etc.) operate from this path. Unless the user explicitly names a different location, treat this directory as the project root for everything you do — never \`cd\` elsewhere, search the filesystem from here, and resolve relative paths against this cwd.
 - Permission mode: ${env.mode}
 - Model: ${env.model}
 - Platform: ${env.platform}

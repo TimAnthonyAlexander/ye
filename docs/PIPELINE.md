@@ -36,11 +36,17 @@ Sources Ye resolves through the centralized resolvers (no duplicate logic): note
 
 Shapers run in declared order from cheapest to most expensive; each checks its own trigger and returns `"skip"`, `"applied"` (mutated history; orchestrator re-assembles before the next shaper), or `"done"` (request now fits; chain stops). The orchestrator owns a mutable `RequestBudget` shapers can lower; the resolved `budget.maxTokens` is then passed to the provider.
 
-Current chain:
+Current chain (cheapest → most expensive):
 
-1. **Budget Reduction** — no model call, no history mutation. If `promptTokens + budget.maxTokens > contextWindow - margin` and the available headroom is at least `compact.minReplyTokens` (default 1024), clamp `budget.maxTokens` and stop the chain. Otherwise skip and let prompt-shrinking shapers run.
-2. *(Phase 4: Snip → Microcompact → Context Collapse will land between Budget Reduction and Auto-Compact)*
-3. **Auto-Compact** — last-resort. Fires when `currentTokens / contextWindow >= config.compact.threshold` (default 0.5). Runs at most once per turn (`state.compactedThisTurn`).
+1. **Budget Reduction** — no model call, no history mutation. Clamps `budget.maxTokens` to `min(initialMaxTokens, contextWindow - margin - promptTokens)`. If the clamp lowered the budget enough to fit, returns `"done"` and the chain stops. If even the floor (`compact.minReplyTokens`, default 1024) wouldn't fit, returns `"skip"` and lets prompt-shrinking shapers run.
+2. **Snip** — no model call. Fires at `compact.snipThreshold` (default 0.35). Replaces the largest old `role:"tool"` results outside the protected tail (`compact.snipProtectedTail`, default 8) with a tiny `[snipped: stale tool result]` stub, preserving `tool_call_id` so providers don't reject orphaned pairs. Drops biggest first until projected tokens fall below `compact.snipFloor` (default 0.30) or `compact.snipMaxPerTurn` (default 10) is hit.
+3. **Microcompact** — no model call. Fires at `compact.microcompactThreshold` (default 0.42). Truncates *all* eligible tool results outside the hot tail (`compact.microcompactHotTail`, default 6) whose content exceeds `compact.microcompactMinBytes` (default 1024). Stub is `[microcompacted: tool=<name>, id=<id>, size≈<orig>B]` — preserves the tool name (looked up via the assistant's prior `tool_calls`) and call id.
+4. **Context Collapse** — one model call. Fires at `compact.collapseThreshold` (default 0.48). Mechanically identical to Auto-Compact but with a wider preserve-recent window (`compact.collapsePreserveRecent`, default 12) and a slightly lighter summary prompt (≤200 words). Uses the shared `summarize.ts` helper, which carries the boundary-pairing guard.
+5. **Auto-Compact** — last-resort. Fires when `currentTokens / contextWindow >= config.compact.threshold` (default 0.5). Preserves only the last 4 messages. Same shared `summarize.ts` helper.
+
+Each history-mutating shaper carries a one-shot `state.shapingFlags.<name>` flag, reset at turn start. The orchestrator caps total `"applied"` count at `MAX_SHAPER_APPLIED_PER_TURN = 4` per turn — belt-and-suspenders against the leaked-Claude-Code retry-loop bug. After the chain ends, a finalizer re-runs `clampBudget()` to take advantage of any space prompt-shrinking shapers freed.
+
+Each `"applied"` emits a `shaper.applied` event (`name`, `tokensFreed`) — picked up by the UI for a one-line dim status and persisted to the session JSONL.
 
 ### Auto-compact logic
 
@@ -77,6 +83,7 @@ type Event =
   | { type: "permission.prompt"; toolCall: ToolCall }    // UI awaits, replies allow/deny
   | { type: "tool.start"; id: string; name: string }
   | { type: "tool.end"; id: string; result: ToolResult }
+  | { type: "shaper.applied"; name: string; tokensFreed: number }  // step 4 mutation
   | { type: "turn.end"; stopReason: StopReason };
 ```
 

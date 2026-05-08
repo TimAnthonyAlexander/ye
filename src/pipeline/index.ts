@@ -2,11 +2,11 @@ import { FALLBACK_CONTEXT_WINDOW, type Config } from "../config/index.ts";
 import type { Message, Provider } from "../providers/index.ts";
 import { openSession, type SessionHandle } from "../storage/index.ts";
 import type { Event, StopReason } from "./events.ts";
-import { newTurnState, type SessionState } from "./state.ts";
+import { newShapingFlags, newTurnState, type SessionState } from "./state.ts";
 import { runTurn } from "./turn.ts";
 
 export type { Event, StopReason } from "./events.ts";
-export { newTurnState } from "./state.ts";
+export { newShapingFlags, newTurnState, resetShapingFlags } from "./state.ts";
 export type { SessionState } from "./state.ts";
 
 export interface CreateSessionInput {
@@ -39,6 +39,7 @@ export const createSessionState = async (
         sessionRules: [],
         denialTrail: null,
         compactedThisTurn: false,
+        shapingFlags: newShapingFlags(),
         selectedMemory: null,
         turnState: newTurnState(),
     };

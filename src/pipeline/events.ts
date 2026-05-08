@@ -50,6 +50,11 @@ export type Event =
       }
     | { readonly type: "mode.changed"; readonly mode: string }
     | {
+          readonly type: "shaper.applied";
+          readonly name: string;
+          readonly tokensFreed: number;
+      }
+    | {
           readonly type: "userQuestion.prompt";
           readonly id: string;
           readonly payload: UserQuestionPayload;

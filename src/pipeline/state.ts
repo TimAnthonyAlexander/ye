@@ -15,6 +15,16 @@ export interface SelectedMemoryEntry {
     readonly content: string;
 }
 
+// One-shot per-turn flags for each shaper that mutates state.history. Set on
+// "applied", reset at turn start. Generalizes the original compactedThisTurn
+// flag (which is dual-written by autoCompact for one release).
+export interface ShapingFlags {
+    snip: boolean;
+    microcompact: boolean;
+    contextCollapse: boolean;
+    autoCompact: boolean;
+}
+
 export interface SessionState {
     readonly sessionId: string;
     readonly projectId: string;
@@ -25,6 +35,7 @@ export interface SessionState {
     sessionRules: PermissionRule[];
     denialTrail: DenialTrail | null;
     compactedThisTurn: boolean;
+    shapingFlags: ShapingFlags;
     // Per-session model override. When undefined, runTurn falls back to
     // config.defaultModel.model. /model and /provider mutate this; provider
     // switches also clear it (the new provider gets its registry default).
@@ -50,6 +61,20 @@ export const newTurnState = (): TurnState => ({
     readFiles: new Map(),
     todos: [],
 });
+
+export const newShapingFlags = (): ShapingFlags => ({
+    snip: false,
+    microcompact: false,
+    contextCollapse: false,
+    autoCompact: false,
+});
+
+export const resetShapingFlags = (state: SessionState): void => {
+    state.shapingFlags.snip = false;
+    state.shapingFlags.microcompact = false;
+    state.shapingFlags.contextCollapse = false;
+    state.shapingFlags.autoCompact = false;
+};
 
 export const resetDenialTrail = (state: SessionState): void => {
     state.denialTrail = null;

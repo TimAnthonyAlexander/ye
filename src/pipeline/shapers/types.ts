@@ -7,6 +7,13 @@ import type { SessionState } from "../state.ts";
 // shapers in the chain.
 export interface RequestBudget {
     maxTokens: number;
+    // The budget the orchestrator started with this turn. clampBudget() never
+    // raises above this — it's the ceiling for any post-shaping re-clamp.
+    initialMaxTokens: number;
+    // Running tally of tokens freed by history-mutating shapers this turn.
+    // Used for shaper.applied event payloads + observability. Not consulted by
+    // any trigger predicate — predicates stay self-contained on estimateTokens.
+    tokensFreedThisTurn: number;
 }
 
 export interface ShaperContext {

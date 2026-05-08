@@ -6,3 +6,6 @@ import type { Message } from "../../providers/index.ts";
 // available for a given provider.
 export const estimateTokens = (messages: readonly Message[]): number =>
     Math.ceil(JSON.stringify(messages).length / 4);
+
+export const estimateMessageTokens = (m: Message): number =>
+    Math.ceil(JSON.stringify(m).length / 4);

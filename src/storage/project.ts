@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 import { getProjectDir, getProjectMetaPath } from "./paths.ts";
 
@@ -17,13 +18,22 @@ interface ProjectMeta {
 }
 
 const findProjectRoot = (start: string): string => {
-    let dir = resolve(start);
+    const home = resolve(homedir());
+    const startResolved = resolve(start);
+    let dir = startResolved;
     while (true) {
+        // Never promote the project root above $HOME from below. Globally
+        // installed tools routinely scatter markers in $HOME (~/composer.json,
+        // ~/package.json, ~/.git from a misconfigured global init) and we
+        // don't want any nested cwd that lacks its own markers to inherit
+        // those. Exception: if the user explicitly launched from $HOME, the
+        // markers there are theirs to claim.
+        if (dir === home && startResolved !== home) return startResolved;
         for (const marker of ROOT_MARKERS) {
             if (existsSync(`${dir}${sep}${marker}`)) return dir;
         }
         const parent = dirname(dir);
-        if (parent === dir) return resolve(start);
+        if (parent === dir) return startResolved;
         dir = parent;
     }
 };

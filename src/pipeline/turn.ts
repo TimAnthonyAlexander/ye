@@ -23,7 +23,12 @@ import { assemble } from "./assemble.ts";
 import { type CollectedToolCall, streamFromProvider } from "./dispatch.ts";
 import { transcriptable, type Event, type StopReason } from "./events.ts";
 import { runShapers } from "./shapers/index.ts";
-import { recordDenial, resetDenialTrail, type SessionState } from "./state.ts";
+import {
+    recordDenial,
+    resetDenialTrail,
+    resetShapingFlags,
+    type SessionState,
+} from "./state.ts";
 import { evaluateStop } from "./stop.ts";
 
 export interface TurnDeps {
@@ -81,6 +86,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
 
     // Reset per-turn flags.
     state.compactedThisTurn = false;
+    resetShapingFlags(state);
 
     yield { type: "turn.start", turnIndex };
     await session.appendEvent({ type: "turn.start", turnIndex });
@@ -101,16 +107,29 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
 
     const activeModel = state.activeModel ?? config.defaultModel.model;
 
-    // Step 3: assemble. Step 4: shapers (Budget Reduction → Auto-Compact),
-    // which may clamp the reply budget and/or rewrite state.history.
+    // Step 3: assemble. Step 4: shapers (Budget Reduction → ... → Auto-Compact),
+    // which may clamp the reply budget and/or rewrite state.history. Shapers
+    // yield shaper.applied events as they fire.
     const initialMessages = await assemble({ state, model: activeModel });
-    const { messages, budget } = await runShapers({
+    const shaperGen = runShapers({
         state,
         initialMessages,
         provider,
         config,
         model: activeModel,
     });
+    let messages: Message[];
+    let budget;
+    while (true) {
+        const next = await shaperGen.next();
+        if (next.done) {
+            messages = next.value.messages;
+            budget = next.value.budget;
+            break;
+        }
+        yield next.value;
+        await session.appendEvent(transcriptable(next.value));
+    }
 
     // Step 5 + start of step 6: model call + tool-call collection.
     const webSearchAvailable =
