@@ -36,6 +36,10 @@ export interface ReplayedSession {
         readonly resultOk: boolean;
         readonly resultText: string;
     }>;
+    // Last session.title event observed in the JSONL, if any. Generated once
+    // on the first user message of a fresh session by a small/cheap LLM, then
+    // surfaced in the resume picker and used to rename the terminal/tmux pane.
+    readonly title: string | null;
 }
 
 interface RawEvent {
@@ -77,6 +81,7 @@ export const replaySessionFile = async (jsonlPath: string): Promise<ReplayedSess
 
     const history: Message[] = [];
     let mode: PermissionMode | null = null;
+    let title: string | null = null;
     let turnsCompleted = 0;
     let maxGlobalTurnIndex = 0;
     const prompts: PromptStartEntry[] = [];
@@ -189,6 +194,12 @@ export const replaySessionFile = async (jsonlPath: string): Promise<ReplayedSess
                 }
                 break;
             }
+            case "session.title": {
+                if (typeof evt.title === "string" && evt.title.length > 0) {
+                    title = evt.title;
+                }
+                break;
+            }
             case "prompt.start": {
                 if (typeof evt.firstTurnGlobalIdx === "number") {
                     prompts.push({
@@ -254,7 +265,7 @@ export const replaySessionFile = async (jsonlPath: string): Promise<ReplayedSess
         if (candidate > maxGlobalTurnIndex) maxGlobalTurnIndex = candidate;
     }
 
-    return { history, mode, turnsCompleted, maxGlobalTurnIndex, prompts, toolCalls };
+    return { history, mode, turnsCompleted, maxGlobalTurnIndex, prompts, toolCalls, title };
 };
 
 const safeParseArgs = (raw: string): unknown => {
@@ -271,6 +282,10 @@ export interface SessionSummary {
     readonly modifiedAt: string;
     readonly preview: string;
     readonly userMessageCount: number;
+    // Last persisted session.title, if the title generator ever ran and
+    // succeeded for this session. Null when never generated (e.g., session
+    // recorded before this feature shipped, or generator failed/was skipped).
+    readonly title: string | null;
 }
 
 const isJsonl = (name: string): boolean => name.endsWith(".jsonl");
@@ -308,16 +323,25 @@ export const listProjectSessions = async (
         const sessionId = name.replace(/\.jsonl$/, "");
         let preview = "";
         let userMessageCount = 0;
+        let title: string | null = null;
 
         try {
             const raw = await readFile(path, "utf8");
             for (const line of raw.split("\n")) {
                 const evt = parseLine(line);
-                if (!evt || evt.type !== "user.message") continue;
-                userMessageCount += 1;
-                if (preview.length === 0 && typeof evt.content === "string") {
-                    const trimmed = evt.content.trim().replace(/\s+/g, " ");
-                    preview = trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
+                if (!evt) continue;
+                if (evt.type === "user.message") {
+                    userMessageCount += 1;
+                    if (preview.length === 0 && typeof evt.content === "string") {
+                        const trimmed = evt.content.trim().replace(/\s+/g, " ");
+                        preview = trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
+                    }
+                } else if (
+                    evt.type === "session.title" &&
+                    typeof evt.title === "string" &&
+                    evt.title.length > 0
+                ) {
+                    title = evt.title;
                 }
             }
         } catch {
@@ -325,7 +349,7 @@ export const listProjectSessions = async (
         }
 
         if (userMessageCount === 0) continue;
-        summaries.push({ sessionId, path, modifiedAt, preview, userMessageCount });
+        summaries.push({ sessionId, path, modifiedAt, preview, userMessageCount, title });
     }
 
     summaries.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));

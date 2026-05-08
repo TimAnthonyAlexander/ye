@@ -36,15 +36,20 @@ import {
 } from "../providers/index.ts";
 import {
     appendHistory,
+    generateSessionTitle,
     getProjectId,
     listProjectSessions,
     loadHistory,
     openExistingSession,
     openSession,
+    recordSessionTitle,
     replaySessionFile,
+    resetTerminalTitle,
     rewindToTurn,
+    titleModelFor,
     type SessionHandle,
     type SessionSummary,
+    writeTerminalTitle,
 } from "../storage/index.ts";
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
@@ -254,6 +259,10 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
     const stateRef = useRef<SessionState | null>(null);
     const sessionRef = useRef<SessionHandle | null>(null);
     const providerRef = useRef<Provider | null>(null);
+    // True once a session.title has been generated (or restored from a
+    // resumed session). Gates the one-shot title generator so the second user
+    // message doesn't fire a fresh title call.
+    const titleGeneratedRef = useRef(false);
     // Mutable, in-memory mirror of the on-disk config. tryBuildProvider returns
     // an updated cfg when a key is persisted; we write it here so subsequent
     // builds and queryLoop calls see the new key without a stale closure.
@@ -368,10 +377,47 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
         setTodos([]);
         setError(null);
         setUsedTokens(0);
+        titleGeneratedRef.current = false;
+        resetTerminalTitle();
         // Items already promoted to <Static> live in terminal scrollback,
         // outside React's tree — clearing items state alone won't reclaim
         // those rows. ESC[2J clears the visible screen, ESC[3J the scrollback.
         process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+    };
+
+    // Fire-and-forget: generate a 2-5 word session title from the first user
+    // message using a small/cheap model on the active provider, persist it as
+    // a session.title event, and push it to the terminal/tmux pane.
+    // Failures (no cheap model registered, network blip, model refused) are
+    // swallowed silently — the session falls back to its first-message
+    // preview in the resume picker.
+    const triggerTitleGeneration = (userPrompt: string): void => {
+        if (titleGeneratedRef.current) return;
+        const provider = providerRef.current;
+        const session = sessionRef.current;
+        if (!provider || !session) return;
+        const model = titleModelFor(provider.id);
+        if (!model) return;
+        titleGeneratedRef.current = true;
+        void (async () => {
+            try {
+                const title = await generateSessionTitle({
+                    provider,
+                    model,
+                    userPrompt,
+                });
+                if (!title) {
+                    titleGeneratedRef.current = false;
+                    return;
+                }
+                if (sessionRef.current === session) {
+                    await recordSessionTitle({ session, title });
+                    writeTerminalTitle(title);
+                }
+            } catch {
+                titleGeneratedRef.current = false;
+            }
+        })();
     };
 
     // Resume an existing session: replay its JSONL into history, swap the
@@ -410,17 +456,28 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
         setTodos([]);
         setError(null);
         setUsedTokens(estimateTokens(state.history));
+        if (replayed.title) {
+            titleGeneratedRef.current = true;
+            writeTerminalTitle(replayed.title);
+        } else {
+            titleGeneratedRef.current = false;
+            resetTerminalTitle();
+        }
         process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
     };
 
     const buildResumeOptions = (
         summaries: readonly SessionSummary[],
     ): readonly { id: string; label: string; description: string }[] =>
-        summaries.map((s) => ({
-            id: s.sessionId,
-            label: `${s.modifiedAt.slice(0, 16).replace("T", " ")} · ${s.userMessageCount} msg`,
-            description: s.preview || "(no preview)",
-        }));
+        summaries.map((s) => {
+            const stamp = s.modifiedAt.slice(0, 16).replace("T", " ");
+            const headline = s.title ?? `${s.userMessageCount} msg`;
+            return {
+                id: s.sessionId,
+                label: `${stamp} · ${headline}`,
+                description: s.preview || "(no preview)",
+            };
+        });
 
     const runResumePicker = async (): Promise<string | null> => {
         const state = stateRef.current;
@@ -1035,6 +1092,11 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
             await runSlash(text);
             return;
         }
+
+        // First visible user prompt of a fresh session → kick off title gen
+        // in the background. Independent of @-expansion: we want the title to
+        // reflect the user's intent, not the resolved file dump.
+        triggerTitleGeneration(text);
 
         // Resolve any `@<path>` tokens against the project root and append the
         // file/folder content to the prompt the model sees. The chat UI keeps

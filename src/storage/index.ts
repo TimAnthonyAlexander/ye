@@ -41,3 +41,11 @@ export {
     type SessionSummary,
 } from "./replay.ts";
 export { randomPlanName } from "./wordlist.ts";
+export {
+    generateSessionTitle,
+    recordSessionTitle,
+    resetTerminalTitle,
+    sanitizeTitle,
+    titleModelFor,
+    writeTerminalTitle,
+} from "./title.ts";

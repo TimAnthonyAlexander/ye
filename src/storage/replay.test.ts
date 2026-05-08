@@ -137,6 +137,26 @@ describe("replaySessionFile", () => {
         expect(out.prompts.length).toBe(2);
     });
 
+    test("captures the most recent session.title event", async () => {
+        const path = await writeJsonl([
+            { type: "user.message", content: "fix the login button" },
+            { type: "session.title", title: "Fix login button" },
+            { type: "model.text", delta: "ok" },
+            { type: "turn.end", stopReason: "end_turn" },
+        ]);
+        const out = await replaySessionFile(path);
+        expect(out.title).toBe("Fix login button");
+    });
+
+    test("returns null title when no session.title event present", async () => {
+        const path = await writeJsonl([
+            { type: "user.message", content: "hello" },
+            { type: "turn.end", stopReason: "end_turn" },
+        ]);
+        const out = await replaySessionFile(path);
+        expect(out.title).toBeNull();
+    });
+
     test("ignores corrupted lines", async () => {
         const path = join(workDir, "corrupt.jsonl");
         await writeFile(
