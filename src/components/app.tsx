@@ -53,6 +53,21 @@ import { TodoPanel } from "./todoPanel.tsx";
 import type { ToolCallEntry } from "./toolCall.tsx";
 import { UserQuestion, type UserQuestionPayload } from "./userQuestion.tsx";
 
+type QueuedSend =
+    | {
+          readonly kind: "user";
+          readonly id: string;
+          readonly text: string;
+          readonly expanded: string;
+          readonly attachments: readonly ExpandedAttachment[];
+      }
+    | { readonly kind: "hidden"; readonly prompt: string };
+
+interface QueuedDisplayItem {
+    readonly id: string;
+    readonly text: string;
+}
+
 interface AppProps {
     readonly config: LoadResult;
 }
@@ -165,7 +180,7 @@ export const App = ({ config }: AppProps) => {
     const cfgRef = useRef<Config>(initialCfg);
     const pendingTodosRef = useRef<readonly TodoItem[] | null>(null);
     const streamingRef = useRef(false);
-    const queueRef = useRef<string[]>([]);
+    const queueRef = useRef<QueuedSend[]>([]);
     const abortRef = useRef<AbortController | null>(null);
     const chatInputRef = useRef<ChatInputHandle | null>(null);
     // Track total work time across a chain of queued sends so the
@@ -174,6 +189,10 @@ export const App = ({ config }: AppProps) => {
     const chainStartRef = useRef<number | null>(null);
     const chainFailedRef = useRef(false);
     const [queuedCount, setQueuedCount] = useState(0);
+    // Pending user messages waiting for the in-flight turn to finish. Kept out
+    // of `items` so streaming output doesn't push them up the scrollback —
+    // they're rendered in a pinned panel above the input until drained.
+    const [queuedDisplay, setQueuedDisplay] = useState<readonly QueuedDisplayItem[]>([]);
     const [usedTokens, setUsedTokens] = useState(0);
     const [contextWindow, setContextWindow] = useState(0);
     const [history, setHistory] = useState<readonly string[]>([]);
@@ -217,6 +236,42 @@ export const App = ({ config }: AppProps) => {
 
     const addSystemMessage = (text: string): void => {
         setItems((prev) => [...prev, { kind: "system", id: newChatItemId(), content: text }]);
+    };
+
+    const syncQueueDisplay = (): void => {
+        setQueuedCount(queueRef.current.length);
+        setQueuedDisplay(
+            queueRef.current
+                .filter((q): q is Extract<QueuedSend, { kind: "user" }> => q.kind === "user")
+                .map((q) => ({ id: q.id, text: q.text })),
+        );
+    };
+
+    const appendUserToChat = (
+        text: string,
+        attachments: readonly ExpandedAttachment[],
+    ): void => {
+        const userItem: ChatItem = {
+            kind: "message",
+            id: newChatItemId(),
+            role: "user",
+            content: text,
+        };
+        if (attachments.length === 0) {
+            setItems((prev) => [...prev, userItem]);
+            return;
+        }
+        const readItems: ChatItem[] = attachments.map((a) => ({
+            kind: "toolCall",
+            entry: {
+                id: newChatItemId(),
+                name: "Read",
+                args: { path: a.abs },
+                status: "done",
+                result: { ok: true, value: "" },
+            },
+        }));
+        setItems((prev) => [...prev, userItem, ...readItems]);
     };
 
     const rotateSession = async (): Promise<void> => {
@@ -447,7 +502,7 @@ export const App = ({ config }: AppProps) => {
             if (streamingRef.current && abortRef.current) {
                 abortRef.current.abort();
                 queueRef.current = [];
-                setQueuedCount(0);
+                syncQueueDisplay();
                 setItems((prev) => [
                     ...prev,
                     { kind: "system", id: newChatItemId(), content: "(stopped)" },
@@ -718,11 +773,19 @@ export const App = ({ config }: AppProps) => {
             }
         }
 
-        // Drain the next queued message, if any.
+        // Drain the next queued message, if any. User messages are flushed to
+        // the chat history at this point — that's the moment they "actually
+        // send", and they should appear in scrollback in the right slot
+        // relative to the streaming output that follows.
         const next = queueRef.current.shift();
-        setQueuedCount(queueRef.current.length);
+        syncQueueDisplay();
         if (next !== undefined) {
-            await sendNow(next);
+            if (next.kind === "user") {
+                appendUserToChat(next.text, next.attachments);
+                await sendNow(next.expanded);
+            } else {
+                await sendNow(next.prompt);
+            }
             return;
         }
 
@@ -760,14 +823,6 @@ export const App = ({ config }: AppProps) => {
             return;
         }
 
-        const userItem: ChatItem = {
-            kind: "message",
-            id: newChatItemId(),
-            role: "user",
-            content: text,
-        };
-        setItems((prev) => [...prev, userItem]);
-
         // Resolve any `@<path>` tokens against the project root and append the
         // file/folder content to the prompt the model sees. The chat UI keeps
         // the original `@path` text — only the LLM-bound prompt is expanded.
@@ -783,26 +838,22 @@ export const App = ({ config }: AppProps) => {
             // fall back to raw text on any expansion failure
         }
 
-        if (attachments.length > 0) {
-            const readItems: ChatItem[] = attachments.map((a) => ({
-                kind: "toolCall",
-                entry: {
-                    id: newChatItemId(),
-                    name: "Read",
-                    args: { path: a.abs },
-                    status: "done",
-                    result: { ok: true, value: "" },
-                },
-            }));
-            setItems((prev) => [...prev, ...readItems]);
-        }
-
         if (streamingRef.current) {
-            queueRef.current.push(expanded);
-            setQueuedCount(queueRef.current.length);
+            // Hold the message out of `items` until it's actually drained —
+            // otherwise streaming output below it would push it up the
+            // scrollback. The pinned panel above the input shows it instead.
+            queueRef.current.push({
+                kind: "user",
+                id: newChatItemId(),
+                text,
+                expanded,
+                attachments,
+            });
+            syncQueueDisplay();
             return;
         }
 
+        appendUserToChat(text, attachments);
         await sendNow(expanded);
     };
 
@@ -812,8 +863,8 @@ export const App = ({ config }: AppProps) => {
             return;
         }
         if (streamingRef.current) {
-            queueRef.current.push(prompt);
-            setQueuedCount(queueRef.current.length);
+            queueRef.current.push({ kind: "hidden", prompt });
+            syncQueueDisplay();
             return;
         }
         void sendNow(prompt);
@@ -891,6 +942,16 @@ export const App = ({ config }: AppProps) => {
                 </Box>
             )}
             <TodoPanel todos={todos} />
+            {queuedDisplay.length > 0 && (
+                <Box paddingX={1} flexDirection="column" marginBottom={1}>
+                    {queuedDisplay.map((q) => (
+                        <Text key={q.id} color="cyan">
+                            <Text dimColor>↳ queued </Text>
+                            {q.text}
+                        </Text>
+                    ))}
+                </Box>
+            )}
             {pendingPrompt ? (
                 <PermissionPrompt
                     payload={pendingPrompt.payload}
