@@ -11,9 +11,12 @@
         "start": "bun run src/cli.tsx",
         "dev": "bun --watch run src/cli.tsx",
         "build": "scripts/install.sh",
+        "release": "scripts/release.sh",
         "typecheck": "tsc --noEmit",
         "format": "prettier --write .",
-        "format:check": "prettier --check ."
+        "format:check": "prettier --check .",
+        "test": "bun test",
+        "check": "bun run typecheck && bun run format:check && bun run test"
     },
     "dependencies": {
         "ink": "^5.1.0",

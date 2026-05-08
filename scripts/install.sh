@@ -38,7 +38,7 @@ fi
 # start.
 mkdir -p dist
 echo "ye: building → dist/ye ($TARGET)"
-bun run scripts/build.ts "$TARGET"
+bun run scripts/build.ts "$TARGET" dist/ye
 
 # 4. Pick a writable PATH directory and link.
 pick_link_dir() {

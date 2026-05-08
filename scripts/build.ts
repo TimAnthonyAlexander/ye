@@ -8,9 +8,27 @@
 
 import type { BunPlugin } from "bun";
 
+const VALID_TARGETS = [
+    "bun-darwin-arm64",
+    "bun-darwin-x64",
+    "bun-linux-x64",
+    "bun-linux-arm64",
+    "bun-windows-x64",
+] as const;
+
+type Target = (typeof VALID_TARGETS)[number];
+
 const target = process.argv[2];
-if (target !== "bun-darwin-arm64" && target !== "bun-darwin-x64") {
-    console.error(`scripts/build.ts: unsupported target ${target}`);
+const outfile = process.argv[3];
+
+if (!target || !VALID_TARGETS.includes(target as Target)) {
+    console.error(
+        `scripts/build.ts: target required, one of: ${VALID_TARGETS.join(", ")}`,
+    );
+    process.exit(1);
+}
+if (!outfile) {
+    console.error("scripts/build.ts: outfile required");
     process.exit(1);
 }
 
@@ -41,8 +59,8 @@ const result = await Bun.build({
     },
     plugins: [stubReactDevtools],
     compile: {
-        target,
-        outfile: "dist/ye",
+        target: target as Target,
+        outfile,
     },
 });
 
