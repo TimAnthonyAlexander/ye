@@ -147,6 +147,6 @@ src/permissions/
 ### Phase 5 — Full mode set + safety layers
 - [ ] Add `acceptEdits`, `dontAsk`, `bypassPermissions`, `bubble` branches in `decide()` (4 more, total 7)
 - [ ] Auto-classifier in a Phase-5 `auto` mode (separate LLM call; behind a feature flag)
-- [ ] Hook integration: PreToolUse hooks may return `permissionDecision`
+- [x] Hook integration: PreToolUse hooks may return `permissionDecision` (block via exit 2)
 - [ ] Bash sandboxing layer (filesystem / network)
 - [ ] Subagent permission override rule: subagent `permissionMode` applies UNLESS parent is in `bypassPermissions`/`acceptEdits`/the Phase-5 `auto` (explicit user decisions take precedence)

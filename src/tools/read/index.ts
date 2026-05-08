@@ -47,7 +47,7 @@ const execute = async (
 export const ReadTool: Tool = {
     name: "Read",
     description:
-        "Read a file from disk. Default 2000-line slice. Supports offset/limit. Absolute paths only.",
+        "Read a file from disk. With no offset/limit, returns the first 2000 lines — enough for most files in a single call. Use offset/limit only for files larger than that. Absolute paths only.",
     annotations: { readOnlyHint: true },
     schema: {
         type: "object",

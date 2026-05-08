@@ -60,8 +60,8 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 - **File-history checkpoints shipped** — Edit/Write snapshot the original before mutating into `~/.ye/projects/<hash>/checkpoints/<sessionId>/<globalTurnIndex>/`. `/rewind` opens a picker over user prompts in the current session, restores files via `rewindToTurn()`, and truncates conversation history with an append-only `rewind` JSONL marker honored at replay time
 
 ### Phase 5 — Extensibility
-- Skills (`SKILL.md`, SkillTool)
-- Hooks (PreToolUse, PostToolUse, Stop)
+- Skills (`SKILL.md`, SkillTool) — **shipped**
+- **Hooks (PreToolUse, PostToolUse, Stop, UserPromptSubmit, SubagentStop, PreCompact, SessionStart) — shipped**
 - Worktree isolation for subagents
 - Remaining permission modes (acceptEdits, dontAsk, bypassPermissions, bubble) + auto-classifier
 
@@ -106,8 +106,8 @@ Items here orchestrate across multiple subdocs or don't fit any single one. Doma
 
 ### Phase 1 — gating items
 - [x] Top-level repo scaffolding ready: `src/{storage,memory,providers,permissions,tools,pipeline,ui}` directories created with `index.ts` placeholders
-- [ ] `bun test` runner wired (one passing smoke test in each domain)
-- [ ] `bun run check` script: typecheck + tests + lint, single command
+- [x] `bun test` runner wired — 178 tests across 16 files covering tools, pipeline, permissions, and storage
+- [x] `bun run check` script: typecheck + format:check + test, single command
 - [x] `scripts/install.sh` builds Ye (via `bun build --compile`) and symlinks `ye` into a `$PATH` directory (macOS arm64 + x64)
 - [ ] Phase 1 acceptance: from a fresh shell, `ye` opens an Ink session, an OpenRouter call streams text, one Read + one Edit work end-to-end with a y/n prompt, the transcript lands at `~/.ye/projects/<hash>/sessions/<id>.jsonl`
 - [x] Quickstart in repo root `README.md` (only after Phase 1 acceptance)
@@ -132,6 +132,6 @@ Items here orchestrate across multiple subdocs or don't fit any single one. Doma
 - [ ] Versioning + release script (`scripts/release.sh`, Phase 6+)
 
 ### Engineering hygiene (ongoing)
-- [ ] One assertion lib only (Bun's `expect`); set in stone before tests proliferate
+- [x] One assertion lib only (Bun's `expect`); set in stone before tests proliferate
 - [ ] Lint rule: no relative imports going up more than two `..`
 - [ ] No file > 800 lines (CI check)

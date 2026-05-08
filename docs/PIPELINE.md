@@ -157,8 +157,8 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 - [x] Step 9: stop conditions — no-tool-calls, max-turns (`maxTurns.master` default 100; `maxTurns.subagent` default 25), explicit cancel, PLAN-mode loop guard (two consecutive denials of the same tool in PLAN mode)
 - [x] PLAN-mode denial trail tracked in `TurnState`; reset on mode flip
 - [x] Transcript flush at end of each turn (append-only JSONL via storage layer)
-- [x] Smoke test: a turn with one Read tool call completes and produces a parseable JSONL transcript
-- [x] Smoke test: in PLAN mode, two Edit attempts in a row terminate the turn with the loop-guard reason
+- [x] Smoke test: a turn with one Read tool call completes and produces a parseable JSONL transcript — covered by pipeline state/stop/recovery tests
+- [x] Smoke test: in PLAN mode, two Edit attempts in a row terminate the turn with the loop-guard reason — covered by stop.test.ts
 
 ### Phase 2 — Subagents in the loop
 - [ ] Step 6: classify read-only vs state-modifying via `Tool.annotations.readOnlyHint`; parallel-dispatch read-only (annotations exist; parallel dispatch deferred — tools still serialize in v2)
@@ -184,6 +184,10 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 - [ ] LLM-summarization variant of Microcompact — Phase 4.5; gated behind a config flag, default off (current Microcompact is local-truncation-only to stay genuinely cheaper than Auto-Compact)
 
 ### Phase 5 — Hooks
-- [ ] PreToolUse hook in step 7 (may return `permissionDecision`)
-- [ ] PostToolUse hook after step 8
-- [ ] Stop hook before step 9 returns
+- [x] PreToolUse hook in step 7 (may return `permissionDecision` — blocks tool with exit 2)
+- [x] PostToolUse hook after step 8
+- [x] Stop hook before step 9 returns
+- [x] UserPromptSubmit hook (injects context into model-bound prompt)
+- [x] SubagentStop hook (after subagent completes)
+- [x] PreCompact hook (before compaction shapers run)
+- [x] SessionStart hook (after provider + session are ready)
