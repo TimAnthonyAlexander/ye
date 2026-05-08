@@ -60,7 +60,7 @@ That's the whole thing. Ye opens an Ink session in the current directory, stream
 
 - **NORMAL** — default. State-modifying tools fire a y/n prompt; read-only tools auto-allow.
 - **AUTO** — every tool auto-allows. Useful for trusted projects and long runs. Bash has no sandbox yet, so use it carefully.
-- **PLAN** — read-only. Only Read, Glob, Grep, and `ExitPlanMode` are allowed. The model proposes a plan, you accept it, mode flips back to NORMAL. Plans are saved under `~/.ye/projects/<hash>/plans/` so you can revisit them later.
+- **PLAN** — read-only. Only read-only tools plus `ExitPlanMode` are allowed. The model proposes a plan, you accept it, mode flips back to NORMAL. Plans are saved under `~/.ye/projects/<hash>/plans/` so you can revisit them later.
 
 **Per-session override** — `ye --mode AUTO` (or `NORMAL` / `PLAN`).
 
@@ -68,23 +68,27 @@ That's the whole thing. Ye opens an Ink session in the current directory, stream
 
 ## Tools
 
-Eleven built-in tools — enough for daily work:
+Fifteen built-in tools:
 
 | Tool | What it does |
 |------|--------------|
 | **Read** | Read a file (default 2000 lines, `offset` + `limit` for slicing). Absolute paths only. |
 | **Edit** | Exact-string replace. Requires a prior Read of same file. `replace_all` flag. |
 | **Write** | Create or overwrite. If the file exists, prior Read is required. |
-| **Bash** | Run a shell command. 2-min default timeout, 10-min max. |
-| **Grep** | Wraps `rg`. Three modes: content, files-with-matches, count. |
-| **Glob** | File pattern match, sorted by mtime. |
+| **Bash** | Run a shell command via `sh -c`. 2-min default timeout, 15-min max. |
+| **Grep** | Wraps `rg`. Three modes: content, files-with-matches, count. Type/glob filters. |
+| **Glob** | File pattern match, sorted by mtime. Skips noise dirs (node_modules, .git, etc.). |
 | **TodoWrite** | Lightweight task list. Exactly one `in_progress` at a time. |
-| **WebFetch** | Fetch URL, HTML→markdown, small-model summarise. 15-min cache. |
-| **WebSearch** | Anthropic server-side or DuckDuckGo fallback. Title + URL only. |
-| **AskUserQuestion** | Ask the user a structured 2-4 option question. |
-| **ExitPlanMode** | Write plan and prompt to leave PLAN mode. Only state-modifying tool in PLAN. |
+| **Task** | Spawn an isolated subagent (explore or general). Sidechain transcript, summary returned. |
+| **WebFetch** | Fetch URL, HTML→markdown, small-model summarise. 15-min cache. Cross-host redirect detection. |
+| **WebSearch** | Search the web. Anthropic server-side, Brave, or DuckDuckGo fallback. Title + URL only. |
+| **Skill** | Invoke a named user/project skill for specialised instructions. Read-only metadata load. |
+| **SaveMemory** | Persist a memory note. Writes to project memory store, auto-selected in future sessions. |
+| **AskUserQuestion** | Ask the user a structured 2-4 option question with an optional multi-select. |
+| **EnterPlanMode** | Request a switch INTO PLAN mode. Triggers a permission prompt. |
+| **ExitPlanMode** | Write plan and prompt to leave PLAN mode. Only state-modifying tool allowed in PLAN. |
 
-Read-only tools (Read, Grep, Glob, WebFetch, WebSearch, AskUserQuestion) auto-allow in NORMAL mode. Everything else prompts.
+Read-only tools (Read, Grep, Glob, WebFetch, WebSearch, Skill, AskUserQuestion) auto-allow in NORMAL mode. Everything else prompts.
 
 ## Providers
 
@@ -116,11 +120,12 @@ Disk is never destructively edited. Compaction records boundary markers and patc
 
 Ye's defense against context blowup. Subagents run the same pipeline with isolated state, write their own sidechain transcript, and return a single summary string to the parent — full subagent history never enters parent context.
 
-- **Explore** — codebase search, read-only. Takes a `thoroughness` param (`quick` / `medium` / `very thorough`).
-- **General-purpose** — open-ended multi-step research with a configurable tool set.
-- **Verification** — adversarial completion check against the original plan.
+- **Explore** — codebase search, read-only (Read/Glob/Grep). Takes a `thoroughness` param (`quick` / `medium` / `very_thorough`).
+- **General** — full toolset, runs in AUTO mode. Spawned via the Task tool with `kind: "general"`.
 
-Worktree isolation, custom agents (`.ye/agents/*.md`), and skills come later.
+## Skills
+
+Skills are pre-written procedural recipes that extend Ye's behavior for specialised tasks — frontend design conventions, release workflows, language-specific patterns. They live as markdown files under `~/.ye/skills/` (per-user) or `.ye/skills/` (per-project, committed to git). Ye ships with built-in skills and consumes externally-authored ones from GitHub marketplaces. Installing a skill copies its SKILL.md and supporting files into the skills directory; a restart loads it into the registry.
 
 ---
 
