@@ -674,7 +674,9 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
                 state.mode = next;
                 state.denialTrail = null;
                 setMode(next);
-                sessionRef.current?.appendEvent({ type: "mode.changed", mode: next }).catch(() => {});
+                sessionRef.current
+                    ?.appendEvent({ type: "mode.changed", mode: next })
+                    .catch(() => {});
             },
             setProvider: switchProvider,
             setModel: switchModel,

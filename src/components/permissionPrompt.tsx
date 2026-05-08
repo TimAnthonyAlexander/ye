@@ -71,19 +71,22 @@ export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) 
                 <Text bold color="magenta">
                     Plan ready — review and accept?
                 </Text>
-                {payload.planPath && (
-                    <Text dimColor>saved to {prettyPath(payload.planPath)}</Text>
-                )}
+                {payload.planPath && <Text dimColor>saved to {prettyPath(payload.planPath)}</Text>}
                 {planDisplay.length > 0 && (
                     <Box flexDirection="column" marginTop={1} marginBottom={1}>
                         <Text>{planDisplay}</Text>
                     </Box>
                 )}
                 <Text>
-                    <Text bold color="green">y</Text> accept &amp; switch to{" "}
-                    <Text bold>{payload.target ?? "NORMAL"}</Text>
+                    <Text bold color="green">
+                        y
+                    </Text>{" "}
+                    accept &amp; switch to <Text bold>{payload.target ?? "NORMAL"}</Text>
                     {"  ·  "}
-                    <Text bold color="red">n</Text> deny (stay in PLAN)
+                    <Text bold color="red">
+                        n
+                    </Text>{" "}
+                    deny (stay in PLAN)
                 </Text>
             </Box>
         );

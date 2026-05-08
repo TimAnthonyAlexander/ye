@@ -22,9 +22,7 @@ const target = process.argv[2];
 const outfile = process.argv[3];
 
 if (!target || !VALID_TARGETS.includes(target as Target)) {
-    console.error(
-        `scripts/build.ts: target required, one of: ${VALID_TARGETS.join(", ")}`,
-    );
+    console.error(`scripts/build.ts: target required, one of: ${VALID_TARGETS.join(", ")}`);
     process.exit(1);
 }
 if (!outfile) {
