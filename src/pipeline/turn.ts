@@ -1,4 +1,5 @@
 import type { Config } from "../config/index.ts";
+import { runEventHooks } from "../hooks/index.ts";
 import { ensureSelectedMemory } from "../memory/index.ts";
 import { decide, USER_DENIED } from "../permissions/index.ts";
 import type {
@@ -307,6 +308,34 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         yield startEvent;
         await session.appendEvent(transcriptable(startEvent));
 
+        // PreToolUse hook: runs after permission gate, before execution.
+        // Blocking (exit 2) skips execution and returns stderr to the model.
+        const preHook = await runEventHooks(
+            config.hooks,
+            "PreToolUse",
+            {
+                tool_name: call.name,
+                tool_args: call.args,
+                project_dir: state.projectRoot,
+            },
+            signal,
+        );
+        if (preHook.blocked) {
+            const result: ToolResult = {
+                ok: false,
+                error: preHook.reason ?? "hook blocked",
+            };
+            const endEvent: Event = { type: "tool.end", id: call.id, name: call.name, result };
+            yield endEvent;
+            await session.appendEvent(transcriptable(endEvent));
+            state.history.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: renderToolResult(result),
+            });
+            continue;
+        }
+
         const subagentContext: SubagentToolContext | undefined =
             state.parentSessionId === undefined
                 ? {
@@ -411,6 +440,25 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         };
         yield endEvent;
         await session.appendEvent(transcriptable(endEvent));
+
+        // PostToolUse hook: fire-and-forget after successful tool call.
+        // Extract file paths from args for tools that carry a `path` field.
+        if (finalResult.ok) {
+            const args = call.args as Record<string, unknown> | undefined;
+            const filePaths: string[] = [];
+            if (args && typeof args["path"] === "string") filePaths.push(args["path"]);
+            void runEventHooks(
+                config.hooks,
+                "PostToolUse",
+                {
+                    tool_name: call.name,
+                    tool_args: call.args,
+                    ...(filePaths.length > 0 ? { file_paths: filePaths } : {}),
+                    project_dir: state.projectRoot,
+                },
+                signal,
+            );
+        }
         state.history.push({
             role: "tool",
             tool_call_id: call.id,

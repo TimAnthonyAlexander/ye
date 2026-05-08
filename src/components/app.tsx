@@ -63,6 +63,7 @@ import { cycleMode } from "../ui/keybinds.ts";
 import { refreshUpdateStatus, type UpdateStatus } from "../update/check.ts";
 import { Chat, type ChatItem, computeDynamicStart, newChatItemId } from "./chat.tsx";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
+import { runEventHooks } from "../hooks/index.ts";
 import { KeyPrompt } from "./keyPrompt.tsx";
 import { MentionPicker } from "./mentionPicker.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
@@ -757,6 +758,15 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
                 setMode(state.mode);
                 setContextWindow(state.contextWindow);
                 setUsedTokens(estimateTokens(state.history));
+
+                // SessionStart hook: fire-and-forget after provider + session are ready.
+                void runEventHooks(
+                    built.cfg.hooks,
+                    "SessionStart",
+                    { project_dir: state.projectRoot },
+                    new AbortController().signal,
+                );
+
                 loadFileIndex(state.projectRoot)
                     .then((idx) => {
                         if (!cancelled) setFileIndex(idx);
@@ -1105,6 +1115,17 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
         const failed = chainFailedRef.current;
         chainStartRef.current = null;
         chainFailedRef.current = false;
+
+        // Stop hook: fire-and-forget after the agent finishes responding.
+        if (!failed) {
+            void runEventHooks(
+                cfgRef.current.hooks,
+                "Stop",
+                { project_dir: stateRef.current!.projectRoot },
+                new AbortController().signal,
+            );
+        }
+
         if (!failed && startedAt !== null) {
             const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
             if (elapsedSec >= 1) {
@@ -1149,14 +1170,25 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
             const result = await expandMentions(text, stateRef.current.projectRoot);
             expanded = result.text;
             attachments = result.attachments;
-            // Mentioned files whose full contents were injected count toward
-            // the read-before-edit invariant — Edit's freshness check (re-read
-            // + hash compare) catches drift the same way it does for Read.
             for (const r of result.reads) {
                 stateRef.current.turnState.readFiles.set(r.abs, { hash: r.hash });
             }
         } catch {
-            // fall back to raw text on any expansion failure
+        }
+
+        // UserPromptSubmit hook: may inject context into the model-bound prompt.
+        const promptHook = await runEventHooks(
+            cfgRef.current.hooks,
+            "UserPromptSubmit",
+            { prompt: text, project_dir: stateRef.current.projectRoot },
+            new AbortController().signal,
+        );
+        if (promptHook.blocked) {
+            setError(promptHook.reason ?? "UserPromptSubmit hook blocked");
+            return;
+        }
+        if (promptHook.context && promptHook.context.length > 0) {
+            expanded = `${promptHook.context}\n\n${expanded}`;
         }
 
         if (streamingRef.current) {

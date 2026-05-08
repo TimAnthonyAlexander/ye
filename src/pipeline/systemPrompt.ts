@@ -452,6 +452,77 @@ If the user wants the skill to use a specific name, use that. Otherwise pick a k
 - Skills do not reload mid-session. After installing or authoring one, the user must restart Ye for it to appear.
 - If a SKILL.md you write conflicts with a builtin name (\`frontend-design\`, \`project-init\`), your file shadows the builtin — that's the override mechanism, intentional.`;
 
+const HOOKS_BLOCK = `# Hooks
+
+Hooks are shell commands the user can configure to fire on specific events. They live in \`~/.ye/config.json\` under the \`hooks\` key. Hooks let the user extend Ye's behavior without modifying source code — block dangerous tool calls, run formatters, play sounds, inject context, etc.
+
+## How hooks work
+
+Each hook is a shell command invoked via \`sh -c\`. The event payload is piped as JSON on stdin. Env vars \`YE_EVENT\`, \`YE_TOOL_NAME\`, \`YE_PROJECT_DIR\`, and \`YE_FILE_PATHS\` (space-separated, PostToolUse only) are also set.
+
+Exit codes:
+- \`0\` — success. stdout is collected (injected as context for UserPromptSubmit; discarded for other events).
+- \`2\` — **block**. The action is blocked. stderr is surfaced as the block reason.
+- Any other non-zero — non-blocking error. stderr is logged but execution proceeds.
+
+Default timeout: 60 seconds. Configurable per-hook with \`"timeout": <seconds>\`.
+
+## Event reference
+
+| Event              | Has matcher   | Fires when                                     | Can block |
+|--------------------|---------------|------------------------------------------------|-----------|
+| PreToolUse         | yes (regex)   | Before a tool runs (after permission gate)     | yes (exit 2) |
+| PostToolUse        | yes (regex)   | After a tool succeeds                          | no        |
+| UserPromptSubmit   | no            | User submits a prompt — can inject context     | yes       |
+| Stop               | no            | Main agent finishes responding                 | no        |
+| SubagentStop       | no            | Subagent (Task) finishes                       | no        |
+| PreCompact         | no            | Before auto-compaction                         | yes       |
+| SessionStart       | no            | Session boots                                  | no        |
+
+\`matcher\` is a regex matched against the tool name. Omit to match all tools. Examples: \`"Bash"\`, \`"Edit|Write"\`, \`"Notebook.*"\`.
+
+## Config shape
+
+\`\`\`json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "jq -r '.tool_input.command' | grep -qE '\\\\brm -rf\\\\b' && { echo 'rm -rf blocked' >&2; exit 2; } || exit 0" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "prettier --write $YE_FILE_PATHS" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "afplay /System/Library/Sounds/Blow.aiff" }
+        ]
+      }
+    ]
+  }
+}
+\`\`\`
+
+## Setting up hooks for the user
+
+When the user asks you to set up a hook:
+1. Read \`~/.ye/config.json\` to see existing config.
+2. If no \`hooks\` key exists, add it with the requested events. If hooks already exist, merge the new event key into the existing object — never overwrite unrelated events.
+3. Write the updated config via Write or Edit.
+4. Tell the user to restart Ye for the hooks to take effect (config is loaded once at session start).
+
+Hooks don't hot-reload. A restart is always required after editing \`~/.ye/config.json\`.`;
+
 const PROJECT_NOTES_BLOCK = `# Project notes
 
 The user may have a project notes file (\`CLAUDE.md\` if it exists, otherwise \`YE.md\`) at the project root. If present, its content is appended below as durable instructions for this project. Treat it as the user's stated preferences — follow it.`;
@@ -482,6 +553,7 @@ export const buildSystemPrompt = (env: SystemPromptEnv): string =>
         TOOLS_BLOCK,
         WEB_TOOLS_BLOCK,
         SKILLS_BLOCK,
+        HOOKS_BLOCK,
         PROJECT_NOTES_BLOCK,
         ENV_BLOCK(env),
     ].join("\n\n");

@@ -104,6 +104,27 @@ export interface SkillsConfig {
     readonly enableClaudeInterop?: boolean;
 }
 
+export interface HookEntry {
+    readonly type: "command";
+    readonly command: string;
+    readonly timeout?: number;
+}
+
+export interface MatcherGroup {
+    readonly matcher?: string;
+    readonly hooks: readonly HookEntry[];
+}
+
+export interface HooksConfig {
+    readonly PreToolUse?: readonly MatcherGroup[];
+    readonly PostToolUse?: readonly MatcherGroup[];
+    readonly UserPromptSubmit?: readonly MatcherGroup[];
+    readonly Stop?: readonly MatcherGroup[];
+    readonly SubagentStop?: readonly MatcherGroup[];
+    readonly PreCompact?: readonly MatcherGroup[];
+    readonly SessionStart?: readonly MatcherGroup[];
+}
+
 export interface Config {
     readonly defaultProvider: ProviderId;
     readonly providers: Readonly<Record<string, ProviderConfig>>;
@@ -114,4 +135,5 @@ export interface Config {
     readonly webTools?: WebToolsConfig;
     readonly recovery?: RecoveryConfig;
     readonly skills?: SkillsConfig;
+    readonly hooks?: HooksConfig;
 }

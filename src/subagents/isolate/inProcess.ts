@@ -1,4 +1,5 @@
 import type { Config } from "../../config/index.ts";
+import { runEventHooks } from "../../hooks/index.ts";
 import type { Event } from "../../pipeline/events.ts";
 import {
     newShapingFlags,
@@ -75,6 +76,14 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
     if (errorMessage) {
         throw new SubagentError(`subagent failed: ${errorMessage}`);
     }
+
+    // SubagentStop hook: fire-and-forget after subagent completes.
+    void runEventHooks(
+        input.config.hooks,
+        "SubagentStop",
+        { project_dir: input.parentProjectRoot },
+        new AbortController().signal,
+    );
 
     const finalAssistant = [...subState.history]
         .reverse()

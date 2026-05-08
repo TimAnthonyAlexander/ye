@@ -1,6 +1,9 @@
 import type {
     CompactConfig,
     Config,
+    HookEntry,
+    HooksConfig,
+    MatcherGroup,
     MaxTurnsConfig,
     ModelSetting,
     PermissionMode,
@@ -301,6 +304,93 @@ const validateRecoveryConfig = (value: unknown): RecoveryConfig => {
     return out;
 };
 
+const validateHookEntry = (path: string, value: unknown): HookEntry => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError(`${path} must be an object`);
+    }
+    if (value.type !== "command") {
+        throw new ConfigValidationError(`${path}.type must be "command"`);
+    }
+    if (!isString(value.command) || value.command.trim().length === 0) {
+        throw new ConfigValidationError(`${path}.command must be a non-empty string`);
+    }
+    let timeout: number | undefined;
+    if (value.timeout !== undefined) {
+        if (
+            typeof value.timeout !== "number" ||
+            !Number.isInteger(value.timeout) ||
+            value.timeout <= 0
+        ) {
+            throw new ConfigValidationError(`${path}.timeout must be a positive integer`);
+        }
+        timeout = value.timeout;
+    }
+    return {
+        type: "command",
+        command: value.command,
+        ...(timeout !== undefined ? { timeout } : {}),
+    };
+};
+
+const validateMatcherGroup = (path: string, value: unknown): MatcherGroup => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError(`${path} must be an object`);
+    }
+    let matcher: string | undefined;
+    if (value.matcher !== undefined) {
+        if (!isString(value.matcher) || value.matcher.trim().length === 0) {
+            throw new ConfigValidationError(`${path}.matcher must be a non-empty string`);
+        }
+        try {
+            new RegExp(value.matcher);
+        } catch {
+            throw new ConfigValidationError(`${path}.matcher is not a valid regex`);
+        }
+        matcher = value.matcher;
+    }
+    if (!Array.isArray(value.hooks) || value.hooks.length === 0) {
+        throw new ConfigValidationError(`${path}.hooks must be a non-empty array`);
+    }
+    const hooks = value.hooks.map((h: unknown, i: number) =>
+        validateHookEntry(`${path}.hooks[${i}]`, h),
+    );
+    return {
+        ...(matcher !== undefined ? { matcher } : {}),
+        hooks,
+    };
+};
+
+const HOOK_EVENTS: readonly string[] = [
+    "PreToolUse",
+    "PostToolUse",
+    "UserPromptSubmit",
+    "Stop",
+    "SubagentStop",
+    "PreCompact",
+    "SessionStart",
+];
+
+const validateHooksConfig = (value: unknown): HooksConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError("hooks must be an object");
+    }
+    const out: Record<string, readonly MatcherGroup[]> = {};
+    for (const [key, val] of Object.entries(value)) {
+        if (!HOOK_EVENTS.includes(key)) {
+            throw new ConfigValidationError(
+                `hooks.${key} is not a valid hook event (must be one of ${HOOK_EVENTS.join(" | ")})`,
+            );
+        }
+        if (!Array.isArray(val)) {
+            throw new ConfigValidationError(`hooks.${key} must be an array`);
+        }
+        out[key] = (val as unknown[]).map((g, i) =>
+            validateMatcherGroup(`hooks.${key}[${i}]`, g),
+        );
+    }
+    return out;
+};
+
 const validateSkillsConfig = (value: unknown): SkillsConfig => {
     if (!isObject(value)) {
         throw new ConfigValidationError("skills must be an object");
@@ -343,6 +433,7 @@ export const validateConfig = (raw: unknown): Config => {
         ...(raw.webTools !== undefined ? { webTools: validateWebToolsConfig(raw.webTools) } : {}),
         ...(raw.recovery !== undefined ? { recovery: validateRecoveryConfig(raw.recovery) } : {}),
         ...(raw.skills !== undefined ? { skills: validateSkillsConfig(raw.skills) } : {}),
+        ...(raw.hooks !== undefined ? { hooks: validateHooksConfig(raw.hooks) } : {}),
     };
 };
 

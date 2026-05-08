@@ -1,4 +1,5 @@
 import type { Config } from "../../config/index.ts";
+import { runEventHooks } from "../../hooks/index.ts";
 import type { Message, Provider } from "../../providers/index.ts";
 import { assemble } from "../assemble.ts";
 import type { Event } from "../events.ts";
@@ -50,6 +51,22 @@ export interface RunShapersOutput {
 // runs a final clampBudget pass to take advantage of space freed by prompt-
 // shrinking shapers.
 export async function* runShapers(input: RunShapersInput): AsyncGenerator<Event, RunShapersOutput> {
+    // PreCompact hook: run before any compaction. If blocked, skip all shapers.
+    const preCompact = await runEventHooks(
+        input.config.hooks,
+        "PreCompact",
+        { project_dir: input.state.projectRoot },
+        new AbortController().signal,
+    );
+    if (preCompact.blocked) {
+        const budget: RequestBudget = {
+            maxTokens: input.config.compact?.defaultMaxTokens ?? DEFAULT_MAX_TOKENS,
+            initialMaxTokens: input.config.compact?.defaultMaxTokens ?? DEFAULT_MAX_TOKENS,
+            tokensFreedThisTurn: 0,
+        };
+        return { messages: input.initialMessages, budget };
+    }
+
     const initialMaxTokens = input.config.compact?.defaultMaxTokens ?? DEFAULT_MAX_TOKENS;
     const budget: RequestBudget = {
         maxTokens: initialMaxTokens,
