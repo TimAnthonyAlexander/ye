@@ -9,6 +9,21 @@ interface MentionToken {
     readonly raw: string;
 }
 
+export interface ExpandedAttachment {
+    readonly raw: string;
+    readonly abs: string;
+    readonly kind: "file" | "folder";
+    readonly totalLines?: number;
+    readonly shownLines?: number;
+    readonly truncated?: boolean;
+    readonly entryCount?: number;
+}
+
+export interface ExpandedMentions {
+    readonly text: string;
+    readonly attachments: readonly ExpandedAttachment[];
+}
+
 const extractMentions = (text: string): readonly MentionToken[] => {
     const out: MentionToken[] = [];
     const seen = new Set<string>();
@@ -71,12 +86,18 @@ const readFolderListing = async (abs: string): Promise<readonly string[]> => {
 // <mentioned-files> block to the prompt. Files are read up to MAX_FILE_LINES;
 // folders get an immediate-children listing. Anything that resolves outside
 // the project root, or doesn't exist, is silently skipped — keeps casual
-// `@user@host` style strings from breaking the flow.
-export const expandMentions = async (text: string, projectRoot: string): Promise<string> => {
+// `@user@host` style strings from breaking the flow. Returns both the
+// expanded text and the list of resolved attachments so the caller can render
+// "Read" action lines for each one.
+export const expandMentions = async (
+    text: string,
+    projectRoot: string,
+): Promise<ExpandedMentions> => {
     const mentions = extractMentions(text);
-    if (mentions.length === 0) return text;
+    if (mentions.length === 0) return { text, attachments: [] };
 
     const sections: string[] = [];
+    const attachments: ExpandedAttachment[] = [];
     let totalBytes = 0;
 
     for (const m of mentions) {
@@ -95,6 +116,12 @@ export const expandMentions = async (text: string, projectRoot: string): Promise
                 const entries = await readFolderListing(abs);
                 const body = entries.join("\n");
                 sections.push(`<file path="${m.raw}" type="folder">\n${body}\n</file>`);
+                attachments.push({
+                    raw: m.raw,
+                    abs,
+                    kind: "folder",
+                    entryCount: entries.length,
+                });
                 totalBytes += body.length;
             } catch {
                 // skip unreadable directory
@@ -106,12 +133,28 @@ export const expandMentions = async (text: string, projectRoot: string): Promise
                     sections.push(
                         `<file path="${m.raw}" type="file" omitted="byte-budget" total-lines="${r.total}" />`,
                     );
+                    attachments.push({
+                        raw: m.raw,
+                        abs,
+                        kind: "file",
+                        totalLines: r.total,
+                        shownLines: 0,
+                        truncated: true,
+                    });
                     continue;
                 }
                 const open = r.truncated
                     ? `<file path="${m.raw}" type="file" total-lines="${r.total}" shown-lines="1-${r.shown}" truncated="true">`
                     : `<file path="${m.raw}" type="file" total-lines="${r.total}">`;
                 sections.push(`${open}\n${r.content}\n</file>`);
+                attachments.push({
+                    raw: m.raw,
+                    abs,
+                    kind: "file",
+                    totalLines: r.total,
+                    shownLines: r.shown,
+                    truncated: r.truncated,
+                });
                 totalBytes += r.content.length;
             } catch {
                 // skip unreadable file
@@ -121,6 +164,9 @@ export const expandMentions = async (text: string, projectRoot: string): Promise
         if (totalBytes >= MAX_TOTAL_BYTES) break;
     }
 
-    if (sections.length === 0) return text;
-    return `${text}\n\n<mentioned-files>\n${sections.join("\n\n")}\n</mentioned-files>`;
+    if (sections.length === 0) return { text, attachments: [] };
+    return {
+        text: `${text}\n\n<mentioned-files>\n${sections.join("\n\n")}\n</mentioned-files>`,
+        attachments,
+    };
 };

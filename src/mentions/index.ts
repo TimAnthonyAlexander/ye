@@ -109,4 +109,5 @@ export const refreshFileIndex = (root: string): void => {
 export { findActiveMention } from "./parse.ts";
 export { matchFiles } from "./match.ts";
 export { expandMentions } from "./expand.ts";
+export type { ExpandedAttachment, ExpandedMentions } from "./expand.ts";
 export type { ActiveMention, IndexEntry, MentionOption } from "./types.ts";

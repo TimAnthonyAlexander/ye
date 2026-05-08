@@ -13,6 +13,7 @@ import {
 } from "../commands/index.ts";
 import {
     expandMentions,
+    type ExpandedAttachment,
     findActiveMention,
     type IndexEntry,
     loadFileIndex,
@@ -676,11 +677,30 @@ export const App = ({ config }: AppProps) => {
         // Resolve any `@<path>` tokens against the project root and append the
         // file/folder content to the prompt the model sees. The chat UI keeps
         // the original `@path` text — only the LLM-bound prompt is expanded.
+        // Each successfully resolved attachment also gets a synthetic `Read`
+        // tool-call line so the transcript shows the action that just happened.
         let expanded = text;
+        let attachments: readonly ExpandedAttachment[] = [];
         try {
-            expanded = await expandMentions(text, stateRef.current.projectRoot);
+            const result = await expandMentions(text, stateRef.current.projectRoot);
+            expanded = result.text;
+            attachments = result.attachments;
         } catch {
             // fall back to raw text on any expansion failure
+        }
+
+        if (attachments.length > 0) {
+            const readItems: ChatItem[] = attachments.map((a) => ({
+                kind: "toolCall",
+                entry: {
+                    id: newChatItemId(),
+                    name: "Read",
+                    args: { path: a.abs },
+                    status: "done",
+                    result: { ok: true, value: "" },
+                },
+            }));
+            setItems((prev) => [...prev, ...readItems]);
         }
 
         if (streamingRef.current) {
