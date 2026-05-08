@@ -67,7 +67,7 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 
 ### Phase 6 — Headless + cross-platform
 - `ye -p "prompt"` headless mode
-- Linux x64 build, Windows x64 build
+- Linux x64 build, Windows x64 build — **shipped**
 - PowerShell tool
 
 ### Phase 7+ — Deferred
@@ -127,9 +127,9 @@ Items here orchestrate across multiple subdocs or don't fit any single one. Doma
 ### Build / distribute
 - [x] `bun build --compile` produces a single binary on macOS arm64
 - [x] macOS x64 build target (Phase 1, same script)
-- [ ] Linux x64 build target (Phase 6)
-- [ ] Windows x64 build target (Phase 6)
-- [ ] Versioning + release script (`scripts/release.sh`, Phase 6+)
+- [x] Linux x64 build target (Phase 6 — shipped early)
+- [x] Windows x64 build target (Phase 6 — shipped early)
+- [x] Versioning + release script (`scripts/release.sh`, Phase 6+)
 
 ### Engineering hygiene (ongoing)
 - [x] One assertion lib only (Bun's `expect`); set in stone before tests proliferate
