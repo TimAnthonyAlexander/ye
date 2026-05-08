@@ -1,7 +1,8 @@
 import { checkDomain } from "../webShared/domainGate.ts";
 import type { WebToolsConfig } from "../../config/index.ts";
+import type { SearchResult } from "./duckduckgo.ts";
 
-const ENDPOINT = "https://html.duckduckgo.com/html/";
+const ENDPOINT = "https://search.brave.com/search";
 const USER_AGENT =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -19,30 +20,7 @@ const ENTITIES: Record<string, string> = {
 const decodeEntities = (s: string): string =>
     s.replace(/&(amp|lt|gt|quot|nbsp|#39|#x27);/g, (m) => ENTITIES[m] ?? m);
 
-const stripTags = (s: string): string => s.replace(/<[^>]+>/g, "");
-
-// DDG's lite endpoint wraps the actual destination URL in a redirector:
-//   /l/?uddg=<url-encoded>&rut=...
-// Unwrap to the real URL when present.
-const unwrapDdgRedirect = (raw: string): string => {
-    try {
-        const u = new URL(raw, ENDPOINT);
-        if (u.pathname === "/l/" || u.pathname.endsWith("/l/")) {
-            const inner = u.searchParams.get("uddg");
-            if (inner) return decodeURIComponent(inner);
-        }
-        return u.toString();
-    } catch {
-        return raw;
-    }
-};
-
-export interface SearchResult {
-    readonly title: string;
-    readonly url: string;
-}
-
-export interface DdgSearchArgs {
+export interface BraveSearchArgs {
     readonly query: string;
     readonly allowedDomains?: readonly string[];
     readonly blockedDomains?: readonly string[];
@@ -52,45 +30,57 @@ export interface DdgSearchArgs {
     readonly signal: AbortSignal;
 }
 
-// Parses `<a class="result__a" href="...">title</a>` from DDG's HTML lite
-// endpoint. The `result__a` class has been stable for years but is the obvious
-// hazard if DDG ever rewrites their markup. If parsing yields zero results we
-// surface a clear error rather than silently returning empty.
-const RESULT_LINK_RE =
-    /<a[^>]*class="[^"]*\bresult__a\b[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+// Brave wraps each web result in a div whose class is Svelte-hashed but whose
+// `data-type="web"` attribute is the stable semantic anchor. The first <a> in
+// that block is the destination URL (no redirector — unlike DDG), and the
+// title text is in `class="search-snippet-title"` with a `title=""` attribute
+// that's already entity-encoded but never truncated. Anchoring on these two
+// stable hooks survives Svelte hash rotations between deploys.
+const RESULT_RE =
+    /data-type="web"[\s\S]*?<a[^>]*href="(https?:\/\/[^"]+)"[\s\S]*?\bsearch-snippet-title\b[^>]*title="([^"]+)"/g;
 
-// DDG returns its anti-bot CAPTCHA interstitial with HTTP 202 Accepted (not
-// 429/403), so we can't lean on the status code. The page itself is unmistakable.
-const ANOMALY_MARKERS = ["anomaly-modal", "anomaly.js", "challenge-form"];
+// Cloudflare interstitials and Brave's own bot-challenge page. Any of these in
+// the body means we never reached the result list — surface that distinctly so
+// the chain caller knows to retry on the next provider.
+const ANTIBOT_MARKERS = [
+    "cf-challenge",
+    "challenge-platform",
+    "Just a moment",
+    "Verifying you are human",
+    "Please verify you are a human",
+    "captcha-bypass",
+];
 
-export const runDuckDuckGoSearch = async (
-    a: DdgSearchArgs,
+export const runBraveSearch = async (
+    a: BraveSearchArgs,
 ): Promise<{ ok: true; results: readonly SearchResult[] } | { ok: false; error: string }> => {
-    const url = `${ENDPOINT}?q=${encodeURIComponent(a.query)}`;
+    const url = `${ENDPOINT}?q=${encodeURIComponent(a.query)}&source=web`;
     let res: Response;
     try {
         res = await fetch(url, {
-            method: "POST",
+            method: "GET",
             headers: {
                 "user-agent": USER_AGENT,
-                "content-type": "application/x-www-form-urlencoded",
-                accept: "text/html",
+                accept: "text/html,application/xhtml+xml",
+                "accept-language": "en-US,en;q=0.9",
             },
-            body: `q=${encodeURIComponent(a.query)}`,
             signal: a.signal,
         });
     } catch (err) {
         if (a.signal.aborted) return { ok: false, error: "aborted" };
         const msg = err instanceof Error ? err.message : String(err);
-        return { ok: false, error: `network: ${msg}` };
+        return { ok: false, error: `brave network: ${msg}` };
     }
 
+    if (res.status === 429 || res.status === 403) {
+        return { ok: false, error: `brave rate-limited (http ${res.status})` };
+    }
     if (!res.ok) {
-        return { ok: false, error: `duckduckgo http ${res.status}` };
+        return { ok: false, error: `brave http ${res.status}` };
     }
 
     const reader = res.body?.getReader();
-    if (!reader) return { ok: false, error: "duckduckgo: empty body" };
+    if (!reader) return { ok: false, error: "brave: empty body" };
     const chunks: Uint8Array[] = [];
     let total = 0;
     while (true) {
@@ -104,7 +94,7 @@ export const runDuckDuckGoSearch = async (
                 } catch {
                     /* ignore */
                 }
-                return { ok: false, error: `duckduckgo response > ${a.maxBytes} bytes` };
+                return { ok: false, error: `brave response > ${a.maxBytes} bytes` };
             }
             chunks.push(value);
         }
@@ -117,18 +107,15 @@ export const runDuckDuckGoSearch = async (
     }
     const html = new TextDecoder("utf-8", { fatal: false }).decode(merged);
 
-    if (ANOMALY_MARKERS.some((m) => html.includes(m))) {
-        return {
-            ok: false,
-            error: "duckduckgo rate-limited this IP (CAPTCHA challenge served, no results returned)",
-        };
+    if (ANTIBOT_MARKERS.some((m) => html.includes(m))) {
+        return { ok: false, error: "brave served an anti-bot challenge page" };
     }
 
     const results: SearchResult[] = [];
     const seen = new Set<string>();
-    for (const m of html.matchAll(RESULT_LINK_RE)) {
-        const href = unwrapDdgRedirect(decodeEntities(m[1] ?? ""));
-        const title = decodeEntities(stripTags(m[2] ?? "")).trim();
+    for (const m of html.matchAll(RESULT_RE)) {
+        const href = decodeEntities(m[1] ?? "");
+        const title = decodeEntities(m[2] ?? "").trim();
         if (!href || !title) continue;
 
         let host: string;
@@ -154,7 +141,7 @@ export const runDuckDuckGoSearch = async (
     if (results.length === 0) {
         return {
             ok: false,
-            error: "duckduckgo returned no parseable results — DDG may have changed their markup, or the query was empty",
+            error: "brave returned no parseable results — markup may have shifted",
         };
     }
     return { ok: true, results };

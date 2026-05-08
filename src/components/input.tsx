@@ -1,4 +1,4 @@
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { findActiveMention } from "../mentions/index.ts";
 
@@ -245,6 +245,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         }
     });
 
+    const { stdout } = useStdout();
+    // Inner content width = terminal cols − borders/padding/prefix. The outer
+    // Box uses paddingX=1 (2 cols), the prefix Box renders ">" + marginRight=1
+    // (2 cols). Floor at 8 to keep the math sane on absurdly narrow terminals.
+    const inner = Math.max(8, (stdout?.columns ?? 80) - 4);
+
     return (
         <Box
             borderStyle="single"
@@ -257,45 +263,127 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             <Box marginRight={1}>
                 <Text color={disabled ? "gray" : "cyan"}>{">"}</Text>
             </Box>
-            <Box flexGrow={1}>{renderWithCursor(value, cursor, disabled)}</Box>
+            <Box flexGrow={1} flexDirection="column">
+                {renderWithCursor(value, cursor, disabled, inner)}
+            </Box>
         </Box>
     );
 });
 
-const renderWithCursor = (value: string, cursor: number, disabled: boolean) => {
+// Cap on visible *visual* rows inside the input. Ink 5 falls back to
+// clearTerminal-based redraws when the live region exceeds the terminal
+// viewport, which manifests as the input box duplicating across the screen
+// on every keystroke (and leaving ghost frames in scrollback that Ink can
+// no longer reach). We chunk content into visual rows by terminal width so
+// a single very long pasted line is just as bounded as a multi-line paste.
+const MAX_VISIBLE_ROWS = 10;
+
+interface VisualRow {
+    readonly text: string;
+    // Byte offset in the full `value` where this row starts. Used to map the
+    // cursor index onto the row that owns it.
+    readonly startInValue: number;
+}
+
+// Chunk `value` into visual rows of at most `width` cols each. Splits first
+// on \n (preserving empty rows for blank lines), then on `width` for any
+// logical line longer than the viewport. The cursor's logical position is
+// preserved by tracking each row's byte offset back into `value`.
+const buildVisualRows = (value: string, width: number): readonly VisualRow[] => {
+    const rows: VisualRow[] = [];
+    const w = Math.max(1, width);
+    const lines = value.split("\n");
+    let offset = 0;
+    for (const line of lines) {
+        if (line.length === 0) {
+            rows.push({ text: "", startInValue: offset });
+        } else {
+            for (let i = 0; i < line.length; i += w) {
+                rows.push({ text: line.slice(i, i + w), startInValue: offset + i });
+            }
+        }
+        offset += line.length + 1;
+    }
+    if (rows.length === 0) rows.push({ text: "", startInValue: 0 });
+    return rows;
+};
+
+const findCursorRow = (rows: readonly VisualRow[], cursor: number): number => {
+    for (let i = rows.length - 1; i >= 0; i--) {
+        if (rows[i]!.startInValue <= cursor) return i;
+    }
+    return 0;
+};
+
+const renderWithCursor = (
+    value: string,
+    cursor: number,
+    disabled: boolean,
+    width: number,
+) => {
     if (disabled) {
         return <Text dimColor>{value.length > 0 ? value : "…"}</Text>;
     }
-    if (value.length === 0) {
-        return (
-            <Text>
-                <Text inverse> </Text>
-            </Text>
-        );
+
+    const rows = buildVisualRows(value, width);
+    const focusRow = findCursorRow(rows, cursor);
+
+    let start = 0;
+    let end = rows.length;
+    if (rows.length > MAX_VISIBLE_ROWS) {
+        const half = Math.floor(MAX_VISIBLE_ROWS / 2);
+        start = Math.max(0, focusRow - half);
+        end = Math.min(rows.length, start + MAX_VISIBLE_ROWS);
+        start = Math.max(0, end - MAX_VISIBLE_ROWS);
     }
-    if (cursor >= value.length) {
-        return (
-            <Text>
-                {value}
-                <Text inverse> </Text>
-            </Text>
-        );
-    }
-    const before = value.slice(0, cursor);
-    const at = value.slice(cursor, cursor + 1);
-    const after = value.slice(cursor + 1);
-    if (at === "\n") {
-        return (
-            <Text>
-                {before}
-                <Text inverse> </Text>
-                {"\n"}
-                {after}
-            </Text>
-        );
-    }
+    const above = start;
+    const below = rows.length - end;
+    const visible = rows.slice(start, end);
+
     return (
-        <Text>
+        <>
+            {above > 0 && (
+                <Text dimColor>
+                    ↑ {above} more row{above === 1 ? "" : "s"}
+                </Text>
+            )}
+            {visible.map((row, idx) => {
+                const absoluteIdx = start + idx;
+                const cursorOffset = absoluteIdx === focusRow ? cursor - row.startInValue : null;
+                return renderRow(row, cursorOffset, absoluteIdx);
+            })}
+            {below > 0 && (
+                <Text dimColor>
+                    ↓ {below} more row{below === 1 ? "" : "s"}
+                </Text>
+            )}
+        </>
+    );
+};
+
+const renderRow = (row: VisualRow, cursorOffset: number | null, key: number) => {
+    if (cursorOffset === null) {
+        // Render an empty row as a single space so it claims one row of
+        // vertical space — an empty <Text> can collapse and skew the layout.
+        return (
+            <Text key={key} wrap="truncate">
+                {row.text.length > 0 ? row.text : " "}
+            </Text>
+        );
+    }
+    if (cursorOffset >= row.text.length) {
+        return (
+            <Text key={key} wrap="truncate">
+                {row.text}
+                <Text inverse> </Text>
+            </Text>
+        );
+    }
+    const before = row.text.slice(0, cursorOffset);
+    const at = row.text.slice(cursorOffset, cursorOffset + 1);
+    const after = row.text.slice(cursorOffset + 1);
+    return (
+        <Text key={key} wrap="truncate">
             {before}
             <Text inverse>{at}</Text>
             {after}

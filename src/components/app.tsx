@@ -1130,6 +1130,12 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
             const result = await expandMentions(text, stateRef.current.projectRoot);
             expanded = result.text;
             attachments = result.attachments;
+            // Mentioned files whose full contents were injected count toward
+            // the read-before-edit invariant — Edit's freshness check (re-read
+            // + hash compare) catches drift the same way it does for Read.
+            for (const r of result.reads) {
+                stateRef.current.turnState.readFiles.set(r.abs, { hash: r.hash });
+            }
         } catch {
             // fall back to raw text on any expansion failure
         }

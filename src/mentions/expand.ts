@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+import { hashContent } from "../tools/fs.ts";
 
 const MAX_FILE_LINES = 1000;
 const MAX_FOLDER_ENTRIES = 80;
@@ -19,9 +20,18 @@ export interface ExpandedAttachment {
     readonly entryCount?: number;
 }
 
+// Files whose full contents were injected into the prompt and should count
+// toward the read-before-edit invariant. Excludes folders, truncated files
+// (model only saw the first MAX_FILE_LINES), and byte-budget-omitted files.
+export interface MentionRead {
+    readonly abs: string;
+    readonly hash: string;
+}
+
 export interface ExpandedMentions {
     readonly text: string;
     readonly attachments: readonly ExpandedAttachment[];
+    readonly reads: readonly MentionRead[];
 }
 
 const extractMentions = (text: string): readonly MentionToken[] => {
@@ -49,6 +59,7 @@ interface FileRead {
     readonly total: number;
     readonly shown: number;
     readonly truncated: boolean;
+    readonly hash: string;
 }
 
 const readFileTruncated = async (abs: string): Promise<FileRead> => {
@@ -62,6 +73,7 @@ const readFileTruncated = async (abs: string): Promise<FileRead> => {
         total,
         shown,
         truncated,
+        hash: hashContent(buf),
     };
 };
 
@@ -94,10 +106,11 @@ export const expandMentions = async (
     projectRoot: string,
 ): Promise<ExpandedMentions> => {
     const mentions = extractMentions(text);
-    if (mentions.length === 0) return { text, attachments: [] };
+    if (mentions.length === 0) return { text, attachments: [], reads: [] };
 
     const sections: string[] = [];
     const attachments: ExpandedAttachment[] = [];
+    const reads: MentionRead[] = [];
     let totalBytes = 0;
 
     for (const m of mentions) {
@@ -155,6 +168,9 @@ export const expandMentions = async (
                     shownLines: r.shown,
                     truncated: r.truncated,
                 });
+                if (!r.truncated) {
+                    reads.push({ abs, hash: r.hash });
+                }
                 totalBytes += r.content.length;
             } catch {
                 // skip unreadable file
@@ -164,9 +180,10 @@ export const expandMentions = async (
         if (totalBytes >= MAX_TOTAL_BYTES) break;
     }
 
-    if (sections.length === 0) return { text, attachments: [] };
+    if (sections.length === 0) return { text, attachments: [], reads: [] };
     return {
         text: `${text}\n\n<mentioned-files>\n${sections.join("\n\n")}\n</mentioned-files>`,
         attachments,
+        reads,
     };
 };

@@ -1,6 +1,7 @@
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
 import { runAnthropicSearch } from "./anthropic.ts";
+import { runBraveSearch } from "./brave.ts";
 import { runDuckDuckGoSearch } from "./duckduckgo.ts";
 
 interface WebSearchArgs {
@@ -44,8 +45,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
         };
     }
 
-    ctx.emitProgress?.([`querying duckduckgo · ${query}`]);
-    const ddg = await runDuckDuckGoSearch({
+    const sharedArgs = {
         query,
         ...(v.value.allowed_domains ? { allowedDomains: v.value.allowed_domains } : {}),
         ...(v.value.blocked_domains ? { blockedDomains: v.value.blocked_domains } : {}),
@@ -53,12 +53,28 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
         limit: DEFAULT_LIMIT,
         ...(cfg ? { config: cfg } : {}),
         signal: ctx.signal,
-    });
-    if (!ddg.ok) return ddg;
+    } as const;
 
-    ctx.emitProgress?.([`got ${ddg.results.length} results`]);
-    const lines = ddg.results.map((r) => `- [${r.title}](${r.url})`);
-    return { ok: true, value: lines.join("\n") };
+    ctx.emitProgress?.([`querying brave · ${query}`]);
+    const brave = await runBraveSearch(sharedArgs);
+    if (brave.ok) {
+        ctx.emitProgress?.([`got ${brave.results.length} results from brave`]);
+        const lines = brave.results.map((r) => `- [${r.title}](${r.url})`);
+        return { ok: true, value: lines.join("\n") };
+    }
+
+    ctx.emitProgress?.([`brave failed (${brave.error}); falling back to duckduckgo`]);
+    const ddg = await runDuckDuckGoSearch(sharedArgs);
+    if (ddg.ok) {
+        ctx.emitProgress?.([`got ${ddg.results.length} results from duckduckgo`]);
+        const lines = ddg.results.map((r) => `- [${r.title}](${r.url})`);
+        return { ok: true, value: lines.join("\n") };
+    }
+
+    return {
+        ok: false,
+        error: `WebSearch: both providers failed — brave: ${brave.error}; duckduckgo: ${ddg.error}`,
+    };
 };
 
 export const WebSearchTool: Tool = {
