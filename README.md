@@ -8,7 +8,27 @@ An agent loop with deny-first permissions, append-only transcripts, and pluggabl
 
 Requires [Bun](https://bun.sh) and [ripgrep](https://github.com/BurntSushi/ripgrep) (`brew install ripgrep`).
 
-**Prebuilt binaries** for macOS (arm64), Linux (x64), and Windows (x64) are attached to each [GitHub release](https://github.com/TimAnthonyAlexander/ye/releases). Download `ye-macos`, `ye-linux`, or `ye-windows.exe`, `chmod +x` it (Unix), and put it on your `$PATH`.
+**Prebuilt binaries** for macOS (arm64), Linux (x64), and Windows (x64) are attached to each [GitHub release](https://github.com/TimAnthonyAlexander/ye/releases). One-liner install scripts grab the latest release and drop `ye` onto your `$PATH`:
+
+**macOS (arm64)**
+
+```
+curl -fsSL https://github.com/TimAnthonyAlexander/ye/releases/latest/download/ye-macos -o ye && chmod +x ye && sudo mv ye /usr/local/bin/ye
+```
+
+**Linux (x64)**
+
+```
+curl -fsSL https://github.com/TimAnthonyAlexander/ye/releases/latest/download/ye-linux -o ye && chmod +x ye && sudo mv ye /usr/local/bin/ye
+```
+
+**Windows (x64, PowerShell)**
+
+```
+$dest = "$env:LOCALAPPDATA\Programs\ye"; New-Item -ItemType Directory -Force $dest | Out-Null; Invoke-WebRequest https://github.com/TimAnthonyAlexander/ye/releases/latest/download/ye-windows.exe -OutFile "$dest\ye.exe"; [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path","User") + ";$dest", "User")
+```
+
+Restart the shell after the Windows install so the updated `Path` takes effect.
 
 **From source** (macOS local dev):
 
