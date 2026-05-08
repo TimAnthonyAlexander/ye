@@ -19,6 +19,5 @@ export const OPENAI_CONTEXT_SIZES: Readonly<Record<string, number>> = {
     "gpt-5.5": 512_000,
     "gpt-5.5-pro": 1_500_000,
     "gpt-5-codex-mini": 128_000,
-    "gpt-5.1-codex-mini": 256_000,
     "codex-mini-latest": 128_000,
 };
