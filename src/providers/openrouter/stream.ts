@@ -35,10 +35,48 @@ interface ChunkChoice {
     finish_reason?: string | null;
 }
 
+interface OpenRouterErrorPayload {
+    message?: string;
+    code?: number | string;
+    type?: string;
+    metadata?: {
+        raw?: string;
+        provider_name?: string;
+        reasons?: ReadonlyArray<string>;
+        flagged_input?: string;
+    };
+}
+
 interface ChunkPayload {
     choices?: ReadonlyArray<ChunkChoice>;
-    error?: { message?: string; code?: number };
+    error?: OpenRouterErrorPayload;
 }
+
+export const formatOpenRouterError = (err: OpenRouterErrorPayload): string => {
+    const parts: string[] = [];
+    const base = err.message?.trim();
+    if (base && base.length > 0) parts.push(base);
+    else parts.push("unknown provider error");
+
+    const detail: string[] = [];
+    if (err.code !== undefined) detail.push(`code=${err.code}`);
+    if (err.metadata?.provider_name) {
+        detail.push(`provider=${err.metadata.provider_name}`);
+    }
+    if (detail.length > 0) parts.push(`(${detail.join(", ")})`);
+
+    const raw = err.metadata?.raw?.trim();
+    if (raw && raw.length > 0 && raw !== base) {
+        const truncated = raw.length > 500 ? `${raw.slice(0, 500)}…` : raw;
+        parts.push(`— ${truncated}`);
+    }
+    const reasons = err.metadata?.reasons;
+    if (Array.isArray(reasons) && reasons.length > 0) {
+        parts.push(`reasons: ${reasons.join(", ")}`);
+    }
+
+    return parts.join(" ");
+};
 
 const mapFinishReason = (raw: string | null | undefined): StopReason => {
     switch (raw) {
@@ -75,7 +113,7 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
 
         if (chunk.error) {
             stopReason = "error";
-            errorMessage = chunk.error.message ?? "unknown provider error";
+            errorMessage = formatOpenRouterError(chunk.error);
             break;
         }
 

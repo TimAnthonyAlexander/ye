@@ -72,8 +72,8 @@ export const WebSearchTool: Tool = {
         required: ["query"],
         properties: {
             query: { type: "string" },
-            allowed_domains: { type: "array" },
-            blocked_domains: { type: "array" },
+            allowed_domains: { type: "array", items: { type: "string" } },
+            blocked_domains: { type: "array", items: { type: "string" } },
         },
     },
     execute,

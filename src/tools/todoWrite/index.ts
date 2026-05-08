@@ -39,7 +39,21 @@ export const TodoWriteTool: Tool = {
         type: "object",
         required: ["todos"],
         properties: {
-            todos: { type: "array" },
+            todos: {
+                type: "array",
+                items: {
+                    type: "object",
+                    required: ["id", "content", "status"],
+                    properties: {
+                        id: { type: "string" },
+                        content: { type: "string" },
+                        status: {
+                            type: "string",
+                            enum: ["pending", "in_progress", "completed"],
+                        },
+                    },
+                },
+            },
         },
     },
     execute,

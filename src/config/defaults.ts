@@ -14,9 +14,8 @@ export const DEFAULT_CONFIG: Config = {
     },
     defaultModel: {
         provider: "openrouter",
-        model: "deepseek/deepseek-v4-pro",
-        providerOrder: ["DeepSeek"],
-        allowFallbacks: false,
+        model: "~google/gemini-flash-latest",
+        allowFallbacks: true,
     },
     compact: {
         threshold: 0.5,

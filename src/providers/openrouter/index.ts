@@ -3,7 +3,7 @@ import type { Config } from "../../config/index.ts";
 import { resolveApiKey } from "../build.ts";
 import type { Provider, ProviderEvent, ProviderInput } from "../types.ts";
 import { buildRequestBody } from "./adapt.ts";
-import { parseStream } from "./stream.ts";
+import { formatOpenRouterError, parseStream } from "./stream.ts";
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const APP_TITLE = "Ye";
@@ -74,10 +74,12 @@ export const createOpenRouterProvider = (deps: OpenRouterDeps): Provider => {
                 const text = await res.text().catch(() => "");
                 let msg = `OpenRouter ${res.status}`;
                 try {
-                    const json = JSON.parse(text) as { error?: { message?: string } };
-                    if (json.error?.message) msg = json.error.message;
+                    const json = JSON.parse(text) as {
+                        error?: Parameters<typeof formatOpenRouterError>[0];
+                    };
+                    if (json.error) msg = `${msg}: ${formatOpenRouterError(json.error)}`;
                 } catch {
-                    if (text.length > 0) msg = `${msg}: ${text}`;
+                    if (text.length > 0) msg = `${msg}: ${text.slice(0, 500)}`;
                 }
                 yield { type: "stop", reason: "error", error: msg };
                 return;

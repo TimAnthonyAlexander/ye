@@ -10,6 +10,8 @@ export interface ModelInfo {
 // no other file enumerates models. The `id` is the provider-native model name
 // passed to the API; `label` is what appears in the picker.
 const MODELS: readonly ModelInfo[] = [
+    { provider: "openrouter", id: "~google/gemini-flash-latest", label: "Gemini Flash (latest)" },
+    { provider: "openrouter", id: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview" },
     { provider: "openrouter", id: "deepseek/deepseek-v4-pro", label: "DeepSeek v4 Pro" },
     { provider: "anthropic", id: "claude-opus-4-7", label: "Opus 4.7" },
     { provider: "anthropic", id: "claude-sonnet-4-6", label: "Sonnet 4.6" },

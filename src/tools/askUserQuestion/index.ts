@@ -83,7 +83,17 @@ export const AskUserQuestionTool: Tool = {
         required: ["question", "options"],
         properties: {
             question: { type: "string" },
-            options: { type: "array" },
+            options: {
+                type: "array",
+                items: {
+                    type: "object",
+                    required: ["label"],
+                    properties: {
+                        label: { type: "string" },
+                        description: { type: "string" },
+                    },
+                },
+            },
             multiSelect: { type: "boolean" },
         },
     },

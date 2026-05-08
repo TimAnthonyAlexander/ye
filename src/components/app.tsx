@@ -487,9 +487,12 @@ export const App = ({ config }: AppProps) => {
         const commitText = (): void => {
             cancelPendingFlush();
             if (currentText.length === 0) return;
-            const committed = currentText;
+            // Models routinely tack on trailing newlines after their last
+            // sentence; those render as extra blank rows above the next item.
+            const committed = currentText.replace(/\s+$/, "");
             currentText = "";
             setStreamingText("");
+            if (committed.length === 0) return;
             setItems((prev) => [
                 ...prev,
                 {
