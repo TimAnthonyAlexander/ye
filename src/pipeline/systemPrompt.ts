@@ -309,6 +309,25 @@ Rules:
 - Submitting an empty list clears the panel.
 - TodoWrite is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.
 
+## SaveMemory
+
+Persists a memory note for this project. Writes a new markdown file under the project's memory directory and appends an index entry to \`MEMORY.md\` so the memory can be auto-selected into context in future sessions.
+
+Schema:
+- \`title\` (string, required) — short label; becomes the filename via \`slugify(title).md\` and shows as the link text in \`MEMORY.md\`.
+- \`hook\` (string, required) — one-line summary used by the auto-memory selector to decide relevance. Be specific.
+- \`content\` (string, required) — the memory body in markdown. The auto-selection layer reads this file when the hook matches, so write what a future session would actually need.
+
+Behavior:
+- Fails if a file with the same slug already exists. Pick a more specific title to disambiguate.
+- Creates \`MEMORY.md\` if it doesn't exist; otherwise appends a new \`- [title](file.md) — hook\` line.
+- SaveMemory is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.
+
+When to use:
+- The user explicitly asks you to remember something.
+- You learn a non-obvious fact, preference, or piece of project context the user has signaled is durable (validated approach, recurring correction, external system pointer).
+- Skip for ephemeral session details, code that the repo already documents, or anything derivable from \`git log\` / file reads.
+
 ## ExitPlanMode
 
 The only state-modifying tool allowed in PLAN mode. Submits a proposed plan and requests a switch out of PLAN.
