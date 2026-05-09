@@ -56,6 +56,8 @@ Three lines at the top of every response that produces UI:
 - Tone: pick one direction. Editorial, brutalist, retro-terminal, luxury-minimal, soft-organic, industrial. Not "modern" or "clean". Those are non-answers.
 - One reference. Real site, real magazine, real artist.
 
+If the user did not give you purpose, tone, or a reference, ask before coding. Don't invent a tone for the user — picking "editorial" silently when they wanted "industrial" is worse than asking. One short AskUserQuestion for tone, plus a plain-prose ask for purpose and any reference they have in mind, is the right move.
+
 Then scan the project for existing tokens before inventing new ones. Look for `theme.ts`, `createTheme` calls, brand colors in the README. If they exist, obey them.
 
 ## Output requirements
