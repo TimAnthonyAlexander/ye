@@ -80,6 +80,8 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
         question: prompt,
         content,
         signal: ctx.signal,
+        sessionId: ctx.sessionId,
+        projectId: ctx.projectId,
     });
 
     if (summary.length === 0) {

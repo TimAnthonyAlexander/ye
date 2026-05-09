@@ -12,6 +12,7 @@ export type {
     ProviderErrorKind,
     ProviderEvent,
     ProviderInput,
+    ProviderUsage,
     Role,
     StopReason,
     ToolCallRequest,

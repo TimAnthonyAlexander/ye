@@ -47,6 +47,7 @@ import {
     getProjectId,
     listProjectSessions,
     loadHistory,
+    loadUsageTotals,
     openExistingSession,
     openSession,
     recordSessionTitle,
@@ -302,6 +303,11 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     const [queuedDisplay, setQueuedDisplay] = useState<readonly QueuedDisplayItem[]>([]);
     const [usedTokens, setUsedTokens] = useState(0);
     const [contextWindow, setContextWindow] = useState(0);
+    const [tokenUsage, setTokenUsage] = useState<{
+        readonly input: number;
+        readonly output: number;
+        readonly cached: number;
+    }>({ input: 0, output: 0, cached: 0 });
     const [history, setHistory] = useState<readonly string[]>([]);
     // Mirror of `history` so send() can dedup against the most-recent entry
     // without re-rendering on every read.
@@ -326,6 +332,23 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 if (cancelled) return;
                 historyRef.current = entries;
                 setHistory(entries);
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        loadUsageTotals()
+            .then((totals) => {
+                if (cancelled) return;
+                setTokenUsage({
+                    input: totals.inputTokens,
+                    output: totals.outputTokens,
+                    cached: totals.cacheReadTokens,
+                });
             })
             .catch(() => {});
         return () => {
@@ -443,7 +466,8 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         if (titleGeneratedRef.current) return;
         const provider = providerRef.current;
         const session = sessionRef.current;
-        if (!provider || !session) return;
+        const state = stateRef.current;
+        if (!provider || !session || !state) return;
         const model = titleModelFor(provider.id);
         if (!model) return;
         titleGeneratedRef.current = true;
@@ -453,6 +477,8 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     provider,
                     model,
                     userPrompt,
+                    sessionId: state.sessionId,
+                    projectId: state.projectId,
                 });
                 if (!title) {
                     titleGeneratedRef.current = false;
@@ -1036,6 +1062,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                         }
                         break;
                     }
+                    case "model.usage": {
+                        setTokenUsage((prev) => ({
+                            input: prev.input + evt.usage.inputTokens,
+                            output: prev.output + evt.usage.outputTokens,
+                            cached: prev.cached + (evt.usage.cacheReadTokens ?? 0),
+                        }));
+                        break;
+                    }
                     case "tool.end": {
                         setItems((prev) =>
                             prev.map((item) => {
@@ -1107,6 +1141,15 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                             setError(evt.error.message);
                             chainFailedRef.current = true;
                         }
+                        void loadUsageTotals()
+                            .then((totals) => {
+                                setTokenUsage({
+                                    input: totals.inputTokens,
+                                    output: totals.outputTokens,
+                                    cached: totals.cacheReadTokens,
+                                });
+                            })
+                            .catch(() => {});
                         break;
                     }
                 }
@@ -1422,6 +1465,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 usedTokens={usedTokens}
                 contextWindow={contextWindow}
                 updateStatus={updateStatus}
+                tokenUsage={tokenUsage}
             />
         </Box>
     );

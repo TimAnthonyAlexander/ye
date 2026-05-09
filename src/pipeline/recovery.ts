@@ -6,6 +6,7 @@ import {
     type Provider,
     type ToolDefinition,
 } from "../providers/index.ts";
+import { appendUsageRecord } from "../storage/index.ts";
 import { assemble } from "./assemble.ts";
 import { type CollectedToolCall, type ModelStreamResult, streamFromProvider } from "./dispatch.ts";
 import type { Event } from "./events.ts";
@@ -115,15 +116,39 @@ export async function* runModelCallWithRecovery(
     let useStreaming = true;
 
     while (true) {
-        const streamGen = streamFromProvider(provider, {
-            model,
-            messages,
-            tools: input.tools,
-            signal: input.signal,
-            maxTokens: input.budget.maxTokens,
-            stream: useStreaming,
-            providerOptions: input.providerOptions,
-        });
+        const streamGen = streamFromProvider(
+            provider,
+            {
+                model,
+                messages,
+                tools: input.tools,
+                signal: input.signal,
+                maxTokens: input.budget.maxTokens,
+                stream: useStreaming,
+                providerOptions: input.providerOptions,
+            },
+            async (report) => {
+                try {
+                    await appendUsageRecord({
+                        sessionId: input.state.sessionId,
+                        projectId: input.state.projectId,
+                        provider: report.provider,
+                        model: report.model,
+                        inputTokens: report.usage.inputTokens,
+                        outputTokens: report.usage.outputTokens,
+                        ...(report.usage.cacheReadTokens !== undefined
+                            ? { cacheReadTokens: report.usage.cacheReadTokens }
+                            : {}),
+                        ...(report.usage.cacheCreationTokens !== undefined
+                            ? { cacheCreationTokens: report.usage.cacheCreationTokens }
+                            : {}),
+                        callKind: "turn",
+                    });
+                } catch {
+                    // Usage tracking is best-effort. Never break a turn if writing fails.
+                }
+            },
+        );
 
         let result: ModelStreamResult = buildEmptyResult();
         while (true) {

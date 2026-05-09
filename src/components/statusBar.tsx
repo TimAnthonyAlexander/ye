@@ -3,6 +3,12 @@ import type { PermissionMode } from "../config/index.ts";
 import { modeColor } from "../ui/keybinds.ts";
 import type { UpdateStatus } from "../update/check.ts";
 
+interface TokenUsage {
+    readonly input: number;
+    readonly output: number;
+    readonly cached?: number;
+}
+
 interface StatusBarProps {
     readonly mode: PermissionMode;
     readonly providerId: string;
@@ -12,6 +18,7 @@ interface StatusBarProps {
     readonly usedTokens: number;
     readonly contextWindow: number;
     readonly updateStatus?: UpdateStatus | null;
+    readonly tokenUsage?: TokenUsage;
 }
 
 const usageColor = (pct: number): string => {
@@ -27,6 +34,14 @@ const formatPct = (pct: number): string => {
     return `${Math.round(pct)}%`;
 };
 
+const formatK = (n: number): string => {
+    if (n < 1000) return String(n);
+    if (n < 10_000) return `${(n / 1000).toFixed(1)}K`;
+    if (n < 1_000_000) return `${Math.round(n / 1000)}K`;
+    if (n < 10_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    return `${Math.round(n / 1_000_000)}M`;
+};
+
 export const StatusBar = ({
     mode,
     providerId,
@@ -36,9 +51,12 @@ export const StatusBar = ({
     usedTokens,
     contextWindow,
     updateStatus,
+    tokenUsage,
 }: StatusBarProps) => {
     const pct = contextWindow > 0 ? (usedTokens / contextWindow) * 100 : 0;
     const showUpdate = updateStatus?.hasUpdate === true;
+    const showTokens =
+        tokenUsage !== undefined && (tokenUsage.input > 0 || tokenUsage.output > 0);
     return (
         <Box justifyContent="space-between" paddingX={1}>
             <Box>
@@ -47,6 +65,17 @@ export const StatusBar = ({
                 </Text>
                 <Text dimColor> · Shift+Tab cycles · </Text>
                 <Text color={usageColor(pct)}>{formatPct(pct)} context</Text>
+                {showTokens && (
+                    <>
+                        <Text dimColor> · </Text>
+                        <Text>
+                            ↑{formatK(tokenUsage.input)} ↓{formatK(tokenUsage.output)}
+                        </Text>
+                        {tokenUsage.cached !== undefined && tokenUsage.cached > 0 && (
+                            <Text dimColor> (+{formatK(tokenUsage.cached)} cached)</Text>
+                        )}
+                    </>
+                )}
                 {showUpdate && (
                     <>
                         <Text dimColor> · </Text>

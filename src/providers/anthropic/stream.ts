@@ -1,11 +1,18 @@
 import { classifyMidStreamError } from "../errors.ts";
 import { sseDataLines } from "../sse.ts";
-import type { ProviderError, ProviderEvent, StopReason } from "../types.ts";
+import type { ProviderError, ProviderEvent, ProviderUsage, StopReason } from "../types.ts";
 
 interface ToolUseAccumulator {
     id: string;
     name: string;
     args: string;
+}
+
+interface AnthropicUsage {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
 }
 
 interface AnthropicStreamEvent {
@@ -17,6 +24,10 @@ interface AnthropicStreamEvent {
         name?: string;
         input?: unknown;
     };
+    message?: {
+        usage?: AnthropicUsage;
+    };
+    usage?: AnthropicUsage;
     delta?: {
         type?: string;
         text?: string;
@@ -28,6 +39,20 @@ interface AnthropicStreamEvent {
     };
     error?: { type?: string; message?: string };
 }
+
+const buildUsage = (
+    inputTokens: number,
+    outputTokens: number,
+    cacheCreation: number,
+    cacheRead: number,
+): ProviderUsage => {
+    const usage: ProviderUsage = { inputTokens, outputTokens };
+    return {
+        ...usage,
+        ...(cacheCreation > 0 ? { cacheCreationTokens: cacheCreation } : {}),
+        ...(cacheRead > 0 ? { cacheReadTokens: cacheRead } : {}),
+    };
+};
 
 const mapStopReason = (raw: string | null | undefined): StopReason => {
     switch (raw) {
@@ -66,6 +91,7 @@ interface AnthropicBatchResponse {
     type?: string;
     content?: ReadonlyArray<AnthropicBatchContentBlock>;
     stop_reason?: string | null;
+    usage?: AnthropicUsage;
     error?: { type?: string; message?: string };
 }
 
@@ -104,6 +130,19 @@ export async function* parseBatch(response: Response): AsyncGenerator<ProviderEv
         }
     }
 
+    const u = json.usage;
+    if (u && (typeof u.input_tokens === "number" || typeof u.output_tokens === "number")) {
+        yield {
+            type: "usage",
+            usage: buildUsage(
+                u.input_tokens ?? 0,
+                u.output_tokens ?? 0,
+                u.cache_creation_input_tokens ?? 0,
+                u.cache_read_input_tokens ?? 0,
+            ),
+        };
+    }
+
     yield { type: "stop", reason: stopReason };
 }
 
@@ -118,12 +157,30 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
     const toolBlocks = new Map<number, ToolUseAccumulator>();
     let stopReason: StopReason = "end_turn";
     let errorPayload: ProviderError | undefined;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cacheCreation = 0;
+    let cacheRead = 0;
+    let sawUsage = false;
 
     for await (const data of sseDataLines(response)) {
         const evt = safeParseJson(data);
         if (!evt) continue;
 
         switch (evt.type) {
+            case "message_start": {
+                const u = evt.message?.usage;
+                if (u) {
+                    if (typeof u.input_tokens === "number") inputTokens = u.input_tokens;
+                    if (typeof u.output_tokens === "number") outputTokens = u.output_tokens;
+                    if (typeof u.cache_creation_input_tokens === "number")
+                        cacheCreation = u.cache_creation_input_tokens;
+                    if (typeof u.cache_read_input_tokens === "number")
+                        cacheRead = u.cache_read_input_tokens;
+                    sawUsage = true;
+                }
+                break;
+            }
             case "content_block_start": {
                 const idx = evt.index ?? 0;
                 const cb = evt.content_block;
@@ -154,6 +211,18 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
             case "message_delta": {
                 const reason = evt.delta?.stop_reason;
                 if (reason) stopReason = mapStopReason(reason);
+                const u = evt.usage;
+                if (u) {
+                    if (typeof u.output_tokens === "number") {
+                        outputTokens = u.output_tokens;
+                        sawUsage = true;
+                    }
+                    if (typeof u.input_tokens === "number") inputTokens = u.input_tokens;
+                    if (typeof u.cache_creation_input_tokens === "number")
+                        cacheCreation = u.cache_creation_input_tokens;
+                    if (typeof u.cache_read_input_tokens === "number")
+                        cacheRead = u.cache_read_input_tokens;
+                }
                 break;
             }
             case "error": {
@@ -163,7 +232,7 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
                 );
                 break;
             }
-            // message_start, content_block_stop, ping, message_stop — no-op.
+            // content_block_stop, ping, message_stop — no-op.
         }
 
         if (evt.type === "error") break;
@@ -179,6 +248,13 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
             }
             yield { type: "tool_call", id: block.id, name: block.name, args };
         }
+    }
+
+    if (sawUsage) {
+        yield {
+            type: "usage",
+            usage: buildUsage(inputTokens, outputTokens, cacheCreation, cacheRead),
+        };
     }
 
     yield errorPayload !== undefined

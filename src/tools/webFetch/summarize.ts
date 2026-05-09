@@ -1,4 +1,5 @@
 import type { Message, Provider } from "../../providers/index.ts";
+import { appendUsageRecord } from "../../storage/index.ts";
 
 const RULES = [
     "Answer the user's question using ONLY the page content below.",
@@ -15,6 +16,8 @@ export interface SummarizeArgs {
     readonly question: string;
     readonly content: string;
     readonly signal: AbortSignal;
+    readonly sessionId: string;
+    readonly projectId: string;
 }
 
 const buildPrompt = (a: SummarizeArgs): string =>
@@ -42,6 +45,27 @@ export const summarizePage = async (args: SummarizeArgs): Promise<string> => {
         maxTokens: 1024,
     })) {
         if (evt.type === "text.delta") out += evt.text;
+        else if (evt.type === "usage") {
+            try {
+                await appendUsageRecord({
+                    sessionId: args.sessionId,
+                    projectId: args.projectId,
+                    provider: args.provider.id,
+                    model: args.model,
+                    inputTokens: evt.usage.inputTokens,
+                    outputTokens: evt.usage.outputTokens,
+                    ...(evt.usage.cacheReadTokens !== undefined
+                        ? { cacheReadTokens: evt.usage.cacheReadTokens }
+                        : {}),
+                    ...(evt.usage.cacheCreationTokens !== undefined
+                        ? { cacheCreationTokens: evt.usage.cacheCreationTokens }
+                        : {}),
+                    callKind: "webFetch",
+                });
+            } catch {
+                // best-effort
+            }
+        }
         if (evt.type === "stop") {
             if (evt.reason === "error" && evt.error) {
                 throw new Error(`summariser error: ${evt.error}`);

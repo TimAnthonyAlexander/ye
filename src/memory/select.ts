@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { Config } from "../config/index.ts";
 import type { Provider } from "../providers/index.ts";
+import { appendUsageRecord } from "../storage/index.ts";
 import { GLOBAL_MEMORY_FILE, getProjectMemoryDir } from "../storage/paths.ts";
 import { parseMemoryIndex, type MemoryEntry } from "./memoryIndex.ts";
 
@@ -48,6 +49,8 @@ export interface SelectMemoryInput {
     readonly query: string;
     readonly indices: readonly MemoryEntry[];
     readonly max?: number;
+    readonly sessionId: string;
+    readonly projectId: string;
 }
 
 export const selectMemoryFiles = async (
@@ -75,6 +78,27 @@ export const selectMemoryFiles = async (
             ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
         })) {
             if (evt.type === "text.delta") text += evt.text;
+            else if (evt.type === "usage") {
+                try {
+                    await appendUsageRecord({
+                        sessionId: input.sessionId,
+                        projectId: input.projectId,
+                        provider: input.provider.id,
+                        model: input.model,
+                        inputTokens: evt.usage.inputTokens,
+                        outputTokens: evt.usage.outputTokens,
+                        ...(evt.usage.cacheReadTokens !== undefined
+                            ? { cacheReadTokens: evt.usage.cacheReadTokens }
+                            : {}),
+                        ...(evt.usage.cacheCreationTokens !== undefined
+                            ? { cacheCreationTokens: evt.usage.cacheCreationTokens }
+                            : {}),
+                        callKind: "memory",
+                    });
+                } catch {
+                    // best-effort
+                }
+            }
             if (evt.type === "stop") break;
         }
     } catch {
@@ -99,6 +123,7 @@ export const selectMemoryFiles = async (
 
 export interface EnsureMemoryInput {
     readonly projectId: string;
+    readonly sessionId: string;
     readonly query: string;
     readonly provider: Provider;
     readonly config: Config;
@@ -118,5 +143,7 @@ export const ensureSelectedMemory = async (
         },
         query: input.query,
         indices,
+        sessionId: input.sessionId,
+        projectId: input.projectId,
     });
 };

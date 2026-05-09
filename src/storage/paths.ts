@@ -4,6 +4,7 @@ import { CONFIG_DIR } from "../config/paths.ts";
 export const YE_DIR = CONFIG_DIR;
 export const PROJECTS_DIR = join(YE_DIR, "projects");
 export const HISTORY_FILE = join(YE_DIR, "history.jsonl");
+export const USAGE_FILE = join(YE_DIR, "usage.jsonl");
 export const GLOBAL_MEMORY_FILE = join(YE_DIR, "MEMORY.md");
 export const GLOBAL_MEMORY_DIR = join(YE_DIR, "memory");
 export const USER_NOTES_FILE = join(YE_DIR, "CLAUDE.md");

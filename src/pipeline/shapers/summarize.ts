@@ -1,5 +1,6 @@
 import type { Message, Provider } from "../../providers/index.ts";
 import type { Config } from "../../config/index.ts";
+import { appendUsageRecord } from "../../storage/index.ts";
 import { estimateTokens } from "./tokens.ts";
 import type { ShaperContext, ShaperResult } from "./types.ts";
 
@@ -61,14 +62,17 @@ const summarize = async (
     config: Config,
     toCompact: readonly Message[],
     style: SummaryPromptStyle,
+    sessionId: string,
+    projectId: string,
 ): Promise<string> => {
     const summarizationMessages: Message[] = [
         ...toCompact,
         { role: "user", content: promptFor(style) },
     ];
     let summary = "";
+    const model = config.defaultModel.model;
     for await (const evt of provider.stream({
-        model: config.defaultModel.model,
+        model,
         messages: summarizationMessages,
         providerOptions: {
             providerOrder: config.defaultModel.providerOrder,
@@ -76,6 +80,27 @@ const summarize = async (
         },
     })) {
         if (evt.type === "text.delta") summary += evt.text;
+        if (evt.type === "usage") {
+            try {
+                await appendUsageRecord({
+                    sessionId,
+                    projectId,
+                    provider: provider.id,
+                    model,
+                    inputTokens: evt.usage.inputTokens,
+                    outputTokens: evt.usage.outputTokens,
+                    ...(evt.usage.cacheReadTokens !== undefined
+                        ? { cacheReadTokens: evt.usage.cacheReadTokens }
+                        : {}),
+                    ...(evt.usage.cacheCreationTokens !== undefined
+                        ? { cacheCreationTokens: evt.usage.cacheCreationTokens }
+                        : {}),
+                    callKind: "summarize",
+                });
+            } catch {
+                // best-effort
+            }
+        }
         if (evt.type === "stop") break;
     }
     return summary.trim();
@@ -105,7 +130,14 @@ export const runSummarizeAndReplace = async (
 
     const beforeTokens = estimateTokens(olderHistory);
 
-    const summary = await summarize(provider, config, olderHistory, opts.promptStyle);
+    const summary = await summarize(
+        provider,
+        config,
+        olderHistory,
+        opts.promptStyle,
+        state.sessionId,
+        state.projectId,
+    );
     if (summary.length === 0) {
         return { result: "skip", freedTokens: 0 };
     }

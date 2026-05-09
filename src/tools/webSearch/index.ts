@@ -30,6 +30,8 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
             ...(v.value.allowed_domains ? { allowedDomains: v.value.allowed_domains } : {}),
             ...(v.value.blocked_domains ? { blockedDomains: v.value.blocked_domains } : {}),
             signal: ctx.signal,
+            sessionId: ctx.sessionId,
+            projectId: ctx.projectId,
         });
         if (text.length === 0) {
             return { ok: false, error: "anthropic search returned empty response" };

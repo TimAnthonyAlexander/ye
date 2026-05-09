@@ -4,6 +4,7 @@ export {
     HISTORY_FILE,
     MANAGED_NOTES_FILE,
     PROJECTS_DIR,
+    USAGE_FILE,
     USER_NOTES_FILE,
     YE_DIR,
     getProjectCheckpointsDir,
@@ -25,6 +26,13 @@ export {
     rewindToTurn,
 } from "./checkpoints.ts";
 export { appendHistory, loadHistory } from "./history.ts";
+export {
+    appendUsageRecord,
+    loadUsageTotals,
+    type UsageCallKind,
+    type UsageRecord,
+    type UsageTotals,
+} from "./usage.ts";
 export { _resetProjectCache, getProjectId, type ProjectId } from "./project.ts";
 export {
     openExistingSession,

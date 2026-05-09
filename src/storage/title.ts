@@ -1,5 +1,6 @@
 import type { Provider } from "../providers/types.ts";
 import type { SessionHandle } from "./session.ts";
+import { appendUsageRecord } from "./usage.ts";
 
 const TITLE_PROMPT =
     "Generate a concise, sentence-case title (2-5 words) that captures the topic of this coding request. Return ONLY the title text — no JSON, no quotes, no preamble, no trailing punctuation.";
@@ -58,6 +59,8 @@ export interface GenerateTitleInput {
     readonly provider: Provider;
     readonly model: string;
     readonly userPrompt: string;
+    readonly sessionId: string;
+    readonly projectId: string;
     readonly signal?: AbortSignal;
 }
 
@@ -79,7 +82,27 @@ export const generateSessionTitle = async (input: GenerateTitleInput): Promise<s
         });
         for await (const evt of stream) {
             if (evt.type === "text.delta") collected += evt.text;
-            else if (evt.type === "stop" && evt.error) errored = true;
+            else if (evt.type === "usage") {
+                try {
+                    await appendUsageRecord({
+                        sessionId: input.sessionId,
+                        projectId: input.projectId,
+                        provider: input.provider.id,
+                        model: input.model,
+                        inputTokens: evt.usage.inputTokens,
+                        outputTokens: evt.usage.outputTokens,
+                        ...(evt.usage.cacheReadTokens !== undefined
+                            ? { cacheReadTokens: evt.usage.cacheReadTokens }
+                            : {}),
+                        ...(evt.usage.cacheCreationTokens !== undefined
+                            ? { cacheCreationTokens: evt.usage.cacheCreationTokens }
+                            : {}),
+                        callKind: "title",
+                    });
+                } catch {
+                    // best-effort
+                }
+            } else if (evt.type === "stop" && evt.error) errored = true;
         }
     } catch {
         return null;

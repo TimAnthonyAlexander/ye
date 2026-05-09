@@ -105,6 +105,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         if (queryText.length > 0) {
             state.selectedMemory = await ensureSelectedMemory({
                 projectId: state.projectId,
+                sessionId: state.sessionId,
                 query: queryText,
                 provider,
                 config,

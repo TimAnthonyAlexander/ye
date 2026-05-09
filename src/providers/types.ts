@@ -61,6 +61,13 @@ export interface ProviderError {
     readonly status?: number;
 }
 
+export interface ProviderUsage {
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly cacheReadTokens?: number;
+    readonly cacheCreationTokens?: number;
+}
+
 export type ProviderEvent =
     | { readonly type: "text.delta"; readonly text: string }
     | { readonly type: "reasoning.delta"; readonly text: string }
@@ -70,6 +77,7 @@ export type ProviderEvent =
           readonly name: string;
           readonly args: unknown;
       }
+    | { readonly type: "usage"; readonly usage: ProviderUsage }
     | { readonly type: "stop"; readonly reason: StopReason; readonly error?: ProviderError };
 
 export interface ProviderCapabilities {

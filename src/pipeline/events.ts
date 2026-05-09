@@ -1,5 +1,5 @@
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
-import type { ProviderError } from "../providers/index.ts";
+import type { ProviderError, ProviderUsage } from "../providers/index.ts";
 import type { ToolResult, UserQuestionOption } from "../tools/index.ts";
 
 export interface UserQuestionPayload {
@@ -26,6 +26,12 @@ export type Event =
           readonly id: string;
           readonly name: string;
           readonly args: unknown;
+      }
+    | {
+          readonly type: "model.usage";
+          readonly provider: string;
+          readonly model: string;
+          readonly usage: ProviderUsage;
       }
     | {
           readonly type: "permission.prompt";

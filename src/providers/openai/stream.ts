@@ -9,6 +9,14 @@ interface ToolCallAccumulator {
     args: string;
 }
 
+interface OpenAIUsage {
+    input_tokens?: number;
+    output_tokens?: number;
+    input_tokens_details?: {
+        cached_tokens?: number;
+    };
+}
+
 interface OpenAIEvent {
     type: string;
     delta?: string;
@@ -20,8 +28,25 @@ interface OpenAIEvent {
     response?: {
         status: string;
         output?: any[];
+        usage?: OpenAIUsage;
     };
 }
+
+const buildOpenAIUsageEvent = (u: OpenAIUsage): ProviderEvent | null => {
+    const totalIn = u.input_tokens ?? 0;
+    const out = u.output_tokens ?? 0;
+    if (totalIn === 0 && out === 0) return null;
+    const cached = u.input_tokens_details?.cached_tokens ?? 0;
+    const billableIn = Math.max(0, totalIn - cached);
+    return {
+        type: "usage",
+        usage: {
+            inputTokens: billableIn,
+            outputTokens: out,
+            ...(cached > 0 ? { cacheReadTokens: cached } : {}),
+        },
+    };
+};
 
 const mapStopReason = (status?: string): StopReason => {
     switch (status) {
@@ -81,6 +106,12 @@ export async function* parseBatch(response: Response): AsyncGenerator<ProviderEv
         }
     }
 
+    const u = json.usage as OpenAIUsage | undefined;
+    if (u) {
+        const ev = buildOpenAIUsageEvent(u);
+        if (ev) yield ev;
+    }
+
     yield { type: "stop", reason: mapStopReason(json.status) };
 }
 
@@ -88,6 +119,7 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
     const toolCalls = new Map<string, ToolCallAccumulator>();
     let stopReason: StopReason = "end_turn";
     let errorPayload: ProviderError | undefined;
+    let pendingUsage: OpenAIUsage | undefined;
 
     for await (const data of sseDataLines(response)) {
         let event: OpenAIEvent;
@@ -157,6 +189,7 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
 
             case "response.completed":
                 stopReason = mapStopReason(event.response?.status);
+                if (event.response?.usage) pendingUsage = event.response.usage;
                 break;
 
             case "response.incomplete":
@@ -168,6 +201,11 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
                 errorPayload = classifyMidStreamError(event.error?.message || "Transport Error");
                 break;
         }
+    }
+
+    if (pendingUsage) {
+        const ev = buildOpenAIUsageEvent(pendingUsage);
+        if (ev) yield ev;
     }
 
     yield errorPayload !== undefined

@@ -48,8 +48,37 @@ interface OpenRouterErrorPayload {
     };
 }
 
+interface OpenRouterUsage {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens_details?: {
+        cached_tokens?: number;
+        cache_write_tokens?: number;
+    };
+}
+
+const buildOpenRouterUsageEvent = (u: OpenRouterUsage): ProviderEvent | null => {
+    const totalIn = u.prompt_tokens ?? 0;
+    const out = u.completion_tokens ?? 0;
+    if (totalIn === 0 && out === 0) return null;
+    const cached = u.prompt_tokens_details?.cached_tokens ?? 0;
+    const cacheWrite = u.prompt_tokens_details?.cache_write_tokens ?? 0;
+    const billableIn = Math.max(0, totalIn - cached);
+    return {
+        type: "usage",
+        usage: {
+            inputTokens: billableIn,
+            outputTokens: out,
+            ...(cached > 0 ? { cacheReadTokens: cached } : {}),
+            ...(cacheWrite > 0 ? { cacheCreationTokens: cacheWrite } : {}),
+        },
+    };
+};
+
 interface ChunkPayload {
     choices?: ReadonlyArray<ChunkChoice>;
+    usage?: OpenRouterUsage;
     error?: OpenRouterErrorPayload;
 }
 
@@ -123,6 +152,7 @@ interface NonStreamChoice {
 
 interface NonStreamResponse {
     choices?: ReadonlyArray<NonStreamChoice>;
+    usage?: OpenRouterUsage;
     error?: OpenRouterErrorPayload;
 }
 
@@ -186,6 +216,11 @@ export async function* parseBatch(response: Response): AsyncGenerator<ProviderEv
         }
     }
 
+    if (json.usage) {
+        const ev = buildOpenRouterUsageEvent(json.usage);
+        if (ev) yield ev;
+    }
+
     yield { type: "stop", reason: stopReason };
 }
 
@@ -193,6 +228,7 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
     const toolCalls = new Map<number, ToolCallAccumulator>();
     let stopReason: StopReason = "end_turn";
     let errorPayload: ProviderError | undefined;
+    let pendingUsage: OpenRouterUsage | undefined;
 
     for await (const data of sseDataLines(response)) {
         const chunk = safeParseJson(data);
@@ -203,6 +239,8 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
             errorPayload = classifyMidStreamError(formatOpenRouterError(chunk.error));
             break;
         }
+
+        if (chunk.usage) pendingUsage = chunk.usage;
 
         const choice = chunk.choices?.[0];
         if (!choice) continue;
@@ -260,6 +298,11 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
             }
             yield { type: "tool_call", id: acc.id, name: acc.name, args };
         }
+    }
+
+    if (pendingUsage) {
+        const ev = buildOpenRouterUsageEvent(pendingUsage);
+        if (ev) yield ev;
     }
 
     yield errorPayload !== undefined

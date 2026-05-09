@@ -1,4 +1,5 @@
 import type { Message, Provider } from "../../providers/index.ts";
+import { appendUsageRecord } from "../../storage/index.ts";
 
 export interface AnthropicSearchArgs {
     readonly provider: Provider;
@@ -7,6 +8,8 @@ export interface AnthropicSearchArgs {
     readonly allowedDomains?: readonly string[];
     readonly blockedDomains?: readonly string[];
     readonly signal: AbortSignal;
+    readonly sessionId: string;
+    readonly projectId: string;
 }
 
 const buildBuiltinTool = (a: AnthropicSearchArgs): Record<string, unknown> => {
@@ -39,6 +42,27 @@ export const runAnthropicSearch = async (a: AnthropicSearchArgs): Promise<string
         providerOptions: { builtinTools: [buildBuiltinTool(a)] },
     })) {
         if (evt.type === "text.delta") text += evt.text;
+        else if (evt.type === "usage") {
+            try {
+                await appendUsageRecord({
+                    sessionId: a.sessionId,
+                    projectId: a.projectId,
+                    provider: a.provider.id,
+                    model: a.model,
+                    inputTokens: evt.usage.inputTokens,
+                    outputTokens: evt.usage.outputTokens,
+                    ...(evt.usage.cacheReadTokens !== undefined
+                        ? { cacheReadTokens: evt.usage.cacheReadTokens }
+                        : {}),
+                    ...(evt.usage.cacheCreationTokens !== undefined
+                        ? { cacheCreationTokens: evt.usage.cacheCreationTokens }
+                        : {}),
+                    callKind: "webSearch",
+                });
+            } catch {
+                // best-effort
+            }
+        }
         if (evt.type === "stop") {
             if (evt.reason === "error" && evt.error) {
                 throw new Error(`anthropic search error: ${evt.error}`);
