@@ -1,4 +1,4 @@
-export type SubagentKind = "explore" | "general";
+export type SubagentKind = "explore" | "general" | "verification";
 
 export type ExploreThoroughness = "quick" | "medium" | "very_thorough";
 

@@ -124,7 +124,9 @@ export const TaskTool: Tool = {
         "Spawn an isolated subagent to investigate or perform a task in a fresh context. " +
         'kind="explore" uses Read/Glob/Grep only and returns a summary ' +
         '(thoroughness: quick|medium|very_thorough). kind="general" gets the full toolset ' +
-        "and runs in AUTO mode. The subagent's transcript is preserved separately; only " +
+        'and runs in AUTO mode. kind="verification" uses Read/Glob/Grep/Bash to run ' +
+        "typecheck + tests + git diff and returns failures — use after implementing a plan. " +
+        "The subagent's transcript is preserved separately; only " +
         "its final assistant message is returned to you. Use a subagent when the task " +
         "would otherwise pollute your context with many tool calls.",
     annotations: { readOnlyHint: false },
@@ -132,7 +134,7 @@ export const TaskTool: Tool = {
         type: "object",
         required: ["kind", "prompt"],
         properties: {
-            kind: { type: "string", enum: ["explore", "general"] },
+            kind: { type: "string", enum: ["explore", "general", "verification"] },
             prompt: { type: "string" },
             thoroughness: {
                 type: "string",

@@ -52,6 +52,35 @@ const readInto = async (ctx: ToolContext, path: string): Promise<void> => {
     if (!r.ok) throw new Error(`Read failed: ${r.error}`);
 };
 
+interface ParsedEdit {
+    readonly replacements: number;
+    readonly line: number;
+    readonly preview: string;
+    readonly feedback: readonly string[] | null;
+}
+
+const parseEditValue = (value: unknown): ParsedEdit => {
+    if (typeof value !== "string") throw new Error(`expected string, got ${typeof value}`);
+    const m = value.match(/^<edit replacements="(\d+)" line="(\d+)">\n([\s\S]*)$/);
+    if (!m) throw new Error(`unexpected edit value shape:\n${value}`);
+    const replacements = Number(m[1]);
+    const line = Number(m[2]);
+    const rest = m[3] ?? "";
+    const fbIdx = rest.indexOf("\n<feedback>\n");
+    if (fbIdx === -1) {
+        return { replacements, line, preview: rest, feedback: null };
+    }
+    const preview = rest.slice(0, fbIdx);
+    const fbBody = rest.slice(fbIdx + "\n<feedback>\n".length);
+    const close = fbBody.lastIndexOf("\n</feedback>");
+    const inner = close === -1 ? fbBody : fbBody.slice(0, close);
+    const feedback = inner
+        .split("\n")
+        .map((l) => (l.startsWith("- ") ? l.slice(2) : l))
+        .filter((l) => l.length > 0);
+    return { replacements, line, preview, feedback };
+};
+
 beforeEach(async () => {
     workDir = await mkdtemp(join(tmpdir(), "ye-edit-test-"));
 });
@@ -178,8 +207,7 @@ describe("EditTool", () => {
         );
         expect(first.ok).toBe(true);
         if (first.ok) {
-            const v = first.value as { replacements: number };
-            expect(v.replacements).toBe(3);
+            expect(parseEditValue(first.value).replacements).toBe(3);
         }
         expect(await readFile(path, "utf8")).toBe("bar bar bar");
 
@@ -242,13 +270,13 @@ describe("EditTool", () => {
         );
         expect(r.ok).toBe(true);
         if (r.ok) {
-            const v = r.value as { feedback?: readonly string[] };
-            expect(v.feedback).toBeDefined();
-            expect(v.feedback?.some((m) => m.startsWith("stub:"))).toBe(true);
+            const parsed = parseEditValue(r.value);
+            expect(parsed.feedback).not.toBeNull();
+            expect(parsed.feedback?.some((m) => m.startsWith("stub:"))).toBe(true);
         }
     });
 
-    test("E13b omits feedback field entirely when no warnings fire", async () => {
+    test("E13b omits feedback section entirely when no warnings fire", async () => {
         const path = join(workDir, "clean.txt");
         await writeFile(path, "alpha beta gamma\n", "utf8");
         const ctx = makeCtx();
@@ -256,8 +284,94 @@ describe("EditTool", () => {
         const r = await EditTool.execute({ path, old_string: "beta", new_string: "BETA" }, ctx);
         expect(r.ok).toBe(true);
         if (r.ok) {
-            const v = r.value as { feedback?: readonly string[] };
-            expect("feedback" in v).toBe(false);
+            expect(parseEditValue(r.value).feedback).toBeNull();
+            expect(typeof r.value === "string" && r.value.includes("<feedback>")).toBe(false);
+        }
+    });
+
+    test("E15 returns a string value (not an object)", async () => {
+        const path = join(workDir, "v.txt");
+        await writeFile(path, "alpha", "utf8");
+        const ctx = makeCtx();
+        await readInto(ctx, path);
+        const r = await EditTool.execute({ path, old_string: "alpha", new_string: "ALPHA" }, ctx);
+        expect(r.ok).toBe(true);
+        if (r.ok) expect(typeof r.value).toBe("string");
+    });
+
+    test("E16 preview preserves backslashes byte-for-byte (no JSON escaping)", async () => {
+        // File contains: const re = /\\/g;  — two literal backslashes.
+        const path = join(workDir, "regex.ts");
+        await writeFile(path, "const re = /\\\\/g;\n", "utf8");
+        const ctx = makeCtx();
+        await readInto(ctx, path);
+        const r = await EditTool.execute(
+            { path, old_string: "const re", new_string: "const RE" },
+            ctx,
+        );
+        expect(r.ok).toBe(true);
+        if (r.ok && typeof r.value === "string") {
+            // The preview must show the surrounding regex with TWO backslashes,
+            // not four. The JSON.stringify regression would produce four.
+            expect(r.value).toContain("/\\\\/g");
+            expect(r.value).not.toContain("/\\\\\\\\/g");
+        }
+    });
+
+    test("E17 preview preserves backticks and quotes byte-for-byte", async () => {
+        const path = join(workDir, "tpl.ts");
+        await writeFile(path, 'const x = `hello`;\nconst y = "world";\n', "utf8");
+        const ctx = makeCtx();
+        await readInto(ctx, path);
+        const r = await EditTool.execute(
+            { path, old_string: "const x", new_string: "const X" },
+            ctx,
+        );
+        expect(r.ok).toBe(true);
+        if (r.ok && typeof r.value === "string") {
+            expect(r.value).toContain("`hello`");
+            expect(r.value).toContain('"world"');
+            expect(r.value).not.toContain("\\`hello\\`");
+            expect(r.value).not.toContain('\\"world\\"');
+        }
+    });
+
+    test("E18 preview body uses real newlines (not escape sequences)", async () => {
+        const path = join(workDir, "ml.txt");
+        await writeFile(path, "row-1\nrow-2\nrow-3\nrow-4\nrow-5\n", "utf8");
+        const ctx = makeCtx();
+        await readInto(ctx, path);
+        const r = await EditTool.execute({ path, old_string: "row-3", new_string: "ROW-3" }, ctx);
+        expect(r.ok).toBe(true);
+        if (r.ok && typeof r.value === "string") {
+            expect(r.value).not.toContain("\\n");
+            // Multi-line preview must split on real newlines.
+            const previewLines = r.value.split("\n").slice(1);
+            expect(previewLines.length).toBeGreaterThan(1);
+        }
+    });
+
+    test("E19 mismatch error keeps the JSON-escaped windows (regression check on intentional escaping)", async () => {
+        // The Edit tool intentionally JSON-escapes the small mismatch windows
+        // for byte-by-byte comparison. That path is unrelated to the result-
+        // shape change and must keep working.
+        const path = join(workDir, "code.ts");
+        const fileBody = "the quick brown fox jumps over the lazy dog and a dog barks";
+        await writeFile(path, fileBody, "utf8");
+        const ctx = makeCtx();
+        await readInto(ctx, path);
+        const r = await EditTool.execute(
+            {
+                path,
+                old_string: "the quick brown fox jumps over the lazy DOGGO and a dog barks",
+                new_string: "x",
+            },
+            ctx,
+        );
+        expect(r.ok).toBe(false);
+        if (!r.ok) {
+            expect(r.error).toContain("yours:");
+            expect(r.error).toContain("file:");
         }
     });
 

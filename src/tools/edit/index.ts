@@ -13,13 +13,6 @@ interface EditArgs {
     readonly replace_all?: boolean;
 }
 
-interface EditValue {
-    readonly replacements: number;
-    readonly line: number;
-    readonly preview: string;
-    readonly feedback?: readonly string[];
-}
-
 const PREVIEW_RADIUS = 3;
 const MAX_OCCURRENCE_LOCATIONS = 3;
 const MIN_PREFIX_FOR_DIAGNOSTIC = 10;
@@ -133,7 +126,22 @@ const buildPreview = (
     return { line: siteLineIdx + 1, preview };
 };
 
-const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<EditValue>> => {
+const formatEditResult = (
+    replacements: number,
+    line: number,
+    preview: string,
+    feedback: readonly string[],
+): string => {
+    const header = `<edit replacements="${replacements}" line="${line}">`;
+    const sections = [header, preview];
+    if (feedback.length > 0) {
+        const items = feedback.map((m) => `- ${m}`).join("\n");
+        sections.push(`<feedback>\n${items}\n</feedback>`);
+    }
+    return sections.join("\n");
+};
+
+const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
     const v = validateArgs<EditArgs>(rawArgs, EditTool.schema);
     if (!v.ok) return v;
     const { path, old_string, new_string, replace_all = false } = v.value;
@@ -214,12 +222,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<E
 
     return {
         ok: true,
-        value: {
-            replacements: replace_all ? total : 1,
-            line,
-            preview,
-            ...(feedback.length > 0 ? { feedback } : {}),
-        },
+        value: formatEditResult(replace_all ? total : 1, line, preview, feedback),
     };
 };
 

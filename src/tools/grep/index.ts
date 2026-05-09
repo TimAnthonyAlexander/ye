@@ -29,10 +29,7 @@ const flagsForMode = (mode: GrepMode): string[] => {
     }
 };
 
-const execute = async (
-    rawArgs: unknown,
-    ctx: ToolContext,
-): Promise<ToolResult<{ output: string; exitCode: number }>> => {
+const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
     const v = validateArgs<GrepArgs>(rawArgs, GrepTool.schema);
     if (!v.ok) return v;
     const { pattern, path = ctx.cwd, output_mode = "content", type, glob } = v.value;
@@ -64,7 +61,9 @@ const execute = async (
         };
     }
 
-    return { ok: true, value: { output: truncate(stdout), exitCode } };
+    const output = truncate(stdout);
+    const header = `<grep exit_code="${exitCode}">`;
+    return { ok: true, value: output.length > 0 ? `${header}\n${output}` : header };
 };
 
 export const GrepTool: Tool = {

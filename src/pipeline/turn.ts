@@ -64,7 +64,14 @@ const buildAssistantMessage = (text: string, toolCalls: readonly CollectedToolCa
     return { role: "assistant", content: text.length > 0 ? text : null, tool_calls };
 };
 
-const renderToolResult = (result: ToolResult): string => {
+// Render a tool result into the string the model sees as the tool message
+// content. Free-form text tools (Read/Bash/Grep/Edit) MUST return a string so
+// it passes through the first branch unchanged — going through JSON.stringify
+// would double-escape backslashes/quotes and turn real newlines into `\n`
+// escape sequences, leaving the model unable to count escape-prone characters
+// reliably. The fallback only fires for tools whose value is a small bag of
+// known-clean fields (e.g. Glob's `{ paths, truncated }`).
+export const renderToolResult = (result: ToolResult): string => {
     if (!result.ok) return `Error: ${result.error}`;
     if (typeof result.value === "string") return result.value;
     return JSON.stringify(result.value);

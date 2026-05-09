@@ -12,10 +12,7 @@ interface ReadArgs {
 
 const DEFAULT_LIMIT = 2000;
 
-const execute = async (
-    rawArgs: unknown,
-    ctx: ToolContext,
-): Promise<ToolResult<{ content: string; totalLines: number }>> => {
+const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
     const v = validateArgs<ReadArgs>(rawArgs, ReadTool.schema);
     if (!v.ok) return v;
     const { path, offset = 0, limit = DEFAULT_LIMIT } = v.value;
@@ -38,10 +35,10 @@ const execute = async (
 
     ctx.turnState.readFiles.set(path, { hash: hashContent(text) });
 
-    return {
-        ok: true,
-        value: { content: numbered, totalLines: allLines.length },
-    };
+    const firstShown = sliced.length > 0 ? offset + 1 : 0;
+    const lastShown = sliced.length > 0 ? offset + sliced.length : 0;
+    const header = `<file path="${path}" lines="${allLines.length}" range="${firstShown}-${lastShown}">`;
+    return { ok: true, value: `${header}\n${numbered}` };
 };
 
 export const ReadTool: Tool = {

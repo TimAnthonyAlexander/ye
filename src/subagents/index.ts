@@ -3,6 +3,11 @@ import type { Event } from "../pipeline/events.ts";
 import type { Provider } from "../providers/index.ts";
 import { EXPLORE_TOOLS, exploreSystemPrompt, exploreTurnBudget } from "./kinds/explore.ts";
 import { GENERAL_TOOLS, generalSystemPrompt, generalTurnBudget } from "./kinds/general.ts";
+import {
+    VERIFICATION_TOOLS,
+    verificationSystemPrompt,
+    verificationTurnBudget,
+} from "./kinds/verification.ts";
 import { runInProcess } from "./isolate/inProcess.ts";
 import {
     SubagentError,
@@ -57,6 +62,13 @@ const resolveKind = (spec: SubagentSpec, cwd: string, subagentBudget: number): K
                 maxTurns: Math.min(generalTurnBudget, subagentBudget),
             };
         }
+        case "verification": {
+            return {
+                systemPrompt: verificationSystemPrompt(cwd),
+                allowedTools: VERIFICATION_TOOLS,
+                maxTurns: Math.min(verificationTurnBudget, subagentBudget),
+            };
+        }
     }
 };
 
@@ -84,4 +96,4 @@ export const spawn = async (spec: SubagentSpec, ctx: SpawnContext): Promise<Suba
 };
 
 export const isSubagentKind = (value: unknown): value is SubagentKind =>
-    value === "explore" || value === "general";
+    value === "explore" || value === "general" || value === "verification";

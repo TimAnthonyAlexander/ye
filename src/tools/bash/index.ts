@@ -11,16 +11,17 @@ const MAX_TIMEOUT_MS = 900_000;
 const OUTPUT_CAP = 32_000;
 const KILL_GRACE_MS = 500;
 
-interface BashOutput {
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-}
-
 const truncate = (text: string): string =>
     text.length > OUTPUT_CAP
         ? `${text.slice(0, OUTPUT_CAP)}\n…(truncated, ${text.length - OUTPUT_CAP} more chars)`
         : text;
+
+const formatBashResult = (stdout: string, stderr: string, exitCode: number): string => {
+    const sections = [`<bash exit_code="${exitCode}">`];
+    if (stdout.length > 0) sections.push(stdout);
+    if (stderr.length > 0) sections.push(`<stderr>\n${stderr}\n</stderr>`);
+    return sections.join("\n");
+};
 
 // Kill the whole process group of a detached child. We use the negative-pid
 // trick so backgrounded grandchildren (anything started with `&`) die with the
@@ -86,7 +87,7 @@ const timeoutHint = (ms: number): string => {
     );
 };
 
-const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<BashOutput>> => {
+const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
     const v = validateArgs<BashArgs>(rawArgs, BashTool.schema);
     if (!v.ok) return v;
     const command = v.value.command;
@@ -142,11 +143,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<B
 
     return {
         ok: true,
-        value: {
-            stdout: truncate(stdout),
-            stderr: truncate(stderr),
-            exitCode,
-        },
+        value: formatBashResult(truncate(stdout), truncate(stderr), exitCode),
     };
 };
 
