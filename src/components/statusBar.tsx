@@ -31,8 +31,7 @@ const usageColor = (pct: number): string => {
 };
 
 const formatPct = (pct: number): string => {
-    if (pct <= 0) return "0%";
-    if (pct < 1) return "<1%";
+    if (pct < 1) return "0%";
     return `${Math.round(pct)}%`;
 };
 
@@ -71,51 +70,54 @@ export const StatusBar = ({
     const showLifetime =
         tokenUsage !== undefined && (tokenUsage.input > 0 || tokenUsage.output > 0);
     return (
-        <Box justifyContent="space-between" paddingX={1}>
-            <Box>
+        <Box flexDirection="column">
+            <Box justifyContent="space-between" paddingX={1}>
+                <Box>
+                    <Text color={usageColor(pct)}>{formatPct(pct)}</Text>
+                    {showSession && (
+                        <>
+                            <Text dimColor> | </Text>
+                            <Text>
+                                ↑{formatK(sessionTokenUsage.input)} ↓
+                                {formatK(sessionTokenUsage.output)}
+                            </Text>
+                            {sessionTokenUsage.costUsd !== undefined &&
+                                sessionTokenUsage.costUsd > 0 && (
+                                    <Text> {formatUsd(sessionTokenUsage.costUsd)}</Text>
+                                )}
+                        </>
+                    )}
+                    {showLifetime && (
+                        <>
+                            <Text dimColor> | all-time </Text>
+                            <Text dimColor>
+                                ↑{formatK(tokenUsage.input)} ↓{formatK(tokenUsage.output)}
+                            </Text>
+                            {tokenUsage.costUsd !== undefined && tokenUsage.costUsd > 0 && (
+                                <Text dimColor> {formatUsd(tokenUsage.costUsd)}</Text>
+                            )}
+                        </>
+                    )}
+                    {showUpdate && (
+                        <>
+                            <Text dimColor> | </Text>
+                            <Text color="cyan">
+                                update {updateStatus.current} → {updateStatus.latest} (ye --update)
+                            </Text>
+                        </>
+                    )}
+                </Box>
+                <Box>
+                    {streaming && <Text color="yellow">streaming </Text>}
+                    {queuedCount > 0 && <Text color="cyan">+{queuedCount} queued </Text>}
+                    <Text dimColor>
+                        ✦ {providerId} | {model}
+                    </Text>
+                </Box>
+            </Box>
+            <Box paddingX={1}>
                 <Text bold color={modeColor(mode)}>
                     {mode}
-                </Text>
-                <Text dimColor> · </Text>
-                <Text color={usageColor(pct)}>{formatPct(pct)} context</Text>
-                {showSession && (
-                    <>
-                        <Text dimColor> · </Text>
-                        <Text>
-                            ↑{formatK(sessionTokenUsage.input)} ↓
-                            {formatK(sessionTokenUsage.output)}
-                        </Text>
-                        {sessionTokenUsage.costUsd !== undefined &&
-                            sessionTokenUsage.costUsd > 0 && (
-                                <Text> {formatUsd(sessionTokenUsage.costUsd)}</Text>
-                            )}
-                    </>
-                )}
-                {showLifetime && (
-                    <>
-                        <Text dimColor> · all-time </Text>
-                        <Text dimColor>
-                            ↑{formatK(tokenUsage.input)} ↓{formatK(tokenUsage.output)}
-                        </Text>
-                        {tokenUsage.costUsd !== undefined && tokenUsage.costUsd > 0 && (
-                            <Text dimColor> {formatUsd(tokenUsage.costUsd)}</Text>
-                        )}
-                    </>
-                )}
-                {showUpdate && (
-                    <>
-                        <Text dimColor> · </Text>
-                        <Text color="cyan">
-                            update {updateStatus.current} → {updateStatus.latest} (ye --update)
-                        </Text>
-                    </>
-                )}
-            </Box>
-            <Box>
-                {streaming && <Text color="yellow">streaming </Text>}
-                {queuedCount > 0 && <Text color="cyan">+{queuedCount} queued </Text>}
-                <Text dimColor>
-                    {providerId} · {model}
                 </Text>
             </Box>
         </Box>
