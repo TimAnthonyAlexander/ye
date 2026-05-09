@@ -1,8 +1,10 @@
 # Ye
 
-A coding agent that runs in your terminal. Local, open, multi-provider — TypeScript on Bun, Ink TUI, all state on disk under `~/.ye/`.
-
-Fifteen tools, deny-first permissions, append-only transcripts, subagents for context isolation, skills for extensibility, streaming providers (OpenRouter, Anthropic, OpenAI), LLM-based memory selection, and a three-mode permission system (NORMAL / AUTO / PLAN).
+The coding agent. Open-Source, with Subagents, Planning, Web-Searches, Skills, Hooks, Great Tools, Animations, Compaction, Recoverability, and much more.
+Works with:
+- OpenRouter (DeepSeek, Gemini, OpenAI, Anthropic)
+- Anthropic (without OR, direct)
+- OpenAI (without OR, direct)
 
 ## Install
 
@@ -33,19 +35,13 @@ $dest = "$env:LOCALAPPDATA\Programs\ye"; New-Item -ItemType Directory -Force $de
 Restart the shell after install.
 </details>
 
-**From source** (local dev):
-```
-git clone <repo> ye && cd ye
-bun install
-./scripts/install.sh
-```
-Compiles via `bun build --compile` and symlinks onto `$PATH`.
+### **From source** (local dev):
 
-Set your API key:
 ```
-export OPENROUTER_API_KEY=sk-or-...
+git clone git@github.com:TimAnthonyAlexander/ye.git && cd ye
+bun install
+bun run build
 ```
-The env var name is configurable in `~/.ye/config.json`.
 
 ## Usage
 
@@ -63,7 +59,8 @@ Ye opens in the current directory, streams model output, prompts before state-mo
 
 Per-session override: `ye --mode AUTO` (or `NORMAL` / `PLAN`).
 
-**Project notes** — reads `CLAUDE.md` if present, otherwise `YE.md`. Project memory and sessions under `~/.ye/projects/<hash>/`, keyed by a stable hash of the project root.
+**Project notes** — reads `YE.md` if present, otherwise also `CLAUDE.md` if present. 
+Project memory and sessions under `~/.ye/projects/<hash>/`, keyed by a stable hash of the project root.
 
 ## Tools
 
@@ -93,7 +90,7 @@ Read-only tools (Read, Grep, Glob, WebFetch, WebSearch, Skill, AskUserQuestion) 
 
 One canonical `Provider` interface; vendor differences live behind it. Tool-call format normalization happens in the provider module — the rest of Ye never sees vendor-shaped data.
 
-- **OpenRouter** — default. Streams via SSE, OpenAI-compatible tool calls, context window discovered via the `/models` endpoint.
+- **OpenRouter** — default. Streams via SSE, OpenAI-compatible tool calls, context window discovered via the `/models` endpoint. 
 - **Anthropic direct** — native tool-use blocks, prompt caching at the static/dynamic boundary. Uses `ANTHROPIC_API_KEY`.
 - **OpenAI** — latest **Responses API v1** (GPT-4.1/5 family). Interleaved reasoning & strict schema. Uses `OPENAI_API_KEY`.
 
@@ -124,8 +121,13 @@ Ye's defense against context blowup. Subagents run the same pipeline with isolat
 
 ## Skills
 
-Skills are pre-written procedural recipes that extend Ye's behavior for specialised tasks — frontend design conventions, release workflows, language-specific patterns. They live as markdown files under `~/.ye/skills/` (per-user) or `.ye/skills/` (per-project, committed to git). Ye ships with built-in skills and consumes externally-authored ones from GitHub marketplaces. Installing a skill copies its SKILL.md and supporting files into the skills directory; a restart loads it into the registry.
+Skills are pre-written procedural recipes that extend Ye's behavior for specialised tasks — frontend design conventions, release workflows, language-specific patterns.
+They live as markdown files under `~/.ye/skills/` (per-user) or `.ye/skills/` (per-project, committed to git).
+Ye ships with built-in skills and consumes externally-authored ones from GitHub marketplaces.
+Installing a skill copies its SKILL.md and supporting files into the skills directory; a restart loads it into the registry.
+
+You can ask Ye to find a skill online and to install it. Or also to create one from your preferences or descriptions.
 
 ---
 
-Ye is under active development. What's described above is running today — not a roadmap.
+Ye is under active development. The last 50 commits were done with Ye itself.
