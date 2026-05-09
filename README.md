@@ -2,6 +2,8 @@
 
 The coding agent. Open-Source, with Subagents, Planning, Web-Searches, Skills, Hooks, Great Tools, Animations, Compaction, Recoverability, and much more.
 
+![Ye Home](img/YE_Home.png)
+
 Works with:
 - OpenRouter (DeepSeek, Gemini, OpenAI, Anthropic)
 - Anthropic (without OR, direct)
@@ -51,6 +53,24 @@ ye
 ```
 
 Ye opens in the current directory, streams model output, prompts before state-modifying tool calls.
+
+### In action
+
+`@`-mention files from the project index:
+
+![Mention picker](img/YE_Mention.png)
+
+Watch edits stream in as the model works:
+
+![Editing](img/YE_Editing.png)
+
+Tool calls run with live status:
+
+![Working](img/YE_Working.png)
+
+End-to-end: ask Ye to build a site, get a finished result:
+
+![Result website hero](img/YE_Result_Website_Hero.png)
 
 **Modes** — cycle with `Shift+Tab`:
 
