@@ -22,6 +22,11 @@ interface ChatInputProps {
     readonly onMentionMove?: (delta: 1 | -1) => void;
     readonly onMentionAccept?: () => string | null;
     readonly onMentionDismiss?: () => void;
+
+    // When true, ↑/↓ are no-ops here so another component (the Home screen)
+    // can claim them. Mention picker takes precedence — its arrow handling
+    // remains active even when historyDisabled is set.
+    readonly historyDisabled?: boolean;
 }
 
 export interface ChatInputHandle {
@@ -48,6 +53,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         onMentionMove,
         onMentionAccept,
         onMentionDismiss,
+        historyDisabled,
     },
     ref,
 ) {
@@ -202,6 +208,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 onMentionMove?.(-1);
                 return;
             }
+            if (historyDisabled) return;
             if (!history || history.length === 0) return;
             // Don't hijack up-arrow inside a multi-line draft unless we're
             // already navigating history.
@@ -219,6 +226,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 onMentionMove?.(1);
                 return;
             }
+            if (historyDisabled) return;
             if (historyIndex === null) return;
             if (historyIndex === 0) {
                 apply(liveBuffer, liveBuffer.length);

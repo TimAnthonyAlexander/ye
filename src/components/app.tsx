@@ -65,6 +65,8 @@ import { refreshUpdateStatus, type UpdateStatus } from "../update/check.ts";
 import { Chat, type ChatItem, computeDynamicStart, newChatItemId } from "./chat.tsx";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
 import { runEventHooks } from "../hooks/index.ts";
+import { Home, HOME_MIN_COLS, HOME_MIN_ROWS } from "./home.tsx";
+import { pickTip } from "./homeTips.ts";
 import { KeyPrompt } from "./keyPrompt.tsx";
 import { MentionPicker } from "./mentionPicker.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
@@ -128,25 +130,13 @@ const prettyCwd = (): string => {
 const projectHasNotes = (cwd: string): boolean =>
     existsSync(join(cwd, "CLAUDE.md")) || existsSync(join(cwd, "YE.md"));
 
-const buildWelcomeItem = (cfg: Config): ChatItem | null => {
-    const cwd = process.cwd();
-    if (projectHasNotes(cwd)) return null;
-    let username: string | null = null;
+const getUsername = (): string | null => {
     try {
         const u = userInfo().username;
-        username = u.length > 0 ? u : null;
+        return u.length > 0 ? u : null;
     } catch {
-        username = null;
+        return null;
     }
-    return {
-        kind: "welcome",
-        id: newChatItemId(),
-        version: pkg.version,
-        cwd: prettyCwd(),
-        providerId: cfg.defaultProvider,
-        model: cfg.defaultModel.model,
-        username,
-    };
 };
 
 const formatElapsed = (totalSec: number): string => {
@@ -229,14 +219,17 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     const initialCfg = config.config;
     const { exit } = useApp();
     const [mode, setMode] = useState<PermissionMode>(
-        (modeOnStart as PermissionMode | undefined) ?? initialCfg.permissions?.defaultMode ?? "NORMAL",
+        (modeOnStart as PermissionMode | undefined) ??
+            initialCfg.permissions?.defaultMode ??
+            "NORMAL",
     );
     const [providerId, setProviderId] = useState<string>(initialCfg.defaultProvider);
     const [model, setModelState] = useState<string>(initialCfg.defaultModel.model);
-    const [items, setItems] = useState<ChatItem[]>(() => {
-        const welcome = buildWelcomeItem(initialCfg);
-        return welcome ? [welcome] : [];
-    });
+    const [items, setItems] = useState<ChatItem[]>([]);
+    const [homeRecents, setHomeRecents] = useState<readonly SessionSummary[]>([]);
+    const [homeRecentsLoaded, setHomeRecentsLoaded] = useState(false);
+    const [homeTip, setHomeTip] = useState<string>(() => pickTip(projectHasNotes(process.cwd())));
+    const homeUsername = useMemo<string | null>(() => getUsername(), []);
     const [streamingText, setStreamingText] = useState("");
     const [streaming, setStreaming] = useState(false);
     const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
@@ -262,7 +255,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     // settles. Anything still in the live region re-renders on every
     // animation frame; keeping that region small is what prevents Ink from
     // falling back to clearTerminal-based redraws on a tall conversation.
-    const [committedCount, setCommittedCount] = useState(items.length);
+    const [committedCount, setCommittedCount] = useState(0);
     // Bumped whenever items are replaced wholesale (rotateSession, loadSession,
     // runRewindFlow). Used as a key on <Chat> to force a remount — Ink's
     // <Static> is append-only and won't re-emit items it has previously sent
@@ -375,10 +368,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     // re-emits to scrollback at the new width. Debounced so a slow drag of
     // the terminal corner doesn't fire dozens of clears.
     const { stdout } = useStdout();
+    const [termCols, setTermCols] = useState(stdout?.columns ?? 80);
+    const [termRows, setTermRows] = useState(stdout?.rows ?? 24);
     useEffect(() => {
         if (!stdout) return;
         let timer: ReturnType<typeof setTimeout> | null = null;
         const onResize = (): void => {
+            setTermCols(stdout.columns ?? 80);
+            setTermRows(stdout.rows ?? 24);
             if (timer) clearTimeout(timer);
             timer = setTimeout(() => {
                 process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
@@ -405,6 +402,16 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         setItems((prev) => [...prev, { kind: "system", id: newChatItemId(), content: text }]);
     };
 
+    const refreshHome = (projectId: string): void => {
+        setHomeTip(pickTip(projectHasNotes(process.cwd())));
+        listProjectSessions(projectId)
+            .then((sessions) => {
+                setHomeRecents(sessions);
+                setHomeRecentsLoaded(true);
+            })
+            .catch(() => setHomeRecentsLoaded(true));
+    };
+
     const syncQueueDisplay = (): void => {
         setQueuedCount(queueRef.current.length);
         setQueuedDisplay(
@@ -421,10 +428,6 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             role: "user",
             content: text,
         };
-        if (attachments.length === 0) {
-            setItems((prev) => [...prev, userItem]);
-            return;
-        }
         const readItems: ChatItem[] = attachments.map((a) => ({
             kind: "toolCall",
             entry: {
@@ -435,7 +438,16 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 result: { ok: true, value: "" },
             },
         }));
-        setItems((prev) => [...prev, userItem, ...readItems]);
+        // First message of a fresh session: prepend a small Ye banner so the
+        // wordmark sits at the top of scrollback. It scrolls away naturally
+        // once enough rows accumulate — relative, not pinned.
+        setItems((prev) => {
+            const lead: ChatItem[] =
+                prev.length === 0
+                    ? [{ kind: "banner", id: newChatItemId(), version: pkg.version }]
+                    : [];
+            return [...prev, ...lead, userItem, ...readItems];
+        });
     };
 
     const rotateSession = async (): Promise<void> => {
@@ -463,6 +475,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         // outside React's tree — clearing items state alone won't reclaim
         // those rows. ESC[2J clears the visible screen, ESC[3J the scrollback.
         process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+        refreshHome(state.projectId);
     };
 
     // Fire-and-forget: generate a 2-5 word session title from the first user
@@ -825,6 +838,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 setMode(state.mode);
                 setContextWindow(state.contextWindow);
                 setUsedTokens(estimateTokens(state.history));
+                refreshHome(proj.id);
 
                 // SessionStart hook: fire-and-forget after provider + session are ready.
                 void runEventHooks(
@@ -1403,8 +1417,37 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         );
     }
 
+    const showHome =
+        items.length === 0 &&
+        !pendingPrompt &&
+        !pendingUserQuestion &&
+        !pendingPicker &&
+        !pendingKeyPrompt &&
+        termCols >= HOME_MIN_COLS &&
+        termRows >= HOME_MIN_ROWS;
+
     return (
         <Box flexDirection="column">
+            {showHome && (
+                <Home
+                    version={pkg.version}
+                    username={homeUsername}
+                    cwd={prettyCwd()}
+                    providerId={providerId}
+                    model={findModel(model)?.label ?? model}
+                    recents={homeRecents}
+                    recentsLoaded={homeRecentsLoaded}
+                    tip={homeTip}
+                    inputEmpty={currentInput.length === 0}
+                    onResume={(id) => {
+                        void loadSession(id).catch((e) => {
+                            setError(
+                                `resume failed: ${e instanceof Error ? e.message : String(e)}`,
+                            );
+                        });
+                    }}
+                />
+            )}
             <Chat
                 key={chatKey}
                 items={items}
@@ -1469,6 +1512,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                         onMentionMove={handleMentionMove}
                         onMentionAccept={handleMentionAccept}
                         onMentionDismiss={handleMentionDismiss}
+                        historyDisabled={showHome}
                     />
                 </>
             )}

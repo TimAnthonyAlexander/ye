@@ -1,10 +1,10 @@
 import { Box, Static, Text } from "ink";
 import { memo } from "react";
+import { ChatBanner } from "./chatBanner.tsx";
 import { AssistantLine, MessageView } from "./message.tsx";
 import { Thinking } from "./thinking.tsx";
 import { ThinkingDone, ThinkingLive } from "./thinkingBlock.tsx";
 import { summarizeArgs, ToolCallView, type ToolCallEntry } from "./toolCall.tsx";
-import { Welcome } from "./welcome.tsx";
 
 export type ChatItem =
     | {
@@ -23,15 +23,7 @@ export type ChatItem =
           readonly startedAt: number;
           readonly elapsedMs?: number;
       }
-    | {
-          readonly kind: "welcome";
-          readonly id: string;
-          readonly version: string;
-          readonly cwd: string;
-          readonly providerId: string;
-          readonly model: string;
-          readonly username: string | null;
-      };
+    | { readonly kind: "banner"; readonly id: string; readonly version: string };
 
 interface ChatProps {
     readonly items: readonly ChatItem[];
@@ -151,22 +143,14 @@ const RenderItem = memo(({ item }: RenderItemProps) => {
             </Box>
         );
     }
-    if (item.kind === "welcome") {
-        return (
-            <Welcome
-                version={item.version}
-                cwd={item.cwd}
-                providerId={item.providerId}
-                model={item.model}
-                username={item.username}
-            />
-        );
-    }
     if (item.kind === "thinking") {
         if (item.status === "live") {
             return <ThinkingLive content={item.content} startedAt={item.startedAt} />;
         }
         return <ThinkingDone elapsedMs={item.elapsedMs ?? 0} />;
+    }
+    if (item.kind === "banner") {
+        return <ChatBanner version={item.version} />;
     }
     return <ToolCallView entry={item.entry} />;
 });
