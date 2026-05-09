@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
 import type { ToolResult } from "../tools/index.ts";
 import { prettyPath } from "../ui/path.ts";
+import { computeEditDiff, type EditDiff } from "./editDiff.ts";
 import { ELAPSED_INTERVAL_MS, FRAME_INTERVAL_MS, FRAMES } from "./spinner.ts";
 
 export type ToolCallStatus = "running" | "done" | "error";
@@ -80,14 +81,7 @@ const actionLineAnswer = (
     return idx >= 0 ? `[${idx + 1}] ${truncated}` : `(typed) ${truncated}`;
 };
 
-const MAX_DIFF_LINES = 20;
 const MAX_DIFF_LINE_WIDTH = 120;
-
-interface EditDiff {
-    readonly removed: readonly string[];
-    readonly added: readonly string[];
-    readonly truncated: boolean;
-}
 
 const editDiff = (args: unknown): EditDiff | null => {
     if (typeof args !== "object" || args === null) return null;
@@ -95,18 +89,7 @@ const editDiff = (args: unknown): EditDiff | null => {
     const oldStr = typeof a["old_string"] === "string" ? (a["old_string"] as string) : null;
     const newStr = typeof a["new_string"] === "string" ? (a["new_string"] as string) : null;
     if (oldStr === null || newStr === null) return null;
-    const removed = oldStr.split("\n");
-    const added = newStr.split("\n");
-    const total = removed.length + added.length;
-    if (total <= MAX_DIFF_LINES) {
-        return { removed, added, truncated: false };
-    }
-    const half = Math.floor(MAX_DIFF_LINES / 2);
-    return {
-        removed: removed.slice(0, Math.min(removed.length, half)),
-        added: added.slice(0, Math.min(added.length, MAX_DIFF_LINES - half)),
-        truncated: true,
-    };
+    return computeEditDiff(oldStr, newStr);
 };
 
 const clipLine = (line: string): string =>
@@ -191,18 +174,38 @@ export const ToolCallView = ({ entry }: Props) => {
                     ))}
                 </Box>
             )}
-            {showDiff && (
+            {showDiff && diff && (
                 <Box flexDirection="column" paddingLeft={2}>
-                    {diff.removed.map((line, i) => (
-                        <Text key={`-${i}`} color="red">
-                            - {clipLine(line)}
-                        </Text>
-                    ))}
-                    {diff.added.map((line, i) => (
-                        <Text key={`+${i}`} color="green">
-                            + {clipLine(line)}
-                        </Text>
-                    ))}
+                    {diff.segments.map((seg, i) => {
+                        const key = `${seg.type}-${i}`;
+                        if (seg.type === "del") {
+                            return (
+                                <Text key={key} color="red">
+                                    - {clipLine(seg.line)}
+                                </Text>
+                            );
+                        }
+                        if (seg.type === "add") {
+                            return (
+                                <Text key={key} color="green">
+                                    + {clipLine(seg.line)}
+                                </Text>
+                            );
+                        }
+                        if (seg.type === "gap") {
+                            return (
+                                <Text key={key} dimColor>
+                                    {seg.line}
+                                </Text>
+                            );
+                        }
+                        return (
+                            <Text key={key} dimColor>
+                                {"  "}
+                                {clipLine(seg.line)}
+                            </Text>
+                        );
+                    })}
                     {diff.truncated && <Text dimColor>… diff truncated</Text>}
                 </Box>
             )}

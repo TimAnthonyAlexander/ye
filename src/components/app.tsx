@@ -95,6 +95,7 @@ interface AppProps {
     // directly) instead of starting a fresh transcript on mount.
     readonly resumeOnStart?: boolean;
     readonly resumeSessionId?: string | null;
+    readonly modeOnStart?: string | null;
 }
 
 interface PendingPrompt {
@@ -223,11 +224,11 @@ const buildItemsFromReplay = (replayed: ReplayedSession): ChatItem[] => {
     return items;
 };
 
-export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
+export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: AppProps) => {
     const initialCfg = config.config;
     const { exit } = useApp();
     const [mode, setMode] = useState<PermissionMode>(
-        initialCfg.permissions?.defaultMode ?? "NORMAL",
+        (modeOnStart as PermissionMode | undefined) ?? initialCfg.permissions?.defaultMode ?? "NORMAL",
     );
     const [providerId, setProviderId] = useState<string>(initialCfg.defaultProvider);
     const [model, setModelState] = useState<string>(initialCfg.defaultModel.model);
@@ -776,6 +777,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
                     config: built.cfg,
                     projectId: proj.id,
                     projectRoot: proj.root,
+                    modeOverride: modeOnStart ?? undefined,
                 });
                 if (cancelled) {
                     await session.close();
@@ -932,25 +934,57 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
             }
         };
 
+        // Within one sendNow lifetime, the first text commit creates an
+        // assistant bubble and records its id; later commits append to that
+        // same bubble rather than minting a new ● line. A tool call or
+        // turn.end calls finalizeAssistantText to clear the id and strip
+        // trailing newlines, so the next text block starts a fresh bubble.
+        // Without this, a >400ms pause mid-text (idle commit) splits one
+        // logical reply into two ● rows.
+        let activeAssistantId: string | null = null;
+
         const commitText = (): void => {
             cancelPendingFlush();
             cancelIdleCommit();
             if (currentText.length === 0) return;
-            // Models routinely tack on trailing newlines after their last
-            // sentence; those render as extra blank rows above the next item.
-            const committed = currentText.replace(/\s+$/, "");
+            const newText = currentText;
             currentText = "";
             setStreamingText("");
-            if (committed.length === 0) return;
+            if (activeAssistantId !== null) {
+                const id = activeAssistantId;
+                setItems((prev) =>
+                    prev.map((item) =>
+                        item.kind === "message" && item.id === id
+                            ? { ...item, content: item.content + newText }
+                            : item,
+                    ),
+                );
+                return;
+            }
+            if (newText.trim().length === 0) return;
+            const id = newChatItemId();
+            activeAssistantId = id;
             setItems((prev) => [
                 ...prev,
-                {
-                    kind: "message",
-                    id: newChatItemId(),
-                    role: "assistant",
-                    content: committed,
-                },
+                { kind: "message", id, role: "assistant", content: newText },
             ]);
+        };
+
+        // Models routinely tack on trailing newlines after their last
+        // sentence; stripping happens here (not in commitText) so intermediate
+        // idle commits preserve the whitespace at chunk boundaries — chunk 1's
+        // trailing space becomes the joiner with chunk 2's leading word.
+        const finalizeAssistantText = (): void => {
+            if (activeAssistantId === null) return;
+            const id = activeAssistantId;
+            activeAssistantId = null;
+            setItems((prev) =>
+                prev.map((item) =>
+                    item.kind === "message" && item.id === id
+                        ? { ...item, content: item.content.replace(/\s+$/, "") }
+                        : item,
+                ),
+            );
         };
 
         // Reasoning ("thinking") accumulator. Mirrors the text accumulator but
@@ -1039,6 +1073,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
                     case "model.toolCall": {
                         finalizeThinking();
                         commitText();
+                        finalizeAssistantText();
                         const entry: ToolCallEntry = {
                             id: evt.id,
                             name: evt.name,
@@ -1119,6 +1154,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
                     case "turn.end": {
                         finalizeThinking();
                         commitText();
+                        finalizeAssistantText();
                         if (evt.error) {
                             setError(evt.error.message);
                             chainFailedRef.current = true;
@@ -1136,6 +1172,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
         } finally {
             finalizeThinking();
             commitText();
+            finalizeAssistantText();
             streamingRef.current = false;
             abortRef.current = null;
             setStreaming(false);

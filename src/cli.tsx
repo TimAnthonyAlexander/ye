@@ -11,6 +11,7 @@ interface CliFlags {
     readonly resumeSessionId: string | null;
     readonly update: boolean;
     readonly prompt: string | null;
+    readonly mode: string | null;
 }
 
 const parseFlags = (argv: readonly string[]): CliFlags => {
@@ -18,6 +19,7 @@ const parseFlags = (argv: readonly string[]): CliFlags => {
     let resumeSessionId: string | null = null;
     let update = false;
     let prompt: string | null = null;
+    let mode: string | null = null;
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--resume") {
@@ -37,9 +39,24 @@ const parseFlags = (argv: readonly string[]): CliFlags => {
             }
             prompt = next;
             i += 1;
+        } else if (a === "--mode") {
+            const next = argv[i + 1];
+            if (!next) {
+                process.stderr.write("ye: --mode requires AUTO, NORMAL, or PLAN\n");
+                process.exit(1);
+            }
+            const upper = next.toUpperCase();
+            if (upper !== "AUTO" && upper !== "NORMAL" && upper !== "PLAN") {
+                process.stderr.write(
+                    `ye: invalid mode "${next}" — must be AUTO, NORMAL, or PLAN\n`,
+                );
+                process.exit(1);
+            }
+            mode = upper;
+            i += 1;
         }
     }
-    return { resume, resumeSessionId, update, prompt };
+    return { resume, resumeSessionId, update, prompt, mode };
 };
 
 const runUpdateCommand = async (): Promise<void> => {
@@ -84,6 +101,7 @@ const main = async (): Promise<void> => {
                 config={config}
                 resumeOnStart={flags.resume}
                 resumeSessionId={flags.resumeSessionId}
+                modeOnStart={flags.mode}
             />,
             { exitOnCtrlC: false },
         );

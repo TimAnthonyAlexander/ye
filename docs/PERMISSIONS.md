@@ -131,7 +131,7 @@ src/permissions/
 - [x] Pipeline step 7 wired to `decide()`
 - [x] Pipeline step 6 (tool pool assembly) drops blanket-deny tools and (in PLAN mode) tools not on PLAN's allow-list before the model sees them
 - [x] Read-only tools (`readOnlyHint: true`) auto-allow in `NORMAL` mode
-- [ ] CLI flag `--mode <AUTO|NORMAL|PLAN>` passes through to session settings
+- [x] CLI flag `--mode <AUTO|NORMAL|PLAN>` passes through to session settings
 - [x] PLAN-mode denial returns the canonical message from `messages.ts`
 - [x] Mode flip via `ExitPlanMode` tool: writes plan → prompts → on accept, mutates session mode; on deny, mode stays PLAN
 - [x] Shift+Tab keybind in `src/ui/keybinds.ts` cycles NORMAL → AUTO → PLAN → NORMAL

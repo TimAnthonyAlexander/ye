@@ -14,6 +14,7 @@ export interface CreateSessionInput {
     readonly config: Config;
     readonly projectId: string;
     readonly projectRoot: string;
+    readonly modeOverride?: string;
 }
 
 // Build session state once per Ink session. Caller passes it back into queryLoop
@@ -33,7 +34,7 @@ export const createSessionState = async (
         sessionId: session.sessionId,
         projectId: input.projectId,
         projectRoot: input.projectRoot,
-        mode: input.config.permissions?.defaultMode ?? "NORMAL",
+        mode: (input.modeOverride as SessionState["mode"]) ?? input.config.permissions?.defaultMode ?? "NORMAL",
         contextWindow,
         history: [],
         sessionRules: [],
