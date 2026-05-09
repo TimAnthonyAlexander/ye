@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build Ye into a single binary and link it onto $PATH.
-# macOS only for v1; cross-compile for Linux/Windows is Phase 6.
+# Supports macOS (arm64/x64) and Linux (x64/arm64).
 
 set -euo pipefail
 
@@ -8,24 +8,38 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # 1. Detect target.
+OS="$(uname -s)"
 ARCH="$(uname -m)"
-case "$ARCH" in
-  arm64|aarch64) TARGET="bun-darwin-arm64" ;;
-  x86_64)        TARGET="bun-darwin-x64" ;;
+case "$OS" in
+  Darwin)
+    case "$ARCH" in
+      arm64|aarch64) TARGET="bun-darwin-arm64" ;;
+      x86_64)        TARGET="bun-darwin-x64" ;;
+      *)
+        echo "ye: unsupported macOS arch $ARCH" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  Linux)
+    case "$ARCH" in
+      x86_64)   TARGET="bun-linux-x64" ;;
+      aarch64)  TARGET="bun-linux-arm64" ;;
+      *)
+        echo "ye: unsupported Linux arch $ARCH" >&2
+        exit 1
+        ;;
+    esac
+    ;;
   *)
-    echo "ye: unsupported arch $ARCH (v1 supports macOS arm64/x64 only)" >&2
+    echo "ye: unsupported OS $OS" >&2
     exit 1
     ;;
 esac
 
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "ye: install.sh is macOS-only for v1 (Linux/Windows in Phase 6)" >&2
-  exit 1
-fi
-
 # 2. Dependency check: ripgrep is required by the Grep tool.
 if ! command -v rg >/dev/null 2>&1; then
-  echo "ye: warning — ripgrep (rg) not on PATH. The Grep tool will fail until you install it (e.g., 'brew install ripgrep')."
+  echo "ye: warning — ripgrep (rg) not on PATH. The Grep tool will fail until you install it (e.g., 'apt install ripgrep' or 'brew install ripgrep')."
 fi
 
 # 3. Build.
