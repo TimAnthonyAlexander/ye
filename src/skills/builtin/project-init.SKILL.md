@@ -8,9 +8,9 @@ allowed-tools: Read Glob Bash Write Edit
 
 ## Identify
 
-Ask only what cannot be inferred. If the user said "React app", do not ask "frontend or backend". Pick.
+If the user has told you what the project is, ask only what cannot be inferred. If the user said "React app", do not ask "frontend or backend"; pick. Package manager follows from runtime — Bun if the user has no preference.
 
-Needed: project type and runtime. Package manager follows from runtime. Bun if the user has no preference.
+If the user has NOT told you what the project is — they said "build me a website", "start a new project", "scaffold something", "make me an app" with no further detail — you do not have enough to scaffold. Ask 1–3 short, concrete questions about the load-bearing unknowns first: what is it (frontend page, full-stack app, CLI, library), what does it do, who is it for. The defaults below describe how to build *once* you know what you're building; they don't answer what to build. Don't pick the project type for the user just because Bun-React is your default — that's how vague briefs become wrong projects.
 
 ## Universal
 
