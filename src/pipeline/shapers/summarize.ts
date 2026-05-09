@@ -77,6 +77,7 @@ const summarize = async (
         providerOptions: {
             providerOrder: config.defaultModel.providerOrder,
             allowFallbacks: config.defaultModel.allowFallbacks,
+            providerSort: config.defaultModel.providerSort,
         },
     })) {
         if (evt.type === "text.delta") summary += evt.text;
@@ -95,6 +96,7 @@ const summarize = async (
                     ...(evt.usage.cacheCreationTokens !== undefined
                         ? { cacheCreationTokens: evt.usage.cacheCreationTokens }
                         : {}),
+                    ...(evt.usage.costUsd !== undefined ? { costUsd: evt.usage.costUsd } : {}),
                     callKind: "summarize",
                 });
             } catch {

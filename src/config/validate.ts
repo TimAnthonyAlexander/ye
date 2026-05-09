@@ -10,6 +10,7 @@ import type {
     PermissionRule,
     PermissionsConfig,
     ProviderConfig,
+    ProviderSort,
     RecoveryConfig,
     SkillsConfig,
     WebSearchFallback,
@@ -17,6 +18,7 @@ import type {
 } from "./types.ts";
 
 const PERMISSION_MODES: readonly PermissionMode[] = ["AUTO", "NORMAL", "PLAN"];
+const PROVIDER_SORTS: readonly ProviderSort[] = ["price", "throughput", "latency"];
 
 class ConfigValidationError extends Error {
     constructor(message: string) {
@@ -88,11 +90,25 @@ const validateModelSetting = (value: unknown): ModelSetting => {
         allowFallbacks = value.allowFallbacks;
     }
 
+    let providerSort: ProviderSort | undefined;
+    if (value.providerSort !== undefined) {
+        if (
+            typeof value.providerSort !== "string" ||
+            !PROVIDER_SORTS.includes(value.providerSort as ProviderSort)
+        ) {
+            throw new ConfigValidationError(
+                `defaultModel.providerSort must be one of: ${PROVIDER_SORTS.join(", ")}`,
+            );
+        }
+        providerSort = value.providerSort as ProviderSort;
+    }
+
     return {
         provider: value.provider,
         model: value.model,
         ...(providerOrder !== undefined ? { providerOrder } : {}),
         ...(allowFallbacks !== undefined ? { allowFallbacks } : {}),
+        ...(providerSort !== undefined ? { providerSort } : {}),
     };
 };
 

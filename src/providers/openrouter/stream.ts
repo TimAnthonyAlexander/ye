@@ -52,6 +52,8 @@ interface OpenRouterUsage {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    cost?: number;
+    cached_tokens?: number;
     prompt_tokens_details?: {
         cached_tokens?: number;
         cache_write_tokens?: number;
@@ -62,7 +64,8 @@ const buildOpenRouterUsageEvent = (u: OpenRouterUsage): ProviderEvent | null => 
     const totalIn = u.prompt_tokens ?? 0;
     const out = u.completion_tokens ?? 0;
     if (totalIn === 0 && out === 0) return null;
-    const cached = u.prompt_tokens_details?.cached_tokens ?? 0;
+    // Some routes flatten cached_tokens to top level; others nest it.
+    const cached = u.prompt_tokens_details?.cached_tokens ?? u.cached_tokens ?? 0;
     const cacheWrite = u.prompt_tokens_details?.cache_write_tokens ?? 0;
     const billableIn = Math.max(0, totalIn - cached);
     return {
@@ -72,6 +75,7 @@ const buildOpenRouterUsageEvent = (u: OpenRouterUsage): ProviderEvent | null => 
             outputTokens: out,
             ...(cached > 0 ? { cacheReadTokens: cached } : {}),
             ...(cacheWrite > 0 ? { cacheCreationTokens: cacheWrite } : {}),
+            ...(typeof u.cost === "number" && u.cost >= 0 ? { costUsd: u.cost } : {}),
         },
     };
 };

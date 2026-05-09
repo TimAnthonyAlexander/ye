@@ -142,6 +142,9 @@ export async function* runModelCallWithRecovery(
                         ...(report.usage.cacheCreationTokens !== undefined
                             ? { cacheCreationTokens: report.usage.cacheCreationTokens }
                             : {}),
+                        ...(report.usage.costUsd !== undefined
+                            ? { costUsd: report.usage.costUsd }
+                            : {}),
                         callKind: "turn",
                     });
                 } catch {

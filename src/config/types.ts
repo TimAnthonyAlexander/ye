@@ -18,11 +18,16 @@ export interface ProviderConfig {
     readonly apiKey?: string;
 }
 
+export type ProviderSort = "price" | "throughput" | "latency";
+
 export interface ModelSetting {
     readonly provider: ProviderId;
     readonly model: string;
     readonly providerOrder?: readonly string[];
     readonly allowFallbacks?: boolean;
+    // OpenRouter only: sort candidate sub-providers when no explicit order is
+    // given. "price" picks cheapest first; "throughput" / "latency" pick fastest.
+    readonly providerSort?: ProviderSort;
 }
 
 export interface CompactConfig {

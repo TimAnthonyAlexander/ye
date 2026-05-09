@@ -66,6 +66,10 @@ export interface ProviderUsage {
     readonly outputTokens: number;
     readonly cacheReadTokens?: number;
     readonly cacheCreationTokens?: number;
+    // Native USD cost when the provider reports it (OpenRouter `usage.cost`).
+    // For Anthropic / OpenAI direct, left undefined here and computed from
+    // the local pricing table at storage time.
+    readonly costUsd?: number;
 }
 
 export type ProviderEvent =

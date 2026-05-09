@@ -307,7 +307,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         readonly input: number;
         readonly output: number;
         readonly cached: number;
-    }>({ input: 0, output: 0, cached: 0 });
+        readonly costUsd: number;
+    }>({ input: 0, output: 0, cached: 0, costUsd: 0 });
+    const [sessionTokenUsage, setSessionTokenUsage] = useState<{
+        readonly input: number;
+        readonly output: number;
+        readonly cached: number;
+        readonly costUsd: number;
+    }>({ input: 0, output: 0, cached: 0, costUsd: 0 });
     const [history, setHistory] = useState<readonly string[]>([]);
     // Mirror of `history` so send() can dedup against the most-recent entry
     // without re-rendering on every read.
@@ -348,6 +355,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     input: totals.inputTokens,
                     output: totals.outputTokens,
                     cached: totals.cacheReadTokens,
+                    costUsd: totals.costUsd,
                 });
             })
             .catch(() => {});
@@ -447,6 +455,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         setTodos([]);
         setError(null);
         setUsedTokens(0);
+        setSessionTokenUsage({ input: 0, output: 0, cached: 0, costUsd: 0 });
         titleGeneratedRef.current = false;
         resetTerminalTitle();
         bumpChatKey();
@@ -538,6 +547,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         setTodos([]);
         setError(null);
         setUsedTokens(estimateTokens(state.history));
+        setSessionTokenUsage({ input: 0, output: 0, cached: 0, costUsd: 0 });
         if (replayed.title) {
             titleGeneratedRef.current = true;
             writeTerminalTitle(replayed.title);
@@ -1063,10 +1073,18 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                         break;
                     }
                     case "model.usage": {
+                        const dCost = evt.usage.costUsd ?? 0;
                         setTokenUsage((prev) => ({
                             input: prev.input + evt.usage.inputTokens,
                             output: prev.output + evt.usage.outputTokens,
                             cached: prev.cached + (evt.usage.cacheReadTokens ?? 0),
+                            costUsd: prev.costUsd + dCost,
+                        }));
+                        setSessionTokenUsage((prev) => ({
+                            input: prev.input + evt.usage.inputTokens,
+                            output: prev.output + evt.usage.outputTokens,
+                            cached: prev.cached + (evt.usage.cacheReadTokens ?? 0),
+                            costUsd: prev.costUsd + dCost,
                         }));
                         break;
                     }
@@ -1147,6 +1165,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                                     input: totals.inputTokens,
                                     output: totals.outputTokens,
                                     cached: totals.cacheReadTokens,
+                                    costUsd: totals.costUsd,
                                 });
                             })
                             .catch(() => {});
@@ -1466,6 +1485,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 contextWindow={contextWindow}
                 updateStatus={updateStatus}
                 tokenUsage={tokenUsage}
+                sessionTokenUsage={sessionTokenUsage}
             />
         </Box>
     );

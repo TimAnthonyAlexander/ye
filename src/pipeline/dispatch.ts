@@ -1,4 +1,5 @@
 import type { Provider, ProviderError, ProviderInput, ProviderUsage } from "../providers/index.ts";
+import { computeCostUsd } from "../providers/pricing.ts";
 import type { Event } from "./events.ts";
 
 export interface CollectedToolCall {
@@ -48,20 +49,30 @@ export async function* streamFromProvider(
                 toolCalls.push({ id: evt.id, name: evt.name, args: evt.args });
                 yield { type: "model.toolCall", id: evt.id, name: evt.name, args: evt.args };
                 break;
-            case "usage":
-                usage = evt.usage;
+            case "usage": {
+                // Stamp costUsd if the provider didn't supply one (Anthropic /
+                // OpenAI direct). OpenRouter already sets it from usage.cost.
+                const enriched: ProviderUsage =
+                    evt.usage.costUsd === undefined
+                        ? (() => {
+                              const c = computeCostUsd(provider.id, input.model, evt.usage);
+                              return c !== undefined ? { ...evt.usage, costUsd: c } : evt.usage;
+                          })()
+                        : evt.usage;
+                usage = enriched;
                 yield {
                     type: "model.usage",
                     provider: provider.id,
                     model: input.model,
-                    usage: evt.usage,
+                    usage: enriched,
                 };
                 if (onUsage) {
                     // Await so the disk record is committed before downstream
                     // turn.end consumers re-aggregate from the file.
-                    await onUsage({ provider: provider.id, model: input.model, usage: evt.usage });
+                    await onUsage({ provider: provider.id, model: input.model, usage: enriched });
                 }
                 break;
+            }
             case "stop":
                 stopReason = evt.reason;
                 if (evt.error) error = evt.error;

@@ -7,6 +7,7 @@ interface TokenUsage {
     readonly input: number;
     readonly output: number;
     readonly cached?: number;
+    readonly costUsd?: number;
 }
 
 interface StatusBarProps {
@@ -19,6 +20,7 @@ interface StatusBarProps {
     readonly contextWindow: number;
     readonly updateStatus?: UpdateStatus | null;
     readonly tokenUsage?: TokenUsage;
+    readonly sessionTokenUsage?: TokenUsage;
 }
 
 const usageColor = (pct: number): string => {
@@ -42,6 +44,13 @@ const formatK = (n: number): string => {
     return `${Math.round(n / 1_000_000)}M`;
 };
 
+const formatUsd = (n: number): string => {
+    if (n < 0.01) return `$${n.toFixed(4)}`;
+    if (n < 1) return `$${n.toFixed(3)}`;
+    if (n < 100) return `$${n.toFixed(2)}`;
+    return `$${Math.round(n)}`;
+};
+
 export const StatusBar = ({
     mode,
     providerId,
@@ -52,10 +61,14 @@ export const StatusBar = ({
     contextWindow,
     updateStatus,
     tokenUsage,
+    sessionTokenUsage,
 }: StatusBarProps) => {
     const pct = contextWindow > 0 ? (usedTokens / contextWindow) * 100 : 0;
     const showUpdate = updateStatus?.hasUpdate === true;
-    const showTokens =
+    const showSession =
+        sessionTokenUsage !== undefined &&
+        (sessionTokenUsage.input > 0 || sessionTokenUsage.output > 0);
+    const showLifetime =
         tokenUsage !== undefined && (tokenUsage.input > 0 || tokenUsage.output > 0);
     return (
         <Box justifyContent="space-between" paddingX={1}>
@@ -63,16 +76,29 @@ export const StatusBar = ({
                 <Text bold color={modeColor(mode)}>
                     {mode}
                 </Text>
-                <Text dimColor> · Shift+Tab cycles · </Text>
+                <Text dimColor> · </Text>
                 <Text color={usageColor(pct)}>{formatPct(pct)} context</Text>
-                {showTokens && (
+                {showSession && (
                     <>
                         <Text dimColor> · </Text>
                         <Text>
+                            ↑{formatK(sessionTokenUsage.input)} ↓
+                            {formatK(sessionTokenUsage.output)}
+                        </Text>
+                        {sessionTokenUsage.costUsd !== undefined &&
+                            sessionTokenUsage.costUsd > 0 && (
+                                <Text> {formatUsd(sessionTokenUsage.costUsd)}</Text>
+                            )}
+                    </>
+                )}
+                {showLifetime && (
+                    <>
+                        <Text dimColor> · all-time </Text>
+                        <Text dimColor>
                             ↑{formatK(tokenUsage.input)} ↓{formatK(tokenUsage.output)}
                         </Text>
-                        {tokenUsage.cached !== undefined && tokenUsage.cached > 0 && (
-                            <Text dimColor> (+{formatK(tokenUsage.cached)} cached)</Text>
+                        {tokenUsage.costUsd !== undefined && tokenUsage.costUsd > 0 && (
+                            <Text dimColor> {formatUsd(tokenUsage.costUsd)}</Text>
                         )}
                     </>
                 )}

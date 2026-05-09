@@ -60,6 +60,7 @@ export const summarizePage = async (args: SummarizeArgs): Promise<string> => {
                     ...(evt.usage.cacheCreationTokens !== undefined
                         ? { cacheCreationTokens: evt.usage.cacheCreationTokens }
                         : {}),
+                    ...(evt.usage.costUsd !== undefined ? { costUsd: evt.usage.costUsd } : {}),
                     callKind: "webFetch",
                 });
             } catch {

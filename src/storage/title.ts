@@ -97,6 +97,9 @@ export const generateSessionTitle = async (input: GenerateTitleInput): Promise<s
                         ...(evt.usage.cacheCreationTokens !== undefined
                             ? { cacheCreationTokens: evt.usage.cacheCreationTokens }
                             : {}),
+                        ...(evt.usage.costUsd !== undefined
+                            ? { costUsd: evt.usage.costUsd }
+                            : {}),
                         callKind: "title",
                     });
                 } catch {

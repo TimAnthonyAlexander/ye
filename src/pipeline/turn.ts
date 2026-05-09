@@ -162,6 +162,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         providerOptions: {
             providerOrder: config.defaultModel.providerOrder,
             allowFallbacks: config.defaultModel.allowFallbacks,
+            providerSort: config.defaultModel.providerSort,
         },
     });
 

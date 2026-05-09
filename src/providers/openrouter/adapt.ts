@@ -29,6 +29,7 @@ interface OpenRouterRequestBody {
     provider?: {
         order?: string[];
         allow_fallbacks?: boolean;
+        sort?: "price" | "throughput" | "latency";
     };
 }
 
@@ -71,13 +72,18 @@ export const buildRequestBody = (input: ProviderInput): OpenRouterRequestBody =>
 
     const order = opts["providerOrder"];
     const allow = opts["allowFallbacks"];
-    if (Array.isArray(order) || typeof allow === "boolean") {
+    const sort = opts["providerSort"];
+    const sortValid = sort === "price" || sort === "throughput" || sort === "latency";
+    if (Array.isArray(order) || typeof allow === "boolean" || sortValid) {
         body.provider = {};
         if (Array.isArray(order)) {
             body.provider.order = order.filter((v): v is string => typeof v === "string");
         }
         if (typeof allow === "boolean") {
             body.provider.allow_fallbacks = allow;
+        }
+        if (sortValid) {
+            body.provider.sort = sort;
         }
     }
 

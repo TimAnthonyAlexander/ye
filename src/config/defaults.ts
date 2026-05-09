@@ -20,6 +20,7 @@ export const DEFAULT_CONFIG: Config = {
         provider: "openrouter",
         model: "~google/gemini-flash-latest",
         allowFallbacks: true,
+        providerSort: "price",
     },
     compact: {
         threshold: 0.5,

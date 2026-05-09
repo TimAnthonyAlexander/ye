@@ -93,6 +93,9 @@ export const selectMemoryFiles = async (
                         ...(evt.usage.cacheCreationTokens !== undefined
                             ? { cacheCreationTokens: evt.usage.cacheCreationTokens }
                             : {}),
+                        ...(evt.usage.costUsd !== undefined
+                            ? { costUsd: evt.usage.costUsd }
+                            : {}),
                         callKind: "memory",
                     });
                 } catch {
@@ -140,6 +143,7 @@ export const ensureSelectedMemory = async (
         providerOptions: {
             providerOrder: input.config.defaultModel.providerOrder,
             allowFallbacks: input.config.defaultModel.allowFallbacks,
+            providerSort: input.config.defaultModel.providerSort,
         },
         query: input.query,
         indices,
