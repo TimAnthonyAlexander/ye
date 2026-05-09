@@ -1,4 +1,4 @@
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { existsSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
@@ -331,6 +331,35 @@ export const App = ({ config, resumeOnStart, resumeSessionId }: AppProps) => {
             cancelled = true;
         };
     }, []);
+
+    // Terminal resize handling. <Static>-committed items live in scrollback
+    // at whatever width was current when they were emitted. After a resize,
+    // the terminal soft-wraps those rows at the new width, but Ink's internal
+    // row count for the live region still reflects the OLD layout — which
+    // leaves the input box (and any other live siblings) drawing on top of
+    // the wrong rows, producing the "broken" cascade. The fix mirrors what
+    // rotateSession does for a session reset: clear screen+scrollback, reset
+    // the commit boundary, and remount <Chat> via chatKey so every item
+    // re-emits to scrollback at the new width. Debounced so a slow drag of
+    // the terminal corner doesn't fire dozens of clears.
+    const { stdout } = useStdout();
+    useEffect(() => {
+        if (!stdout) return;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const onResize = (): void => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+                process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+                setCommittedCount(0);
+                bumpChatKey();
+            }, 50);
+        };
+        stdout.on("resize", onResize);
+        return () => {
+            if (timer) clearTimeout(timer);
+            stdout.off("resize", onResize);
+        };
+    }, [stdout]);
 
     const recordHistory = (text: string): void => {
         if (historyRef.current[0] === text) return;

@@ -246,10 +246,23 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     });
 
     const { stdout } = useStdout();
+    // Track columns in state so a terminal resize triggers a re-render.
+    // useStdout returns the stream but doesn't subscribe to its `resize` event,
+    // so without this the cached `inner` width stays stale and visual-row
+    // chunking misaligns until the next keystroke forces a re-render.
+    const [columns, setColumns] = useState(stdout?.columns ?? 80);
+    useEffect(() => {
+        if (!stdout) return;
+        const onResize = (): void => setColumns(stdout.columns ?? 80);
+        stdout.on("resize", onResize);
+        return () => {
+            stdout.off("resize", onResize);
+        };
+    }, [stdout]);
     // Inner content width = terminal cols − borders/padding/prefix. The outer
     // Box uses paddingX=1 (2 cols), the prefix Box renders ">" + marginRight=1
     // (2 cols). Floor at 8 to keep the math sane on absurdly narrow terminals.
-    const inner = Math.max(8, (stdout?.columns ?? 80) - 4);
+    const inner = Math.max(8, columns - 4);
 
     return (
         <Box
