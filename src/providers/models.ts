@@ -17,6 +17,21 @@ const MODELS: readonly ModelInfo[] = [
         label: "Gemini 3.1 Pro Preview",
     },
     { provider: "openrouter", id: "deepseek/deepseek-v4-pro", label: "DeepSeek v4 Pro" },
+    {
+        provider: "openrouter",
+        id: "anthropic/claude-opus-4.7",
+        label: "Opus 4.7 (OpenRouter)",
+    },
+    {
+        provider: "openrouter",
+        id: "anthropic/claude-sonnet-4.6",
+        label: "Sonnet 4.6 (OpenRouter)",
+    },
+    {
+        provider: "openrouter",
+        id: "anthropic/claude-haiku-4.5",
+        label: "Haiku 4.5 (OpenRouter)",
+    },
     { provider: "anthropic", id: "claude-opus-4-7", label: "Opus 4.7" },
     { provider: "anthropic", id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
     { provider: "anthropic", id: "claude-haiku-4-5", label: "Haiku 4.5" },
