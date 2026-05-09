@@ -80,6 +80,13 @@ End-to-end: ask Ye to build a site, get a finished result:
 
 Per-session override: `ye --mode AUTO` (or `NORMAL` / `PLAN`).
 
+**CLI flags**:
+
+- `ye --resume [sessionId]` — resume the last session (or a specific one).
+- `ye --mode AUTO|NORMAL|PLAN` — start in a specific mode.
+- `ye -p "<prompt>"` — headless one-shot. Streams to stdout, exits when done. No TTY needed.
+- `ye --update` — self-update to the latest release binary for this platform.
+
 **Project notes** — reads `YE.md` if present, otherwise also `CLAUDE.md` if present. 
 Project memory and sessions under `~/.ye/projects/<hash>/`, keyed by a stable hash of the project root.
 
@@ -96,7 +103,7 @@ Fifteen built-in tools:
 | **Grep** | Wraps `rg`. Three modes: content, files-with-matches, count. Type/glob filters. |
 | **Glob** | File pattern match, sorted by mtime. Skips noise dirs (node_modules, .git, etc.). |
 | **TodoWrite** | Lightweight task list. Exactly one `in_progress` at a time. |
-| **Task** | Spawn an isolated subagent (explore or general). Sidechain transcript, summary returned. |
+| **Task** | Spawn an isolated subagent (explore, general, or verification). Sidechain transcript, summary returned. |
 | **WebFetch** | Fetch URL, HTML→markdown, small-model summarise. 15-min cache. Cross-host redirect detection. |
 | **WebSearch** | Search the web. Anthropic server-side, Brave, or DuckDuckGo fallback. Title + URL only. |
 | **Skill** | Invoke a named user/project skill for specialised instructions. Read-only metadata load. |
@@ -139,6 +146,7 @@ Ye's defense against context blowup. Subagents run the same pipeline with isolat
 
 - **Explore** — codebase search, read-only (Read/Glob/Grep). Takes a `thoroughness` param (`quick` / `medium` / `very_thorough`).
 - **General** — full toolset, runs in AUTO mode. Spawned via the Task tool with `kind: "general"`.
+- **Verification** — narrow, post-change verification subagent. Used to sanity-check a finished change without polluting the main transcript.
 
 ## Skills
 
