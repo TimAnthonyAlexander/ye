@@ -21,7 +21,7 @@ Layers, in dependency order. Each is a folder under `src/` and a doc here.
 2. **Config** (`config/`) — `~/.ye/config.json` (default provider, default model). Already implemented.
 3. **Providers** (`providers/`) — abstract `Provider` interface; OpenRouter v1, Anthropic + OpenAI Phase 3 (shipped). See `PROVIDERS.md`.
 4. **Permissions** (`permissions/`) — deny-first rule evaluation; `AUTO` + `NORMAL` + `PLAN` modes in v1 (Shift+Tab cycles). See `PERMISSIONS.md`.
-5. **Tools** (`tools/`) — Read, Edit, Write, Bash, Grep, Glob, TodoWrite, ExitPlanMode for v1. See `TOOLS.md`.
+5. **Tools** (`tools/`) — 15 tools registered: Read, Edit, Write, Bash, Grep, Glob, TodoWrite, ExitPlanMode, EnterPlanMode, AskUserQuestion, Task, WebFetch, WebSearch, Skill, SaveMemory. See `TOOLS.md`.
 6. **Pipeline** (`pipeline/`) — the 9-step turn pipeline + agent loop. Streams events. See `PIPELINE.md`.
 7. **Subagents** (`subagents/`, Phase 2) — same pipeline, isolated state, sidechain transcripts. See `SUBAGENTS.md`.
 8. **UI** (`ui/`, `components/`) — Ink/React TUI. Interactive only in v1; headless via the same event stream later.
@@ -106,7 +106,7 @@ Items here orchestrate across multiple subdocs or don't fit any single one. Doma
 
 ### Phase 1 — gating items
 - [x] Top-level repo scaffolding ready: `src/{storage,memory,providers,permissions,tools,pipeline,ui}` directories created with `index.ts` placeholders
-- [x] `bun test` runner wired — 178 tests across 16 files covering tools, pipeline, permissions, and storage
+- [x] `bun test` runner wired — ~250 tests across 23 files covering tools, pipeline, permissions, hooks, edit-diff, and storage
 - [x] `bun run check` script: typecheck + format:check + test, single command
 - [x] `scripts/install.sh` builds Ye (via `bun build --compile`) and symlinks `ye` into a `$PATH` directory (macOS arm64 + x64)
 - [ ] Phase 1 acceptance: from a fresh shell, `ye` opens an Ink session, an OpenRouter call streams text, one Read + one Edit work end-to-end with a y/n prompt, the transcript lands at `~/.ye/projects/<hash>/sessions/<id>.jsonl`

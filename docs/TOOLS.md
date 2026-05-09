@@ -38,22 +38,27 @@ type ToolResult<T = unknown> =
   | { ok: false; error: string };
 ```
 
-## V1 tools (Phase 1)
+## Registered tools
 
-Eleven tools. Enough to be useful for daily work. Subagents and web tools shipped; MCP deferred.
+Fifteen tools. Subagents, web tools, skills, and memory tools shipped; MCP deferred.
 
 | Tool | readOnly | Notes |
 |------|----------|-------|
 | Read | yes | Default 2000-line slice; `offset` + `limit` supported. Absolute paths only. PDF/image support deferred to Phase 6. |
 | Edit | no | Exact-string replace; requires prior Read of the same file in this turn. `replace_all` flag. |
 | Write | no | Creates or overwrites. If the file exists, prior Read required. |
-| Bash | no | Default 2-min timeout, max 10 min. **No sandbox in v1**; documented gap. `run_in_background` deferred. |
+| Bash | no | Default 2-min timeout, max 15 min. **No sandbox in v1**; documented gap. `run_in_background` deferred. |
 | Grep | yes | Wraps `rg`. Modes: `content`, `files_with_matches`, `count`. |
 | Glob | yes | File pattern match. Returns paths sorted by mtime. |
-| TodoWrite | no | States: `pending`, `in_progress`, `completed`. Exactly one `in_progress` at a time. In-memory in v1; flushes via session JSONL. |
+| TodoWrite | no | States: `pending`, `in_progress`, `completed`. Exactly one `in_progress` at a time. In-memory; flushes via session JSONL. |
+| AskUserQuestion | yes | One question, 2–4 options, optional multi-select. |
+| Task | no | Spawns a subagent (`explore` / `general` / `verification`). Sidechain transcript, single summary returned. |
 | WebFetch | yes | Fetch a URL, HTML→markdown, small-model summarise. 15-min cache. HTTP auto-upgrades to HTTPS. Cross-host redirects fail closed. |
-| WebSearch | yes | Web search. Anthropic server-side when available, DuckDuckGo fallback. Title + URL only; follow up with WebFetch to read content. |
-| ExitPlanMode | no | Writes the proposed plan to `getProjectPlansDir(projectId)/<word>-<word>.md`, then fires a permission prompt to flip out of PLAN mode. The **only state-modifying tool allowed in PLAN mode**. |
+| WebSearch | yes | Web search. Anthropic server-side when available, Brave / DuckDuckGo fallback. Title + URL only; follow up with WebFetch to read content. |
+| Skill | yes | Invoke a registered skill by name. Read-only metadata load; the skill body may instruct the model to call other tools. |
+| SaveMemory | no | Persist a memory note under the project's memory dir; auto-selected in future sessions. |
+| EnterPlanMode | no | Model-initiated request to flip *into* PLAN mode. Triggers a permission prompt. |
+| ExitPlanMode | no | Writes the proposed plan to `getProjectPlansDir(projectId)/<word>-<word>.md`, then fires a permission prompt to flip out of PLAN mode. The **only state-modifying tool allowed in PLAN mode** (alongside Skill, which is read-only). |
 
 ### Notable design calls
 
@@ -84,7 +89,7 @@ Listed by phase so the roadmap is in one place. Checkbox items live in the per-p
 
 - **Phase 2:** `Task` (subagent), `TaskOutput`, `TaskStop`, `EnterPlanMode` (model-initiated mode flip; the user already has Shift+Tab from v1 — this is the symmetric path for the model), `AskUserQuestion`. **All shipped.**
 - **Web tools (shipped early):** `WebFetch` (fetch + html→md + small-model summarize; 15-min cache; cross-host redirects fail closed), `WebSearch` (Anthropic server-side search or DuckDuckGo fallback; title+URL only). Originally Phase 6; pulled forward.
-- **Phase 5:** `Skill`, `EnterWorktree`, `ExitWorktree`, `NotebookEdit`.
+- **Phase 5:** `Skill` — **shipped**. `SaveMemory` — **shipped**. `EnterWorktree`, `ExitWorktree`, `NotebookEdit` — pending.
 - **Phase 6:** `PowerShell`, `Sleep`.
 - **Phase 7+:** MCP (`mcp`, `ListMcpResources`, `ReadMcpResource`, `McpAuth`), `CronCreate`/`Delete`/`List` (KAIROS), `RemoteTrigger`, `LSP`, `StructuredOutput`, `REPL`, `ToolSearch`, `SendUserFile`, `PushNotification`, `SubscribePR`.
 
@@ -93,6 +98,7 @@ Listed by phase so the roadmap is in one place. Checkbox items live in the per-p
 ```
 src/tools/
 ├── index.ts            # registry: getTool(name), listTools()
+├── registry.ts         # the TOOLS array — single source of truth for built-ins
 ├── types.ts            # Tool, ToolContext, ToolResult
 ├── validate.ts         # JSON Schema arg validator
 ├── pool.ts             # assembleToolPool()
@@ -108,8 +114,10 @@ src/tools/
 ├── webShared/          # shared: domainGate, etc.
 ├── askUserQuestion/
 ├── enterPlanMode/
+├── exitPlanMode/
 ├── task/
-└── exitPlanMode/
+├── skill/
+└── saveMemory/
 ```
 
 ## Checklist
@@ -141,7 +149,8 @@ src/tools/
 - [ ] TaskOutput, TaskStop (subagents run synchronously inside `Task.execute()` in v2 — no in-flight management API needed yet)
 
 ### Phase 5 — Skills, worktrees, notebooks
-- [ ] Skill (invokes a SKILL.md, blocking; loads instructions into context)
+- [x] Skill (invokes a SKILL.md, blocking; loads instructions into context). Read-only — no permission prompt in NORMAL.
+- [x] SaveMemory (persists a memory note under the project memory dir; surfaces in auto-memory selection in later sessions)
 - [ ] EnterWorktree / ExitWorktree (git-worktree-backed isolation; auto-cleanup if no changes)
 - [ ] NotebookEdit (replace/insert/delete cell modes)
 

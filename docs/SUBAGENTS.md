@@ -6,15 +6,15 @@ Definitely v2 territory. This doc is the design so Phase 2 is a thin step, not a
 
 ## Built-in types
 
-Phase 2 minimum: **Explore, General-purpose**. Others come in Phase 3 (Verification, likely earlier than originally planned) and Phase 5 (Statusline-setup, custom agents).
+Phase 2 + 3 shipped: **Explore, General-purpose, Verification**. Phase 5: Statusline-setup, custom agents.
 
-| Type | Purpose | Tools | Phase |
-|------|---------|-------|-------|
-| Explore | Codebase search/exploration. Read-only. | Read, Glob, Grep | 2 |
-| General-purpose | Multi-step research / open-ended task. | Read, Glob, Grep, Edit, Write, Bash (configurable) | 2 |
-| Verification | Verifies completion against the original plan. Adversarial — does not trust the implementer. | depends | likely 3 (was 5; expected to want it earlier) |
-| Statusline-setup | Help configure Ye's status line. | minimal | 5 |
-| Custom | `.ye/agents/*.md` with YAML frontmatter — same shape as Claude Code's `.claude/agents/`. | per-frontmatter | 5 (low priority — solo project) |
+| Type | Purpose | Tools | Status |
+|------|---------|-------|--------|
+| Explore | Codebase search/exploration. Read-only. | Read, Glob, Grep | shipped |
+| General-purpose | Multi-step research / open-ended task. | Full toolset; runs in AUTO inside the subagent. | shipped |
+| Verification | Verifies completion against the original plan. Adversarial — does not trust the implementer. | narrow (read + verification ops) | shipped |
+| Statusline-setup | Help configure Ye's status line. | minimal | Phase 5 |
+| Custom | `.ye/agents/*.md` with YAML frontmatter — same shape as Claude Code's `.claude/agents/`. | per-frontmatter | Phase 5 (low priority — solo project) |
 
 > **PLAN-the-mode lives in `src/permissions/`. Plan-the-subagent is intentionally absent.** Planning is the user's primary mode flip via Shift+Tab; a separate Plan subagent preset would duplicate that responsibility with a worse UX.
 
@@ -66,7 +66,8 @@ src/subagents/                  # Phase 2
 ├── types.ts                    # SubagentSpec, SubagentResult
 ├── kinds/
 │   ├── explore.ts              # tools, base prompt, thoroughness levels
-│   └── general.ts
+│   ├── general.ts
+│   └── verification.ts         # narrow post-change verifier
 ├── isolate/
 │   ├── inProcess.ts
 │   └── worktree.ts             # Phase 5
@@ -97,9 +98,9 @@ The `Task` tool lives in `src/tools/task/` — wire-only, calls into `subagents.
 - [ ] Subagent inherits parent's permission mode in Phase 2 — DIVERGED: Phase 2 forces AUTO inside subagents because permission prompts can't bubble out of the synchronous Task execution. The user's approval of the Task call is the trust boundary. Revisit in Phase 5 when prompts can bubble.
 - [x] Smoke test: parent runs Explore against the Ye repo, gets a non-empty summary; parent's pre-Task vs post-Task message count differs only by the single Task tool result (no leaked sidechain history) — verified with stub provider
 
-### Phase 3 — Verification (likely-earlier-than-Phase-5)
-- [ ] `kinds/verification.ts` — adversarial verifier; ships with the anti-skipping prompt (see Phase 5 row in design)
-- [ ] Wire Verification into the `Task` tool's allowed types
+### Phase 3 — Verification (shipped)
+- [x] `kinds/verification.ts` — adversarial verifier; ships with the anti-skipping prompt (see Phase 5 row in design)
+- [x] Wire Verification into the `Task` tool's allowed types (`isSubagentKind` accepts `"verification"`)
 
 ### Phase 5 — Worktree + custom agents + statusline-setup
 - [ ] `worktree.ts` — git worktree setup/teardown, auto-cleanup if no changes were made

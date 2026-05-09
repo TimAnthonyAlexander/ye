@@ -13,6 +13,7 @@ This doc covers the on-disk layout, the canonical project resolver, the notes-fi
 ├── MEMORY.md                    # global memory index (Phase 2)
 ├── memory/                      # global memory files referenced by MEMORY.md (Phase 2)
 ├── history.jsonl                # cross-session prompt history (Phase 4)
+├── usage.jsonl                  # per-call USD cost + token counts (append-only)
 ├── projects/
 │   └── <projectHash>/
 │       ├── meta.json            # original cwd, created_at, last_seen_at

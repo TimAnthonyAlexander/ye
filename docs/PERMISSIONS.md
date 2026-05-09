@@ -16,10 +16,12 @@ Default mode (`NORMAL`) is set in `src/config/defaults.ts`. Override per-session
 
 PLAN exists to make planning the default workflow for non-trivial work, without trusting the model to "just plan first" via prose. The mode itself is the constraint.
 
-- **Allowed tools:** Read, Glob, Grep, AskUserQuestion, WebFetch, WebSearch, ExitPlanMode.
-- **Denied tools:** Everything else — Edit, Write, Bash, TodoWrite, and anything else state-modifying.
+- **Allowed tools:** Read, Glob, Grep, AskUserQuestion, WebFetch, WebSearch, ExitPlanMode, Skill. (Skill is metadata-load and read-only — invoking a skill in PLAN is fine; the skill body still has to obey PLAN constraints when it tells the model to call other tools.)
+- **Denied tools:** Everything else — Edit, Write, Bash, TodoWrite, SaveMemory, Task, EnterPlanMode, and anything else state-modifying.
 - **Denial message** (constant; from `src/permissions/messages.ts`):
   > Tool blocked: PLAN mode allows Read, Glob, Grep, AskUserQuestion, WebFetch, WebSearch, ExitPlanMode only. Either call ExitPlanMode with a proposed plan, or stop and ask the user to switch modes via Shift+Tab.
+
+  (The constant lags the allow-list by one entry — Skill was added later and the message wasn't updated. Cosmetic; the model still receives the `kind: "deny"` correctly.)
 - **ExitPlanMode flow:** the tool writes the proposed plan to `getProjectPlansDir(projectId)/<word>-<word>.md` and then fires a permission prompt asking the user to accept the plan and flip to NORMAL (or AUTO). On accept: mode flips, the loop continues with the new mode. On deny: mode stays PLAN, the plan file remains on disk (orphan plans are intentional; they persist for later reuse).
 - **Loop guard.** The pipeline tracks consecutive denials of the same tool in PLAN mode. **Two in a row → terminate the turn** with a stop reason of `plan_loop_guard` and a message asking the user to switch modes. (Without this, a model that doesn't take the denial message seriously will spin trying to call Edit until max turns.)
 
@@ -124,7 +126,7 @@ src/permissions/
 ### Phase 1 — Three-mode permissions
 - [x] `types.ts` — Mode (`"AUTO" | "NORMAL" | "PLAN"`), Rule, Decision (`allow` / `deny` / `prompt`), ToolCall (canonical shape)
 - [x] `messages.ts` — denial-message constants (user-denied, PLAN-mode-blocked); no other file emits denial strings
-- [x] `modes.ts` — AUTO + NORMAL + PLAN handlers; PLAN's allow-list (Read, Glob, Grep, AskUserQuestion, WebFetch, WebSearch, ExitPlanMode) is data, not branches
+- [x] `modes.ts` — AUTO + NORMAL + PLAN handlers; PLAN's allow-list (Read, Glob, Grep, AskUserQuestion, WebFetch, WebSearch, ExitPlanMode, Skill) is data, not branches
 - [x] `rules.ts` — deny-first evaluator with v1 pattern matching (`Tool` and `Tool(prefix:*)`)
 - [x] `index.ts` — `decide(toolCall, ctx)` entrypoint
 - [x] `prompt.ts` — declares the prompt event payload + `respond(decision)` response shape; UI implements rendering

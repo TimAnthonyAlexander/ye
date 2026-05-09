@@ -144,18 +144,25 @@ New capabilities are added as boolean flags rather than `if (provider.id === ...
 
 `src/providers/models.ts` is the single source of truth for the user-facing model picker. Each entry is `{ provider, id, label }` — `id` is the provider-native model name passed to the API; `label` is what `/model` shows in the picker and the status bar. **No other file enumerates models.**
 
-Current entries:
+Current entries (full list lives in `src/providers/models.ts`):
 
 | Provider | id | Label |
 |---|---|---|
+| openrouter | `~google/gemini-flash-latest` | Gemini Flash (latest) |
+| openrouter | `google/gemini-3.1-pro-preview` | Gemini 3.1 Pro Preview |
 | openrouter | `deepseek/deepseek-v4-pro` | DeepSeek v4 Pro |
+| openrouter | `anthropic/claude-opus-4.7` | Opus 4.7 (OpenRouter) |
+| openrouter | `anthropic/claude-sonnet-4.6` | Sonnet 4.6 (OpenRouter) |
+| openrouter | `anthropic/claude-haiku-4.5` | Haiku 4.5 (OpenRouter) |
 | anthropic | `claude-opus-4-7` | Opus 4.7 |
 | anthropic | `claude-sonnet-4-6` | Sonnet 4.6 |
 | anthropic | `claude-haiku-4-5` | Haiku 4.5 |
-| openai | `gpt-5.5-pro` | GPT-5.5 Pro |
-| openai | `codex-mini-latest` | Codex Mini Latest |
+| openai | `gpt-5.5-pro`, `gpt-5.5`, `gpt-5.4`, `gpt-5.3-codex` | GPT-5.5 / 5.4 / 5.3-codex |
+| openai | `gpt-5.2-pro`, `gpt-5.2-codex`, `gpt-5.2`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`, `gpt-5.1` | GPT-5.2 / 5.1 family |
+| openai | `gpt-5-codex-mini`, `gpt-5`, `gpt-5-mini`, `codex-mini-latest` | GPT-5 family + codex-mini |
+| openai | `gpt-4.1`, `gpt-4.1-mini` | GPT-4.1 / 4.1 Mini |
 
-`defaultModelFor(providerId)` returns the first entry — used by `/provider` to pick a sensible model when switching providers (don't carry a model across providers).
+The first OpenRouter entry (`~google/gemini-flash-latest`) is also the configured `defaultModel`. `defaultModelFor(providerId)` returns the first entry for a provider — used by `/provider` to pick a sensible model when switching providers (don't carry a model across providers).
 
 ### Config: missing-provider auto-merge
 
@@ -166,7 +173,10 @@ Current entries:
 ```
 src/providers/
 ├── index.ts            # registry: getProvider(), PROVIDER_IDS, isMissingKeyError, re-exports model registry
+├── build.ts            # tryBuildProvider() — handles missing-key prompts and config persistence
 ├── models.ts           # cross-provider model registry (id, label) + defaultModelFor()
+├── pricing.ts          # per-call USD cost estimation; consumed by status bar + usage.jsonl
+├── errors.ts           # ProviderError taxonomy + classifyHttpError / isRetryable helpers
 ├── types.ts            # Provider, ProviderInput, ProviderEvent, Message, ToolDefinition, ProviderCapabilities
 ├── sse.ts              # generic SSE line-iteration helper (reused by all providers)
 ├── openrouter/
