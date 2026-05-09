@@ -895,7 +895,6 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
 
         let currentText = "";
         let pendingFlush: ReturnType<typeof setTimeout> | null = null;
-        let pendingIdleCommit: ReturnType<typeof setTimeout> | null = null;
 
         // Coalesce token deltas to one render per frame (~16ms). Prevents the
         // render storm where every streamed token re-rendered the whole tree.
@@ -914,77 +913,29 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             }
         };
 
-        // Promote streaming text to scrollback when deltas pause. Providers
-        // (especially OpenAI-compat SSE) have a 500ms–2s gap between the last
-        // text token and the first tool_call event; without this, streamingText
-        // sits in the buffer and the Thinking spinner stays suppressed even
-        // though the model is actively composing the next action.
-        const scheduleIdleCommit = (): void => {
-            if (pendingIdleCommit !== null) clearTimeout(pendingIdleCommit);
-            pendingIdleCommit = setTimeout(() => {
-                pendingIdleCommit = null;
-                commitText();
-            }, 400);
-        };
-
-        const cancelIdleCommit = (): void => {
-            if (pendingIdleCommit !== null) {
-                clearTimeout(pendingIdleCommit);
-                pendingIdleCommit = null;
-            }
-        };
-
-        // Within one sendNow lifetime, the first text commit creates an
-        // assistant bubble and records its id; later commits append to that
-        // same bubble rather than minting a new ● line. A tool call or
-        // turn.end calls finalizeAssistantText to clear the id and strip
-        // trailing newlines, so the next text block starts a fresh bubble.
-        // Without this, a >400ms pause mid-text (idle commit) splits one
-        // logical reply into two ● rows.
-        let activeAssistantId: string | null = null;
-
+        // Promote streaming text to a scrollback message item. Only fires at
+        // the genuine end of a text block — model.toolCall or turn.end —
+        // never on a mid-stream timer. computeDynamicStart treats assistant
+        // messages as committed-eligible the instant they appear in items,
+        // and Ink's <Static> is append-only, so any commit that happens
+        // before the text block is fully done freezes a half-written row in
+        // scrollback and silently swallows everything that arrives after.
         const commitText = (): void => {
             cancelPendingFlush();
-            cancelIdleCommit();
             if (currentText.length === 0) return;
-            const newText = currentText;
+            const committed = currentText.replace(/\s+$/, "");
             currentText = "";
             setStreamingText("");
-            if (activeAssistantId !== null) {
-                const id = activeAssistantId;
-                setItems((prev) =>
-                    prev.map((item) =>
-                        item.kind === "message" && item.id === id
-                            ? { ...item, content: item.content + newText }
-                            : item,
-                    ),
-                );
-                return;
-            }
-            if (newText.trim().length === 0) return;
-            const id = newChatItemId();
-            activeAssistantId = id;
+            if (committed.length === 0) return;
             setItems((prev) => [
                 ...prev,
-                { kind: "message", id, role: "assistant", content: newText },
+                {
+                    kind: "message",
+                    id: newChatItemId(),
+                    role: "assistant",
+                    content: committed,
+                },
             ]);
-        };
-
-        // Models routinely tack on trailing newlines after their last
-        // sentence; stripping happens here (not in commitText) so intermediate
-        // idle commits preserve the whitespace at chunk boundaries — chunk 1's
-        // trailing space becomes the joiner with chunk 2's leading word.
-        const finalizeAssistantText = (): void => {
-            if (activeAssistantId === null) return;
-            const id = activeAssistantId;
-            activeAssistantId = null;
-            setItems((prev) =>
-                prev.map((item) =>
-                    item.kind === "message" && item.id === id
-                        ? { ...item, content: item.content.replace(/\s+$/, "") }
-                        : item,
-                ),
-            );
         };
 
         // Reasoning ("thinking") accumulator. Mirrors the text accumulator but
@@ -1067,13 +1018,11 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                         finalizeThinking();
                         currentText += evt.delta;
                         scheduleStreamFlush();
-                        scheduleIdleCommit();
                         break;
                     }
                     case "model.toolCall": {
                         finalizeThinking();
                         commitText();
-                        finalizeAssistantText();
                         const entry: ToolCallEntry = {
                             id: evt.id,
                             name: evt.name,
@@ -1154,7 +1103,6 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     case "turn.end": {
                         finalizeThinking();
                         commitText();
-                        finalizeAssistantText();
                         if (evt.error) {
                             setError(evt.error.message);
                             chainFailedRef.current = true;
@@ -1172,7 +1120,6 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         } finally {
             finalizeThinking();
             commitText();
-            finalizeAssistantText();
             streamingRef.current = false;
             abortRef.current = null;
             setStreaming(false);
