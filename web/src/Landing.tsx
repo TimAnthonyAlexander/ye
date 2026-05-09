@@ -176,15 +176,12 @@ export default function Landing() {
           borderBottom: '1px solid #EBEBEB',
         }}
       >
-        <Typography
-          sx={{
-            fontFamily: '"DM Serif Display", serif',
-            fontSize: '1.5rem',
-            lineHeight: 1,
-          }}
-        >
-          Ye
-        </Typography>
+        <Box
+          component="img"
+          src="/img/ye-logo-light.svg"
+          alt="Ye"
+          sx={{ height: 32 }}
+        />
         <Stack direction="row" spacing={2} alignItems="center">
           <Button
             href="https://github.com/TimAnthonyAlexander/ye"
@@ -215,8 +212,14 @@ export default function Landing() {
         </Stack>
       </Box>
 
-      <Container maxWidth="md">
+      <Container maxWidth="lg">
         <Box sx={{ pt: 12, pb: 8, textAlign: 'center' }}>
+          <Box
+            component="img"
+            src="/img/ye-logo-light.svg"
+            alt="Ye"
+            sx={{ width: 140, mx: 'auto', mb: 4, display: 'block' }}
+          />
           <Chip
             label="v2.0.0"
             size="small"
@@ -311,6 +314,92 @@ export default function Landing() {
               </Typography>
               {' -o ye && chmod +x ye && sudo mv ye /usr/local/bin/ye'}
             </CodeBlock>
+          </Box>
+        </Box>
+
+        <Box sx={{ py: 10 }}>
+          <Typography
+            variant="h2"
+            sx={{
+              fontSize: '2rem',
+              fontWeight: 400,
+              letterSpacing: '-0.02em',
+              mb: 1,
+              textAlign: 'center',
+            }}
+          >
+            See it in action
+          </Typography>
+          <Typography
+            sx={{ fontSize: '1rem', color: '#666', textAlign: 'center', mb: 5 }}
+          >
+            Ye lives in your terminal — here's what that looks like.
+          </Typography>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 2.5,
+              overflowX: 'auto',
+              pb: 1,
+              scrollSnapType: 'x mandatory',
+              '&::-webkit-scrollbar': { height: 6 },
+              '&::-webkit-scrollbar-track': { bgcolor: '#F5F5F5', borderRadius: 3 },
+              '&::-webkit-scrollbar-thumb': { bgcolor: '#D9D9D9', borderRadius: 3, '&:hover': { bgcolor: '#BBB' } },
+            }}
+          >
+            {([
+              { src: '/img/YE_Home.png', label: 'Home' },
+              { src: '/img/YE_Mention.png', label: '@-mention picker' },
+              { src: '/img/YE_Editing.png', label: 'Live editing' },
+              { src: '/img/YE_Working.png', label: 'Tool calls' },
+            ]).map((shot) => (
+              <Box
+                key={shot.src}
+                sx={{
+                  flex: '0 0 auto',
+                  maxWidth: { xs: '88vw', md: 600 },
+                  scrollSnapAlign: 'start',
+                  borderRadius: 1.5,
+                  overflow: 'hidden',
+                  border: '1px solid #E0E0E0',
+                  bgcolor: '#FCFCFC',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.75,
+                    px: 1.5,
+                    py: 1.25,
+                    bgcolor: '#F2F2F2',
+                    borderBottom: '1px solid #E0E0E0',
+                  }}
+                >
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#EC6A5E' }} />
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#F5BF4F' }} />
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#61C454' }} />
+                  <Typography
+                    sx={{
+                      fontSize: '0.75rem',
+                      color: '#888',
+                      fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+                      ml: 0.5,
+                    }}
+                  >
+                    {shot.label}
+                  </Typography>
+                </Box>
+                <Box
+                  component="img"
+                  src={shot.src}
+                  alt={shot.label}
+                  sx={{ width: '100%', height: 'auto', display: 'block' }}
+                />
+              </Box>
+            ))}
           </Box>
         </Box>
 
@@ -417,6 +506,18 @@ export default function Landing() {
               </Box>
             ))}
           </Box>
+
+          <Box
+            component="img"
+            src="/img/YE_Result_Website_Hero.png"
+            alt="Full website built by Ye"
+            sx={{
+              width: '100%',
+              mt: 8,
+              borderRadius: 1.5,
+              border: '1px solid #EBEBEB',
+            }}
+          />
         </Box>
 
         <Box sx={{ py: 10 }}>
@@ -607,7 +708,7 @@ export default function Landing() {
           textAlign: 'center',
         }}
       >
-        <Container maxWidth="md">
+        <Container maxWidth="lg">
           <Stack direction="row" spacing={3} justifyContent="center" mb={3}>
             <Button
               href="https://github.com/TimAnthonyAlexander/ye"
