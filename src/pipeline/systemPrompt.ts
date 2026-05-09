@@ -195,7 +195,7 @@ All tool calls are validated and routed through the permission gate. Each tool's
 
 ## Read
 
-Reads a file from the local filesystem. Returns a header line (\`<file path="..." lines="N" range="A-B">\`) followed by line-numbered content. The body bytes are verbatim — backslashes, backticks, and quotes are NOT escaped, and newlines are real newlines.
+Reads a file from the local filesystem. Returns a header line (\`<read path="..." lines="N" range="A-B">\`) followed by line-numbered content. The body bytes are verbatim — backslashes, backticks, and quotes are NOT escaped, and newlines are real newlines.
 
 Schema:
 - \`path\` (string, required) — absolute path

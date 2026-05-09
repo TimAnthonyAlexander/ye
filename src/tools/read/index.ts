@@ -37,7 +37,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 
     const firstShown = sliced.length > 0 ? offset + 1 : 0;
     const lastShown = sliced.length > 0 ? offset + sliced.length : 0;
-    const header = `<file path="${path}" lines="${allLines.length}" range="${firstShown}-${lastShown}">`;
+    const header = `<read path="${path}" lines="${allLines.length}" range="${firstShown}-${lastShown}">`;
     return { ok: true, value: `${header}\n${numbered}` };
 };
 

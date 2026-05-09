@@ -78,7 +78,7 @@ describe("ReadTool", () => {
         expect(r.ok).toBe(true);
         if (r.ok && typeof r.value === "string") {
             const firstLine = r.value.split("\n")[0];
-            expect(firstLine).toBe(`<file path="${path}" lines="4" range="1-4">`);
+            expect(firstLine).toBe(`<read path="${path}" lines="4" range="1-4">`);
         }
     });
 
@@ -170,7 +170,7 @@ describe("ReadTool", () => {
         expect(r.ok).toBe(true);
         if (r.ok && typeof r.value === "string") {
             const firstLine = r.value.split("\n")[0];
-            expect(firstLine).toBe(`<file path="${path}" lines="21" range="6-8">`);
+            expect(firstLine).toBe(`<read path="${path}" lines="21" range="6-8">`);
             expect(r.value).toContain("     6\trow-6");
             expect(r.value).toContain("     7\trow-7");
             expect(r.value).toContain("     8\trow-8");
@@ -195,7 +195,7 @@ describe("ReadTool", () => {
         expect(r.ok).toBe(true);
         if (r.ok && typeof r.value === "string") {
             const lines = r.value.split("\n");
-            expect(lines[0]).toBe(`<file path="${path}" lines="1" range="1-1">`);
+            expect(lines[0]).toBe(`<read path="${path}" lines="1" range="1-1">`);
             expect(lines[1]).toBe("     1\t");
         }
     });
