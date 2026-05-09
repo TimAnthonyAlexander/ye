@@ -1,8 +1,29 @@
-# Ye
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="img/ye-logo-dark.svg">
+    <img src="img/ye-logo-light.svg" width="200" alt="Ye">
+  </picture>
+</p>
 
-The coding agent. Open-Source, with Subagents, Planning, Web-Searches, Skills, Hooks, Great Tools, Animations, Compaction, Recoverability, and much more.
+<p align="center">
+  The coding agent. Open-Source, with Subagents, Planning, Web-Searches, Skills, Hooks, Great Tools, Animations, Compaction, Recoverability, and much more.
+</p>
 
-![Ye Home](img/YE_Home.png)
+<p align="center">
+  <a href="https://github.com/TimAnthonyAlexander/ye/releases"><img src="https://img.shields.io/github/v/release/TimAnthonyAlexander/ye?label=release" alt="Release"></a>
+  <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-Bun-fbf0df" alt="Bun"></a>
+</p>
+
+<p align="center">
+  <a href="docs/OVERVIEW.md">Documentation</a> ·
+  <a href="https://github.com/TimAnthonyAlexander/ye/releases">Releases</a> ·
+  <a href="docs/PIPELINE.md">Architecture</a> ·
+  <a href="docs/SKILLS.md">Skills</a>
+</p>
+
+<p align="center">
+  <img src="img/YE_Home.png" alt="Ye Home" width="800">
+</p>
 
 Works with:
 - OpenRouter (DeepSeek, Gemini, OpenAI, Anthropic)
