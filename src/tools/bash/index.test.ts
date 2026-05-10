@@ -59,7 +59,9 @@ describe("BashTool", () => {
         const r = await BashTool.execute({ command: "echo hello" }, makeCtx());
         expect(r.ok).toBe(true);
         if (r.ok && typeof r.value === "string") {
-            expect(r.value.split("\n")[0]).toBe('<bash exit_code="0">');
+            expect(r.value.split("\n")[0]).toMatch(
+                /^<bash exit_code="0" duration_ms="\d+">$/,
+            );
             expect(r.value).toContain("hello");
         }
     });
@@ -68,7 +70,7 @@ describe("BashTool", () => {
         const r = await BashTool.execute({ command: "exit 7" }, makeCtx());
         expect(r.ok).toBe(true);
         if (r.ok && typeof r.value === "string") {
-            expect(r.value).toContain('<bash exit_code="7">');
+            expect(r.value).toMatch(/<bash exit_code="7" duration_ms="\d+">/);
         }
     });
 
@@ -76,7 +78,7 @@ describe("BashTool", () => {
         const r = await BashTool.execute({ command: "printf out; printf 'oh no' >&2" }, makeCtx());
         expect(r.ok).toBe(true);
         if (r.ok && typeof r.value === "string") {
-            expect(r.value).toContain('<bash exit_code="0">');
+            expect(r.value).toMatch(/<bash exit_code="0" duration_ms="\d+">/);
             expect(r.value).toContain("out");
             expect(r.value).toContain("<stderr>\noh no\n</stderr>");
         }
@@ -123,6 +125,18 @@ describe("BashTool", () => {
         expect(r.ok).toBe(true);
         if (r.ok && typeof r.value === "string") {
             expect(r.value).toContain("`hi`");
+        }
+    });
+
+    test("B9 duration_ms reflects actual elapsed time", async () => {
+        const r = await BashTool.execute({ command: "sleep 0.1" }, makeCtx());
+        expect(r.ok).toBe(true);
+        if (r.ok && typeof r.value === "string") {
+            const match = r.value.match(/duration_ms="(\d+)"/);
+            expect(match).not.toBeNull();
+            const ms = Number(match?.[1] ?? 0);
+            expect(ms).toBeGreaterThanOrEqual(100);
+            expect(ms).toBeLessThan(2000);
         }
     });
 });

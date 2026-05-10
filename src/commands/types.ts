@@ -8,6 +8,10 @@ export interface PickerOption {
     readonly id: string;
     readonly label: string;
     readonly description?: string;
+    // "header" rows render as dimmed section dividers, are skipped by arrow
+    // navigation, can't be selected with Enter, and vanish from the filtered
+    // view when the user types a query.
+    readonly kind?: "item" | "header";
 }
 
 export interface PickerPayload {

@@ -41,6 +41,7 @@ import {
     type Provider,
     tryBuildProvider,
 } from "../providers/index.ts";
+import { findFreeModelLabel } from "../providers/openrouter/freeModels.ts";
 import {
     appendHistory,
     generateSessionTitle,
@@ -900,7 +901,16 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 return;
             }
             if (streamingRef.current && abortRef.current) {
+                // If the user already queued a follow-up while the model was
+                // streaming, treat Ctrl+C as "interrupt and proceed": abort
+                // the current turn and let sendNow's finally-path drain the
+                // next queued message immediately. Otherwise, clear and post
+                // a "(stopped)" marker so the user sees the abort took effect.
+                const hasQueued = queueRef.current.length > 0;
                 abortRef.current.abort();
+                if (hasQueued) {
+                    return;
+                }
                 queueRef.current = [];
                 syncQueueDisplay();
                 setItems((prev) => [
@@ -1434,7 +1444,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     username={homeUsername}
                     cwd={prettyCwd()}
                     providerId={providerId}
-                    model={findModel(model)?.label ?? model}
+                    model={findModel(model)?.label ?? findFreeModelLabel(model) ?? model}
                     recents={homeRecents}
                     recentsLoaded={homeRecentsLoaded}
                     tip={homeTip}
@@ -1522,7 +1532,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             <StatusBar
                 mode={mode}
                 providerId={providerId}
-                model={findModel(model)?.label ?? model}
+                model={findModel(model)?.label ?? findFreeModelLabel(model) ?? model}
                 streaming={streaming}
                 queuedCount={queuedCount}
                 usedTokens={usedTokens}

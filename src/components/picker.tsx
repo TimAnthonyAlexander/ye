@@ -9,6 +9,7 @@ export interface PickerOption {
     readonly id: string;
     readonly label: string;
     readonly description?: string;
+    readonly kind?: "item" | "header";
 }
 
 export interface PickerPayload {
@@ -22,20 +23,46 @@ interface PickerProps {
     readonly onRespond: (id: string | null) => void;
 }
 
+const isSelectable = (opt: PickerOption): boolean => opt.kind !== "header";
+
 // Case-insensitive substring match on label + id + description. Picks are small
 // (handful of providers, handful of models), so a true fuzzy matcher would add
-// dependency weight without changing the user experience.
+// dependency weight without changing the user experience. Headers vanish when
+// the user is filtering — they're scoping aids, not matches.
 const matches = (query: string, opt: PickerOption): boolean => {
+    if (opt.kind === "header") return query.length === 0;
     if (query.length === 0) return true;
     const q = query.toLowerCase();
     const hay = `${opt.label} ${opt.id} ${opt.description ?? ""}`.toLowerCase();
     return hay.includes(q);
 };
 
+const findNextSelectable = (
+    list: readonly PickerOption[],
+    from: number,
+    direction: 1 | -1,
+): number => {
+    if (list.length === 0) return 0;
+    const len = list.length;
+    for (let step = 1; step <= len; step++) {
+        const i = (((from + direction * step) % len) + len) % len;
+        if (isSelectable(list[i] as PickerOption)) return i;
+    }
+    return from;
+};
+
 const initialActiveIndex = (payload: PickerPayload): number => {
-    if (!payload.initialId) return 0;
-    const idx = payload.options.findIndex((o) => o.id === payload.initialId);
-    return idx >= 0 ? idx : 0;
+    const opts = payload.options;
+    if (opts.length === 0) return 0;
+    if (payload.initialId) {
+        const idx = opts.findIndex((o) => o.id === payload.initialId);
+        if (idx >= 0 && isSelectable(opts[idx] as PickerOption)) return idx;
+    }
+    // Fall back to the first selectable row.
+    for (let i = 0; i < opts.length; i++) {
+        if (isSelectable(opts[i] as PickerOption)) return i;
+    }
+    return 0;
 };
 
 export const Picker = ({ payload, onRespond }: PickerProps) => {
@@ -81,7 +108,7 @@ export const Picker = ({ payload, onRespond }: PickerProps) => {
             if (filtered.length === 0) return;
             setActive((i) => {
                 const cur = Math.min(i, filtered.length - 1);
-                return (cur - 1 + filtered.length) % filtered.length;
+                return findNextSelectable(filtered, cur, -1);
             });
             return;
         }
@@ -89,14 +116,14 @@ export const Picker = ({ payload, onRespond }: PickerProps) => {
             if (filtered.length === 0) return;
             setActive((i) => {
                 const cur = Math.min(i, filtered.length - 1);
-                return (cur + 1) % filtered.length;
+                return findNextSelectable(filtered, cur, 1);
             });
             return;
         }
 
         if (key.return) {
             const choice = filtered[safeActive];
-            if (choice) onRespond(choice.id);
+            if (choice && isSelectable(choice)) onRespond(choice.id);
             return;
         }
 
@@ -148,6 +175,15 @@ export const Picker = ({ payload, onRespond }: PickerProps) => {
                 <>
                     {itemsBefore > 0 && <Text dimColor>↑ {itemsBefore} more</Text>}
                     {windowed.map((opt, idxInWindow) => {
+                        if (opt.kind === "header") {
+                            return (
+                                <Box key={opt.id}>
+                                    <Text dimColor bold>
+                                        ── {opt.label} ──
+                                    </Text>
+                                </Box>
+                            );
+                        }
                         const i = windowStart + idxInWindow;
                         const isActive = i === safeActive;
                         const isInitial = opt.id === payload.initialId;

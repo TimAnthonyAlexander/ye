@@ -16,8 +16,13 @@ const truncate = (text: string): string =>
         ? `${text.slice(0, OUTPUT_CAP)}\n…(truncated, ${text.length - OUTPUT_CAP} more chars)`
         : text;
 
-const formatBashResult = (stdout: string, stderr: string, exitCode: number): string => {
-    const sections = [`<bash exit_code="${exitCode}">`];
+const formatBashResult = (
+    stdout: string,
+    stderr: string,
+    exitCode: number,
+    durationMs: number,
+): string => {
+    const sections = [`<bash exit_code="${exitCode}" duration_ms="${durationMs}">`];
     if (stdout.length > 0) sections.push(stdout);
     if (stderr.length > 0) sections.push(`<stderr>\n${stderr}\n</stderr>`);
     return sections.join("\n");
@@ -92,6 +97,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     if (!v.ok) return v;
     const command = v.value.command;
     const timeoutMs = Math.min(v.value.timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
+    const startedAt = performance.now();
 
     const proc = Bun.spawn({
         cmd: ["sh", "-c", command],
@@ -140,10 +146,11 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 
     const [stdout, stderr] = collected;
     const exitCode = await proc.exited;
+    const durationMs = Math.round(performance.now() - startedAt);
 
     return {
         ok: true,
-        value: formatBashResult(truncate(stdout), truncate(stderr), exitCode),
+        value: formatBashResult(truncate(stdout), truncate(stderr), exitCode, durationMs),
     };
 };
 
