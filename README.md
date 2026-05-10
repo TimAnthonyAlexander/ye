@@ -26,9 +26,10 @@
 </p>
 
 Works with:
-- OpenRouter (DeepSeek, Gemini, OpenAI, Anthropic)
-- Anthropic (without OR, direct)
-- OpenAI (without OR, direct)
+- OpenRouter (DeepSeek, Gemini, OpenAI, Anthropic, GLM, Qwen, Kimi, MiniMax, …)
+- Anthropic (direct)
+- OpenAI (direct)
+- DeepSeek (direct — full reasoning round-trip on V4 Pro / V4 Flash)
 - Ollama (local — `http://localhost:11434`, no API key required for local models)
 
 ## Install
@@ -140,12 +141,13 @@ Read-only tools (Read, Grep, Glob, WebFetch, WebSearch, Skill, AskUserQuestion) 
 
 One canonical `Provider` interface; vendor differences live behind it. Tool-call format normalization happens in the provider module — the rest of Ye never sees vendor-shaped data.
 
-- **OpenRouter** — default. Streams via SSE, OpenAI-compatible tool calls, context window discovered via the `/models` endpoint. 
+- **OpenRouter** — default. Streams via SSE, OpenAI-compatible tool calls, context window discovered via the `/models` endpoint. Per-model reasoning preservation policy (`required` / `preserve` / `reject`) with consistency-strip-all enforcement. Routing strategy via `/routing` — `cheapest` (default), `fastest`, `latency`, or `sticky` (pins to first-responding upstream per model).
 - **Anthropic direct** — native tool-use blocks, prompt caching at the static/dynamic boundary. Uses `ANTHROPIC_API_KEY`.
 - **OpenAI** — latest **Responses API v1** (GPT-4.1/5 family). Interleaved reasoning & strict schema. Uses `OPENAI_API_KEY`.
+- **DeepSeek direct** — native V4 Pro / V4 Flash at `api.deepseek.com`. Full 1M context, full `reasoning_content` round-trip on tool-call sub-loops (the canonical path for V4 Pro reasoning; OpenRouter strips reasoning fields on every V4 Pro upstream except DeepInfra at 66k ctx — see [`docs/REASONING_STORING.md`](docs/REASONING_STORING.md) for the empirical matrix). Uses `DEEPSEEK_API_KEY`.
 - **Ollama** — local models via `http://localhost:11434`. NDJSON streaming, native tool calling on supported models (qwen3, llama3.1+, mistral-nemo, etc.), context size discovered via `/api/show`. `/model` lists locally pulled models via `/api/tags`. No API key required for local; `OLLAMA_API_KEY` honored for cloud routes. Local models receive a compact system prompt (~5.8× smaller) tuned for their tighter instruction-following budget.
 
-Set the active provider and model in `~/.ye/config.json`. Switching providers is one config change, no other code touches it.
+Set the active provider and model in `~/.ye/config.json`, or switch mid-session with `/provider` and `/model`. Reasoning traces captured from any provider are persisted as `Message.reasoning_details` in the session transcript and replayed on `/resume` and `/rewind`; stripped on `/model` and `/provider` switches because signatures and encrypted blobs are model-version-bound.
 
 ## Configuration
 
