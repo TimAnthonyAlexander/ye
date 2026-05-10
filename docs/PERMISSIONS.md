@@ -6,7 +6,7 @@ Permissions decide whether to run a tool the model asked for. v1 ships with **th
 
 | Mode | Behavior |
 |------|----------|
-| `AUTO` | All tool calls auto-allow. No prompts. Yolo. (Bash without sandbox in v1 — genuine "trust me".) |
+| `AUTO` | Auto-allows non-Bash tools. Bash commands run through a deterministic risk heuristic — destructive patterns (rm -rf, git push --force, curl|sh, etc.) elevate to a prompt with the matched reason shown. Configurable via `permissions.heuristicGating` (default on). Non-Bash state-modifying tools still auto-allow. |
 | `NORMAL` | Default. State-modifying tools fire a y/n prompt. Read-only tools (`readOnlyHint: true`) auto-allow. |
 | `PLAN` | Read-only mode for proposing plans. Read, Glob, Grep, and `ExitPlanMode` are allowed. **Every other tool is denied with a specific message** (see Denial-message contract). The model cannot escape PLAN mode by chat text — it must call `ExitPlanMode` with a proposed plan, which triggers a y/n prompt to flip mode. |
 
@@ -37,7 +37,9 @@ No "always allow" written to disk in v1. Session-scoped allow rules die with the
 
 ## AUTO mode
 
-No prompts. Every tool call routes through deny-first rules and then auto-allows. Useful for trusted projects, throwaway sandboxes, and long-running runs where prompts would block. **Bash has no sandbox in v1**, so AUTO + Bash in an untrusted project is genuinely dangerous — the help text and the mode-flip UI flag this.
+Non-Bash tools auto-allow without prompts. Bash commands pass through a deterministic risk classifier in `src/permissions/heuristics.ts` before executing: patterns matching destructive operations (rm -rf, git push --force, curl|sh, DROP TABLE, fork bombs, chmod 777, etc.) elevate to a y/n prompt showing the matched reason. The heuristic is a safety floor — it only tightens, never loosens. An explicit allow rule in `permissions.rules` still takes precedence.
+
+Disable by setting `"permissions": { "heuristicGating": false }` in `~/.ye/config.json`. With heuristics off, AUTO reverts to the pre-heuristic behavior: all calls auto-allow, no prompts (including Bash).
 
 ## Mode switching
 
@@ -72,6 +74,7 @@ Richer matching is Phase 2.
 3. **Pattern denies** — for each tool call, walk deny rules with patterns. First match wins → blocked.
 4. **Pattern allows** — walk allow rules with patterns. First match wins → granted.
 5. **Mode default** — NORMAL: prompt for state-modifying tools, auto-allow for read-only; AUTO: granted; PLAN: deny with the constant message *unless* the tool is in PLAN's allow-list.
+6. **Heuristic gate** — safety floor that runs after rules and mode defaults. Applies to Bash calls only. If the mode default was `allow` and `heuristicGating` is on (default), the Bash command is classified against deterministic risk patterns (rm -rf, git push --force, curl|sh, DROP TABLE, etc.). A match elevates to `prompt` with the matched reason shown. Non-Bash tools skip this step. Explicit user allow rules (step 4) still take precedence — heuristics only tighten, never loosen.
 
 Deny always overrides allow. Strictest wins.
 
@@ -90,14 +93,15 @@ The permission handler is a single function `decide(toolCall, ctx) → Decision`
 
 The auto-mode ML classifier (Claude Code's `yoloClassifier.ts`) is a separate file behind a feature flag; v1 does not include it.
 
-The 7 safety layers are mostly orthogonal — each is a middleware step. v1 has 4 of the 7:
+The 7 safety layers are mostly orthogonal — each is a middleware step. v1 ships 5 of the 7 plus the heuristic gate (a new 8th):
 1. Tool pre-filtering (mode-based + blanket-deny) ✓
 2. Deny-first rule eval ✓
 3. Permission mode constraints ✓
-4. Auto-mode ML classifier (Phase 5)
-5. Shell sandboxing (Phase 5)
-6. Non-restoration on resume — automatic in v1 (no resume yet); becomes a real layer in Phase 4
-7. Hook-based interception (Phase 5)
+4. Deterministic Bash heuristic gate ✓ (shipped — not in the original Claude Code design; Ye-native)
+5. Auto-mode ML classifier (Phase 5)
+6. Shell sandboxing (Phase 5)
+7. Non-restoration on resume — automatic in v1 (no resume yet); becomes a real layer in Phase 4
+8. Hook-based interception ✓ (shipped)
 
 ## Files
 
@@ -106,6 +110,7 @@ src/permissions/
 ├── index.ts            # public API: decide()
 ├── modes.ts            # per-mode default behavior (AUTO / NORMAL / PLAN)
 ├── rules.ts            # rule eval (deny-first, pattern matching)
+├── heuristics.ts       # deterministic Bash risk classifier (AUTO safety floor)
 ├── messages.ts         # denial-message constants — single source of truth
 ├── prompt.ts           # prompt event payload + decision response shape
 └── types.ts            # Decision, Rule, Mode
@@ -119,6 +124,7 @@ src/permissions/
 - **`ExitPlanMode` writes before it prompts.** Plan files persist by design — orphan plans on denial are a feature, not a bug. (See TOOLS.md for the full reasoning.)
 - **Permissions are not restored on resume** (Phase 4). Re-prompt always.
 - **`decide()` is the single decision function.** No mode logic anywhere else.
+- **Heuristic gate is a safety floor, not a permission layer.** It only tightens (allow → prompt), never loosens. Runs after user-defined rules so explicit allows always win. Deterministic regex classification — no LLM, no I/O.
 - **Rule pattern syntax is documented in one place** — this doc — and parsed in `rules.ts`. Patterns never get reinvented in tool implementations.
 
 ## Checklist
@@ -146,9 +152,20 @@ src/permissions/
 - [x] "Allow for session" appends an in-memory rule that lives until process exit
 - [x] `EnterPlanMode` tool (model-initiated; symmetric to user's Shift+Tab into PLAN)
 
+### Phase 4.5 — AUTO heuristics (shipped ahead of Phase 5 Bash sandbox)
+- [x] `heuristics.ts` — deterministic regex classifier for destructive Bash commands (35+ patterns across filesystem destruction, git lossy ops, privilege escalation, permission changes, disk/device, network execution, obfuscated payloads, fork bombs, database destruction, container data loss, cloud/orchestration, shell config mutation)
+- [x] Quote-stripping normalization so `echo "rm -rf x"` doesn't false-positive; raw-target patterns for payloads intentionally in quotes (SQL via -c, curl|sh, fork bombs, rc-file appends)
+- [x] `HeuristicReason` in `types.ts` — `{ id, label }` surfaced in prompt UI so the user sees which pattern matched
+- [x] Step 6 of evaluation order (`decide()`) — heuristic gate as post-mode-default safety floor
+- [x] `DecideContext.heuristicGating` flag — defaults to `true` in config; set to `false` to disable
+- [x] Config path: `permissions.heuristicGating` in `~/.ye/config.json` (default `true`)
+- [x] Explicit user allow rules step 4 override heuristic prompts — heuristics only tighten
+- [x] Non-Bash tools skip classification entirely
+- [x] Unit tests: H14–H23 in `decide.test.ts` (16 test cases covering normalization, raw patterns, allow-rule precedence, heuristicGating: false, non-Bash skip, and 10+ pattern hits)
+
 ### Phase 5 — Full mode set + safety layers
 - [ ] Add `acceptEdits`, `dontAsk`, `bypassPermissions`, `bubble` branches in `decide()` (4 more, total 7)
 - [ ] Auto-classifier in a Phase-5 `auto` mode (separate LLM call; behind a feature flag)
 - [x] Hook integration: PreToolUse hooks may return `permissionDecision` (block via exit 2)
-- [ ] Bash sandboxing layer (filesystem / network)
+- [ ] Bash sandboxing layer (filesystem / network) — deterministic heuristic gate shipped early (Phase 4.5 above); sandbox is orthogonal (kernel-level isolation, not pattern matching)
 - [ ] Subagent permission override rule: subagent `permissionMode` applies UNLESS parent is in `bypassPermissions`/`acceptEdits`/the Phase-5 `auto` (explicit user decisions take precedence)
