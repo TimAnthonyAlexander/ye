@@ -148,7 +148,7 @@ The permission gate (step 7) is in `src/permissions/`. Tool execution (step 8) i
 - [x] `index.ts` — `queryLoop(input): AsyncGenerator<Event>` skeleton
 - [x] Step 1: settings resolution — read `~/.ye/config.json`, merge with project overrides if present
 - [x] Step 2: turn-local state (session id, transcript handle, retry budget = 0 for v1); on first turn of a session, call `provider.getContextSize(model)` and cache the result
-- [x] Step 3: `assemble()` — system prompt + env + resolved notes file (via `memory/notesFile.ts`) + history
+- [x] Step 3: `assemble()` — system prompt + env + resolved notes file (via `memory/notesFile.ts`) + history. `buildSystemPrompt()` dispatches on `providerId`: Ollama gets a compact ~1.9k-token variant (`buildSmallSystemPrompt`), all other providers get the full ~11k-token prompt. See PROVIDERS.md "System prompt variant for local models".
 - [x] Step 4: single shaper, `shapers/autoCompact.ts` — fires when `currentTokens / contextWindow >= config.compact.threshold` (default 0.5); at most once per turn
 - [x] Step 5: model call via active provider; emits `model.text` and `model.toolCall`
 - [x] Step 6: `dispatch.ts` — parse tool calls, serialize all (no parallelism in v1)

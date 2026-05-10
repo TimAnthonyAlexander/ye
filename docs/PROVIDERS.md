@@ -1,12 +1,12 @@
 # Ye — Providers
 
-Ye talks to LLMs through a single `Provider` interface. **v1 + Phase 3 (Anthropic + OpenAI) shipped:** OpenRouter, Anthropic-direct (with prompt caching), and OpenAI (via Responses API). Adding a fourth provider is a single new folder under `src/providers/` and a registry entry — no other code changes. **Web tools (WebFetch/WebSearch) shipped early** — originally Phase 6, pulled forward.
+Ye talks to LLMs through a single `Provider` interface. **Shipped:** OpenRouter, Anthropic-direct (with prompt caching), OpenAI (via Responses API), and Ollama (local — `http://localhost:11434`, no API key required for local models). Adding a fifth provider is a single new folder under `src/providers/` and a registry entry — no other code changes. **Web tools (WebFetch/WebSearch) shipped early** — originally Phase 6, pulled forward.
 
 ## The interface
 
 ```ts
 interface Provider {
-  id: string;                              // "openrouter" | "anthropic" | "openai"
+  id: string;                              // "openrouter" | "anthropic" | "openai" | "ollama"
   stream(input: ProviderInput): AsyncIterable<ProviderEvent>;
   countTokens?(messages: Message[]): Promise<number>;
   getContextSize(model: string): Promise<number>;   // tokens; falls back to 128_000 on failure
@@ -49,6 +49,7 @@ interface ProviderCapabilities {
 - **OpenRouter:** `GET https://openrouter.ai/api/v1/models` exposes `context_length` per model.
 - **Anthropic:** hardcoded per-model lookup table (vendor doesn't expose a discovery endpoint). Lives in `src/providers/anthropic/models.ts`. Current values: 1M for opus 4.6/4.7 and sonnet 4.6 (the API exposes the 1M window on the same model ID; no beta header required as of 2026-03-13); 200K for haiku 4.5 (no 1M variant).
 - **OpenAI:** hardcoded per-model lookup table. Lives in `src/providers/openai/models.ts`.
+- **Ollama:** `POST /api/show` per model. Reads Modelfile `num_ctx` first (Modelfile-author override), then scans `model_info` for any `*.context_length` field (architecture-scoped — `llama.context_length`, `qwen3.context_length`, etc.). Cached in-memory per session. Lives in `src/providers/ollama/models.ts`.
 - **Fallback on any failure:** `128_000`. Logged but not surfaced to the user.
 
 The pipeline calls `getContextSize` **once per session**, on first turn, and caches the result in `SessionState.contextWindow`. No per-turn refetch. **A `/provider` or `/model` switch refetches and updates the cache** — different providers report different windows for the same model, and Anthropic's table is per-model.
@@ -136,6 +137,28 @@ New capabilities are added as boolean flags rather than `if (provider.id === ...
 - **Reasoning:** `reasoning.delta` events emitted for thought summaries. `reasoning.effort` configurable via `providerOptions.reasoningEffort`.
 - **Tool calls:** Reconstructed from `response.output_item.added` + semantic argument deltas. Map `call_id` to Assistant tool calls and use `fc_` item prefixes in multi-turn history.
 
+## Ollama (shipped)
+
+- POST `${baseUrl}/api/chat` (default `baseUrl` = `http://localhost:11434`)
+- Auth: **no key required for local servers.** `tryBuildProvider()` does NOT raise `MissingKeyError` for Ollama — local Ollama is keyless by design. When `OLLAMA_API_KEY` is set (cloud / remote routes), it's sent as `Authorization: Bearer ...`.
+- **NDJSON streaming, not SSE.** Each chunk is one complete JSON object on its own line; the stream terminates on a chunk with `"done": true` (which carries `prompt_eval_count`, `eval_count`, and timing stats). The shared `sse.ts` iterator does not apply here — Ollama gets its own `ndjson.ts` line iterator.
+- **Tool-call wire format differs from OpenAI's:** `function.arguments` arrives as an already-parsed JSON object, not a string. The adapter `JSON.parse`s our canonical string form when serializing assistant turns, and `JSON.stringify`s on the way back is unnecessary. Tool replies use `{ role: "tool", tool_name, content }` (note: `tool_name`, NOT `tool_call_id`) — matching is positional, so synthesized `id`s on the inbound side are kept private to Ye.
+- **Reasoning ("thinking") is opt-in.** When `providerOptions.think === true`, the request sets `think: true` and the stream emits `message.thinking` chunks → `reasoning.delta` events. Default is off so non-thinking models don't 400.
+- **Stop reason inference:** Ollama's `done_reason` is `stop` even when tool calls were emitted. The stream parser overrides to `tool_use` when any tool calls accumulated during the stream.
+- **Capabilities:** `promptCache: false`, `toolUse: true`, `vision: true`, `serverSideWebSearch: false`.
+- **Provider options:** `think` (boolean, default false), `numCtx` (override `options.num_ctx`), `keepAlive` (string or number — passed verbatim), `format` (string `"json"` or a JSON Schema object).
+- **Model picker is dynamic.** Unlike the other providers, the registered static list is just three popular tool-capable defaults (`qwen3`, `llama3.2`, `gpt-oss:20b`). When `/model` opens with the active provider as `ollama`, it calls `GET /api/tags` and lists locally pulled models under "installed locally", with the static defaults under "popular (pull to use)". Transport failure (server not running) surfaces a friendly message and falls back to the defaults.
+
+## System prompt variant for local models
+
+Local Ollama models (typically 7B–30B params) have weaker instruction-following and tighter context budgets than frontier hosted models. The full system prompt (~11k tokens — skills/hooks blocks, deep tool docs, tone philosophy) overwhelms them.
+
+`buildSystemPrompt(env)` in `src/pipeline/systemPrompt.ts` dispatches on `env.providerId`:
+- `"ollama"` → `buildSmallSystemPrompt(env)` (~1.9k tokens, ~5.8× smaller). Drops the skills/hooks blocks and the verbose tool-docs prose; keeps the PLAN-mode template intact, output-format rules, permission semantics, and one-line tool schemas with key constraints.
+- anything else → the full prompt.
+
+`providerId` is threaded through `assemble({ state, model, providerId })` and forwarded by every caller (`turn.ts`, `recovery.ts`, `shapers/index.ts`). Adding another local provider with the same characteristics is a one-line change in the dispatcher.
+
 ## Selection
 
 `getProvider(config, id)` returns the implementation; `id` defaults to `config.defaultProvider`. The boot path uses the `defaultModel.provider` + `defaultModel.model` pair from config. **Mid-session switching** is wired through `/provider` and `/model` slash commands — App rebuilds the provider, refetches `getContextSize`, and writes `state.activeModel` so the pipeline picks up the new model on the next turn. Per-subagent provider override is still a Phase 5 concern.
@@ -161,8 +184,9 @@ Current entries (full list lives in `src/providers/models.ts`):
 | openai | `gpt-5.2-pro`, `gpt-5.2-codex`, `gpt-5.2`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`, `gpt-5.1` | GPT-5.2 / 5.1 family |
 | openai | `gpt-5-codex-mini`, `gpt-5`, `gpt-5-mini`, `codex-mini-latest` | GPT-5 family + codex-mini |
 | openai | `gpt-4.1`, `gpt-4.1-mini` | GPT-4.1 / 4.1 Mini |
+| ollama | `qwen3`, `llama3.2`, `gpt-oss:20b` | Tool-capable local defaults — actual list comes from `/api/tags` |
 
-The first OpenRouter entry (`~google/gemini-flash-latest`) is also the configured `defaultModel`. `defaultModelFor(providerId)` returns the first entry for a provider — used by `/provider` to pick a sensible model when switching providers (don't carry a model across providers).
+The first OpenRouter entry (`~google/gemini-flash-latest`) is also the configured `defaultModel`. `defaultModelFor(providerId)` returns the first entry for a provider — used by `/provider` to pick a sensible model when switching providers (don't carry a model across providers). For Ollama, the static entries are placeholders so `defaultModelFor("ollama")` returns something usable post-switch; the live `/api/tags` listing in `/model` shows what's actually pulled.
 
 ### Config: missing-provider auto-merge
 
@@ -188,11 +212,17 @@ src/providers/
 │   ├── adapt.ts        # Ye Message[] → Anthropic body (system split, tool_use/tool_result blocks, cache marker)
 │   ├── stream.ts       # event: + data: SSE → ProviderEvent
 │   └── models.ts       # per-model context-size table + isOpus47() guard
-└── openai/             # Phase 3 — shipped
-    ├── index.ts        # Provider impl, MissingOpenAIKeyError
-    ├── adapt.ts        # Ye Message[] → Responses API body (recursive strict schema, instruction split)
-    ├── stream.ts       # semantic event SSE -> ProviderEvent (reasoning deltas, function_call item support)
-    └── models.ts       # per-model context-size table
+├── openai/             # Phase 3 — shipped
+│   ├── index.ts        # Provider impl, MissingOpenAIKeyError
+│   ├── adapt.ts        # Ye Message[] → Responses API body (recursive strict schema, instruction split)
+│   ├── stream.ts       # semantic event SSE -> ProviderEvent (reasoning deltas, function_call item support)
+│   └── models.ts       # per-model context-size table
+└── ollama/             # shipped
+    ├── index.ts        # Provider impl + buildOllamaFromConfig (no MissingKeyError — local is keyless)
+    ├── adapt.ts        # Ye Message[] → /api/chat body (parsed-object tool args, tool_name on replies)
+    ├── stream.ts       # NDJSON parser → ProviderEvent (text, thinking, accumulated tool_calls, done_reason override)
+    ├── ndjson.ts       # newline-delimited JSON line iterator (Ollama-specific, not shared with sse.ts)
+    └── models.ts       # /api/show context-size discovery + /api/tags listing for the dynamic /model picker
 ```
 
 ## Decisions made

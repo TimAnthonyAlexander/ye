@@ -29,6 +29,7 @@ Works with:
 - OpenRouter (DeepSeek, Gemini, OpenAI, Anthropic)
 - Anthropic (without OR, direct)
 - OpenAI (without OR, direct)
+- Ollama (local — `http://localhost:11434`, no API key required for local models)
 
 ## Install
 
@@ -142,6 +143,7 @@ One canonical `Provider` interface; vendor differences live behind it. Tool-call
 - **OpenRouter** — default. Streams via SSE, OpenAI-compatible tool calls, context window discovered via the `/models` endpoint. 
 - **Anthropic direct** — native tool-use blocks, prompt caching at the static/dynamic boundary. Uses `ANTHROPIC_API_KEY`.
 - **OpenAI** — latest **Responses API v1** (GPT-4.1/5 family). Interleaved reasoning & strict schema. Uses `OPENAI_API_KEY`.
+- **Ollama** — local models via `http://localhost:11434`. NDJSON streaming, native tool calling on supported models (qwen3, llama3.1+, mistral-nemo, etc.), context size discovered via `/api/show`. `/model` lists locally pulled models via `/api/tags`. No API key required for local; `OLLAMA_API_KEY` honored for cloud routes. Local models receive a compact system prompt (~5.8× smaller) tuned for their tighter instruction-following budget.
 
 Set the active provider and model in `~/.ye/config.json`. Switching providers is one config change, no other code touches it.
 

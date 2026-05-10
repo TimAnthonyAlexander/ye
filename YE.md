@@ -12,7 +12,7 @@
 - No defensive programming against internal state — validate at system boundaries only (user input, external APIs, config load). Internal code is trusted.
 - `readonly` on all interface/type fields that aren't mutated after construction.
 - Async generators for streaming pipeline hooks (`queryLoop`, `runTurn`). Events flow as `AsyncGenerator<Event>`.
-- No `any`. Explicit error types for provider-specific failures (`MissingApiKeyError`, `MissingAnthropicKeyError`, `MissingOpenAIKeyError`).
+- No `any`. Explicit error types for provider-specific failures (`MissingApiKeyError`, `MissingAnthropicKeyError`, `MissingOpenAIKeyError`). Ollama does not throw a missing-key error — local server, no auth by default.
 
 ## Build & test
 
@@ -32,7 +32,7 @@ UI layer: `src/components/`. Home screen + recents picker, chat, input with @-me
 
 Pipeline: `src/pipeline/`
 - `queryLoop` drives turns; `runTurn` is one full 9-step turn per `PERMISSIONS.md` spec.
-- Step 3 (assemble): system prompt + notes hierarchy + auto-memory → Message[].
+- Step 3 (assemble): system prompt + notes hierarchy + auto-memory → Message[]. The full system prompt is ~11k tokens; Ollama gets a compact ~1.9k-token variant via `buildSmallSystemPrompt()`, dispatched on `providerId` inside `buildSystemPrompt()`.
 - Step 4 (shapers): cheapest→most-expensive chain `budgetReduction → snip → microcompact → contextCollapse → autoCompact`. Each shaper checks its own trigger, returns `skip`/`applied`/`done`. History is re-assembled after each `applied`. Hard cap of 4 applications per turn (defense against retry-loop bugs).
 - Step 5-6 (model call): `dispatch.ts` streams provider events; `recovery.ts` wraps the call with retry + exponential backoff (3 retries, 500ms→8s).
 - Step 7-8 (permission gate + tool execution): sequential per tool. Prompt for non-read-only tools in NORMAL.
@@ -42,7 +42,8 @@ Providers: `src/providers/`
 - `openrouter` — default. SSE streaming, OpenAI-compatible tool calls, context window discovered via `/models`. Provider routing supports cheapest-first via `providerSort`.
 - `anthropic` — native tool-use blocks, prompt caching at static/dynamic boundary.
 - `openai` — Responses API v1, interleaved reasoning, strict tool schema.
-- Builder pattern via `tryBuildProvider()` in `build.ts` — handles key prompts, config persistence.
+- `ollama` — local models at `http://localhost:11434` via `/api/chat`. NDJSON streaming (one JSON object per line, terminated by `done: true`), native tool calls (`function.arguments` arrives as a parsed object — not a JSON string), tool replies use `tool_name` (not `tool_call_id`). Reasoning ("thinking") is opt-in via `providerOptions.think`. Context size discovered per model via `/api/show` (architecture-scoped `*.context_length` or Modelfile `num_ctx`); `/model` lists locally pulled models via `/api/tags`. `tryBuildProvider()` does NOT prompt for a key — local Ollama is keyless; cloud routes honor `OLLAMA_API_KEY`.
+- Builder pattern via `tryBuildProvider()` in `build.ts` — handles key prompts (skipped for Ollama), config persistence.
 - Single source of truth for the model picker is `models.ts`. Per-call USD cost tracking lives in `pricing.ts`.
 
 Tools: 15 tools registered in `src/tools/registry.ts` — Read, Edit, Write, Bash, Grep, Glob, TodoWrite, ExitPlanMode, EnterPlanMode, AskUserQuestion, Task, WebFetch, WebSearch, Skill, SaveMemory. Read/Glob/Grep/AskUserQuestion/Skill/WebFetch/WebSearch are read-only (auto-allow in NORMAL); the rest prompt. `Task` spawns subagents (in-process, isolated state). `ExitPlanMode` / `EnterPlanMode` trigger mode-flip permission prompts.
