@@ -8,7 +8,7 @@ import type {
     PromptResponse,
     ToolCall,
 } from "../permissions/index.ts";
-import type { Message, Provider, ToolCallRequest } from "../providers/index.ts";
+import type { Message, Provider, ReasoningDetail, ToolCallRequest } from "../providers/index.ts";
 import type { SessionHandle } from "../storage/index.ts";
 import {
     assembleToolPool,
@@ -24,6 +24,7 @@ import { assemble } from "./assemble.ts";
 import { type CollectedToolCall } from "./dispatch.ts";
 import { transcriptable, type Event, type StopReason } from "./events.ts";
 import { runModelCallWithRecovery } from "./recovery.ts";
+import { capturePinnedUpstream, resolveProviderOptions } from "./routing.ts";
 import { runShapers } from "./shapers/index.ts";
 import { recordDenial, resetDenialTrail, resetShapingFlags, type SessionState } from "./state.ts";
 import { evaluateStop } from "./stop.ts";
@@ -52,16 +53,29 @@ const deferred = <T>(): Deferred<T> => {
     return { promise, resolve };
 };
 
-const buildAssistantMessage = (text: string, toolCalls: readonly CollectedToolCall[]): Message => {
+const buildAssistantMessage = (
+    text: string,
+    toolCalls: readonly CollectedToolCall[],
+    reasoningDetails?: readonly ReasoningDetail[],
+): Message => {
+    const reasoning =
+        reasoningDetails && reasoningDetails.length > 0
+            ? { reasoning_details: reasoningDetails }
+            : {};
     if (toolCalls.length === 0) {
-        return { role: "assistant", content: text };
+        return { role: "assistant", content: text, ...reasoning };
     }
     const tool_calls: ToolCallRequest[] = toolCalls.map((tc) => ({
         id: tc.id,
         type: "function",
         function: { name: tc.name, arguments: JSON.stringify(tc.args ?? {}) },
     }));
-    return { role: "assistant", content: text.length > 0 ? text : null, tool_calls };
+    return {
+        role: "assistant",
+        content: text.length > 0 ? text : null,
+        tool_calls,
+        ...reasoning,
+    };
 };
 
 // Render a tool result into the string the model sees as the tool message
@@ -163,15 +177,12 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         initialMessages: messages,
         tools,
         signal,
-        providerOptions: {
-            providerOrder: config.defaultModel.providerOrder,
-            allowFallbacks: config.defaultModel.allowFallbacks,
-            providerSort: config.defaultModel.providerSort,
-        },
+        providerOptions: resolveProviderOptions(config, state, activeModel),
     });
 
     let modelText = "";
     let toolCalls: readonly CollectedToolCall[] = [];
+    let reasoningDetails: readonly ReasoningDetail[] | undefined;
 
     while (true) {
         const next = await recoveryGen.next();
@@ -179,10 +190,16 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             const out = next.value;
             modelText = out.result.text;
             toolCalls = out.result.toolCalls;
+            reasoningDetails = out.result.reasoningDetails;
             // Persist any model/provider switch the recovery layer decided so
             // the rest of the turn (and the next turn) sees the new state.
             if (out.finalModel !== activeModel) {
                 state.activeModel = out.finalModel;
+            }
+            // For sticky routing: pin this model to whichever upstream served
+            // the first turn. Subsequent turns will route there explicitly.
+            if (out.result.usage?.upstream) {
+                capturePinnedUpstream(state, config, out.finalModel, out.result.usage.upstream);
             }
             if (out.result.stopReason === "error") {
                 const errorEvent: Event = {
@@ -207,7 +224,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     }
 
     // Append assistant message to history (may have content + tool_calls).
-    const assistantMessage = buildAssistantMessage(modelText, toolCalls);
+    const assistantMessage = buildAssistantMessage(modelText, toolCalls, reasoningDetails);
     state.history.push(assistantMessage);
 
     // Steps 7 + 8: permission gate + tool execution.

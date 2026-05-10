@@ -1,4 +1,10 @@
-import type { Provider, ProviderError, ProviderInput, ProviderUsage } from "../providers/index.ts";
+import type {
+    Provider,
+    ProviderError,
+    ProviderInput,
+    ProviderUsage,
+    ReasoningDetail,
+} from "../providers/index.ts";
 import { computeCostUsd } from "../providers/pricing.ts";
 import type { Event } from "./events.ts";
 
@@ -14,6 +20,7 @@ export interface ModelStreamResult {
     readonly stopReason: "end_turn" | "tool_use" | "max_tokens" | "error" | "abort";
     readonly error?: ProviderError;
     readonly usage?: ProviderUsage;
+    readonly reasoningDetails?: readonly ReasoningDetail[];
 }
 
 export interface UsageReport {
@@ -35,6 +42,7 @@ export async function* streamFromProvider(
     let stopReason: ModelStreamResult["stopReason"] = "end_turn";
     let error: ProviderError | undefined;
     let usage: ProviderUsage | undefined;
+    let reasoningDetails: readonly ReasoningDetail[] | undefined;
 
     for await (const evt of provider.stream(input)) {
         switch (evt.type) {
@@ -44,6 +52,10 @@ export async function* streamFromProvider(
                 break;
             case "reasoning.delta":
                 yield { type: "model.reasoning", delta: evt.text };
+                break;
+            case "reasoning.complete":
+                reasoningDetails = evt.details;
+                yield { type: "model.reasoningDetails", details: evt.details };
                 break;
             case "tool_call":
                 toolCalls.push({ id: evt.id, name: evt.name, args: evt.args });
@@ -80,9 +92,13 @@ export async function* streamFromProvider(
         }
     }
 
-    const base = { text, toolCalls, stopReason };
-    if (error !== undefined && usage !== undefined) return { ...base, error, usage };
-    if (error !== undefined) return { ...base, error };
-    if (usage !== undefined) return { ...base, usage };
+    const base: ModelStreamResult = {
+        text,
+        toolCalls,
+        stopReason,
+        ...(error !== undefined ? { error } : {}),
+        ...(usage !== undefined ? { usage } : {}),
+        ...(reasoningDetails !== undefined ? { reasoningDetails } : {}),
+    };
     return base;
 }

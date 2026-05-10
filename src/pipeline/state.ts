@@ -45,6 +45,11 @@ export interface SessionState {
     // config.defaultModel.model. /model and /provider mutate this; provider
     // switches also clear it (the new provider gets its registry default).
     activeModel?: string;
+    // Sticky routing state, keyed by model id. When config.defaultModel.routing
+    // is "sticky", turn.ts captures the upstream provider from the first usage
+    // event for a given model and pins subsequent requests for that model to
+    // the same upstream. /model and /provider switches clear this entirely.
+    pinnedUpstream?: Readonly<Record<string, string>>;
     // Auto-memory cache: populated lazily on first turn that has a user query.
     // null = not yet selected; [] = no memory available; non-empty = active.
     selectedMemory: readonly SelectedMemoryEntry[] | null;

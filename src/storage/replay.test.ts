@@ -37,6 +37,105 @@ describe("replaySessionFile", () => {
         expect(out.turnsCompleted).toBe(1);
     });
 
+    test("reattaches reasoning_details to the assistant message", async () => {
+        const details = [
+            {
+                type: "reasoning.text",
+                text: "Step 1: think",
+                format: "anthropic-claude-v1",
+                index: 0,
+                signature: "sig-1",
+            },
+        ] as const;
+        const path = await writeJsonl([
+            { type: "user.message", content: "hi" },
+            { type: "turn.start", turnIndex: 0 },
+            { type: "model.reasoningDetails", details },
+            { type: "model.text", delta: "hello" },
+            { type: "turn.end", stopReason: "end_turn" },
+        ]);
+        const out = await replaySessionFile(path);
+        expect(out.history[1]).toEqual({
+            role: "assistant",
+            content: "hello",
+            reasoning_details: details,
+        });
+    });
+
+    test("reasoning_details survive across multiple turns and tool calls", async () => {
+        const detailsT1 = [{ type: "reasoning.text", text: "t1-thinking", index: 0 }] as const;
+        const detailsT2 = [{ type: "reasoning.text", text: "t2-thinking", index: 0 }] as const;
+        const path = await writeJsonl([
+            { type: "user.message", content: "do it" },
+            { type: "turn.start", turnIndex: 0 },
+            { type: "model.reasoningDetails", details: detailsT1 },
+            {
+                type: "model.toolCall",
+                id: "t1",
+                name: "Read",
+                args: { path: "/tmp/a" },
+            },
+            { type: "tool.start", id: "t1", name: "Read", args: { path: "/tmp/a" } },
+            {
+                type: "tool.end",
+                id: "t1",
+                name: "Read",
+                result: { ok: true, value: "contents" },
+            },
+            { type: "turn.end", stopReason: "continue" },
+            { type: "turn.start", turnIndex: 1 },
+            { type: "model.reasoningDetails", details: detailsT2 },
+            { type: "model.text", delta: "done" },
+            { type: "turn.end", stopReason: "end_turn" },
+        ]);
+        const out = await replaySessionFile(path);
+        const assistants = out.history.filter((m) => m.role === "assistant");
+        expect(assistants).toHaveLength(2);
+        expect(assistants[0]?.reasoning_details).toEqual(detailsT1);
+        expect(assistants[1]?.reasoning_details).toEqual(detailsT2);
+    });
+
+    test("rewind truncates assistant messages including their reasoning_details", async () => {
+        const path = await writeJsonl([
+            { type: "user.message", content: "first" },
+            {
+                type: "prompt.start",
+                firstTurnGlobalIdx: 1,
+                preview: "first",
+                ts: "2025-01-01T00:00:00Z",
+            },
+            { type: "turn.start", turnIndex: 0 },
+            {
+                type: "model.reasoningDetails",
+                details: [{ type: "reasoning.text", text: "keep me", index: 0 }],
+            },
+            { type: "model.text", delta: "first answer" },
+            { type: "turn.end", stopReason: "end_turn" },
+            { type: "user.message", content: "second" },
+            {
+                type: "prompt.start",
+                firstTurnGlobalIdx: 2,
+                preview: "second",
+                ts: "2025-01-01T00:00:01Z",
+            },
+            { type: "turn.start", turnIndex: 1 },
+            {
+                type: "model.reasoningDetails",
+                details: [{ type: "reasoning.text", text: "drop me", index: 0 }],
+            },
+            { type: "model.text", delta: "second answer" },
+            { type: "turn.end", stopReason: "end_turn" },
+            { type: "rewind", upToPrompt: 1, firstTurnGlobalIdx: 2 },
+            { type: "user.message", content: "redo" },
+        ]);
+        const out = await replaySessionFile(path);
+        // After rewind: only the first user→assistant exchange survives, plus
+        // the post-rewind user message.
+        const assistants = out.history.filter((m) => m.role === "assistant");
+        expect(assistants).toHaveLength(1);
+        expect((assistants[0]?.reasoning_details ?? [])[0]).toMatchObject({ text: "keep me" });
+    });
+
     test("rebuilds a turn with tool calls and results", async () => {
         const path = await writeJsonl([
             { type: "user.message", content: "read the file" },

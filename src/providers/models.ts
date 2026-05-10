@@ -16,7 +16,13 @@ const MODELS: readonly ModelInfo[] = [
         id: "google/gemini-3.1-pro-preview",
         label: "Gemini 3.1 Pro Preview",
     },
-    { provider: "openrouter", id: "deepseek/deepseek-v4-pro", label: "DeepSeek v4 Pro" },
+    {
+        provider: "openrouter",
+        id: "deepseek/deepseek-v4-pro",
+        label: "DeepSeek v4 Pro (OpenRouter)",
+    },
+    { provider: "deepseek", id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+    { provider: "deepseek", id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
     {
         provider: "openrouter",
         id: "anthropic/claude-opus-4.7",

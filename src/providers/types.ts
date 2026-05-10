@@ -9,12 +9,49 @@ export interface ToolCallRequest {
     };
 }
 
+// OpenRouter's normalized reasoning format. Three variants, all share id /
+// format / index. Round-tripped verbatim on the next request; never edited,
+// reordered, or deduped — signatures and encrypted blobs are bound to the
+// exact sequence the model emitted.
+export type ReasoningFormat =
+    | "unknown"
+    | "openai-responses-v1"
+    | "azure-openai-responses-v1"
+    | "xai-responses-v1"
+    | "anthropic-claude-v1"
+    | "google-gemini-v1";
+
+interface ReasoningDetailBase {
+    readonly id?: string;
+    readonly format?: ReasoningFormat;
+    readonly index?: number;
+}
+
+export type ReasoningDetail =
+    | (ReasoningDetailBase & {
+          readonly type: "reasoning.text";
+          readonly text: string;
+          readonly signature?: string;
+      })
+    | (ReasoningDetailBase & {
+          readonly type: "reasoning.encrypted";
+          readonly data: string;
+      })
+    | (ReasoningDetailBase & {
+          readonly type: "reasoning.summary";
+          readonly summary: string;
+      });
+
 export interface Message {
     readonly role: Role;
     readonly content: string | null;
     readonly tool_calls?: readonly ToolCallRequest[];
     readonly tool_call_id?: string;
     readonly name?: string;
+    // Structured reasoning trace from a thinking-capable model. Present only on
+    // assistant messages produced by such a model. Round-tripped on the next
+    // request per the model's policy (see openrouter/reasoningPolicy.ts).
+    readonly reasoning_details?: readonly ReasoningDetail[];
 }
 
 export interface ToolDefinition {
@@ -70,11 +107,17 @@ export interface ProviderUsage {
     // For Anthropic / OpenAI direct, left undefined here and computed from
     // the local pricing table at storage time.
     readonly costUsd?: number;
+    // Upstream provider name when the route is multi-tenant (e.g. OpenRouter's
+    // top-level `provider` field: "DeepSeek", "DeepInfra", "Novita", etc).
+    // Captured for sticky routing — Ye pins to whatever upstream served the
+    // first turn so subsequent turns hit the same one.
+    readonly upstream?: string;
 }
 
 export type ProviderEvent =
     | { readonly type: "text.delta"; readonly text: string }
     | { readonly type: "reasoning.delta"; readonly text: string }
+    | { readonly type: "reasoning.complete"; readonly details: readonly ReasoningDetail[] }
     | {
           readonly type: "tool_call";
           readonly id: string;

@@ -1,6 +1,12 @@
 import { classifyMidStreamError } from "../errors.ts";
 import { sseDataLines } from "../sse.ts";
-import type { ProviderError, ProviderEvent, StopReason } from "../types.ts";
+import type {
+    ProviderError,
+    ProviderEvent,
+    ReasoningDetail,
+    ReasoningFormat,
+    StopReason,
+} from "../types.ts";
 
 interface ToolCallAccumulator {
     id?: string;
@@ -8,12 +14,99 @@ interface ToolCallAccumulator {
     args: string;
 }
 
-interface ReasoningDetail {
+// Wire-shape from OpenRouter's reasoning_details[]. All fields optional —
+// the type discriminator is `type` and varies by upstream provider.
+interface WireReasoningDetail {
     type?: string;
     text?: string;
+    signature?: string;
     summary?: string;
+    data?: string;
     format?: string;
     id?: string;
+    index?: number;
+}
+
+const KNOWN_FORMATS: readonly ReasoningFormat[] = [
+    "unknown",
+    "openai-responses-v1",
+    "azure-openai-responses-v1",
+    "xai-responses-v1",
+    "anthropic-claude-v1",
+    "google-gemini-v1",
+];
+
+const isKnownFormat = (s: string): s is ReasoningFormat =>
+    (KNOWN_FORMATS as readonly string[]).includes(s);
+
+// Convert one wire reasoning_details entry into the typed ReasoningDetail
+// union. Unknown types are dropped (they wouldn't round-trip safely anyway).
+const toTypedDetail = (raw: WireReasoningDetail): ReasoningDetail | null => {
+    const base: { id?: string; format?: ReasoningFormat; index?: number } = {};
+    if (typeof raw.id === "string") base.id = raw.id;
+    if (typeof raw.format === "string" && isKnownFormat(raw.format)) base.format = raw.format;
+    if (typeof raw.index === "number") base.index = raw.index;
+
+    switch (raw.type) {
+        case "reasoning.text": {
+            const text = typeof raw.text === "string" ? raw.text : "";
+            const out: ReasoningDetail = { ...base, type: "reasoning.text", text };
+            if (typeof raw.signature === "string") {
+                return { ...out, signature: raw.signature };
+            }
+            return out;
+        }
+        case "reasoning.encrypted": {
+            if (typeof raw.data !== "string") return null;
+            return { ...base, type: "reasoning.encrypted", data: raw.data };
+        }
+        case "reasoning.summary": {
+            if (typeof raw.summary !== "string") return null;
+            return { ...base, type: "reasoning.summary", summary: raw.summary };
+        }
+        default:
+            return null;
+    }
+};
+
+// Accumulator for stream-deltas of reasoning_details. Each delta carries an
+// `index` and a partial slice (e.g. text grows token-by-token). We collect
+// per-index and merge text/summary fields incrementally, preserving emission
+// order.
+class ReasoningDetailsAccumulator {
+    private readonly byIndex = new Map<number, WireReasoningDetail>();
+    private readonly orderedIndices: number[] = [];
+    private nextSyntheticIndex = 0;
+
+    push(raw: WireReasoningDetail): void {
+        const idx = typeof raw.index === "number" ? raw.index : this.nextSyntheticIndex++;
+        const existing = this.byIndex.get(idx);
+        if (!existing) {
+            this.orderedIndices.push(idx);
+            this.byIndex.set(idx, { ...raw, index: idx });
+            return;
+        }
+        const merged: WireReasoningDetail = { ...existing };
+        if (typeof raw.type === "string") merged.type = raw.type;
+        if (typeof raw.id === "string") merged.id = raw.id;
+        if (typeof raw.format === "string") merged.format = raw.format;
+        if (typeof raw.signature === "string") merged.signature = raw.signature;
+        if (typeof raw.data === "string") merged.data = raw.data;
+        if (typeof raw.text === "string") merged.text = (merged.text ?? "") + raw.text;
+        if (typeof raw.summary === "string") merged.summary = (merged.summary ?? "") + raw.summary;
+        this.byIndex.set(idx, merged);
+    }
+
+    finalize(): readonly ReasoningDetail[] {
+        const out: ReasoningDetail[] = [];
+        for (const idx of this.orderedIndices) {
+            const raw = this.byIndex.get(idx);
+            if (!raw) continue;
+            const typed = toTypedDetail(raw);
+            if (typed !== null) out.push(typed);
+        }
+        return out;
+    }
 }
 
 interface ChunkChoiceDelta {
@@ -21,7 +114,7 @@ interface ChunkChoiceDelta {
     content?: string;
     reasoning?: string;
     reasoning_content?: string;
-    reasoning_details?: ReadonlyArray<ReasoningDetail>;
+    reasoning_details?: ReadonlyArray<WireReasoningDetail>;
     tool_calls?: ReadonlyArray<{
         index?: number;
         id?: string;
@@ -60,7 +153,7 @@ interface OpenRouterUsage {
     };
 }
 
-const buildOpenRouterUsageEvent = (u: OpenRouterUsage): ProviderEvent | null => {
+const buildOpenRouterUsageEvent = (u: OpenRouterUsage, upstream?: string): ProviderEvent | null => {
     const totalIn = u.prompt_tokens ?? 0;
     const out = u.completion_tokens ?? 0;
     if (totalIn === 0 && out === 0) return null;
@@ -76,6 +169,7 @@ const buildOpenRouterUsageEvent = (u: OpenRouterUsage): ProviderEvent | null => 
             ...(cached > 0 ? { cacheReadTokens: cached } : {}),
             ...(cacheWrite > 0 ? { cacheCreationTokens: cacheWrite } : {}),
             ...(typeof u.cost === "number" && u.cost >= 0 ? { costUsd: u.cost } : {}),
+            ...(upstream ? { upstream } : {}),
         },
     };
 };
@@ -84,6 +178,7 @@ interface ChunkPayload {
     choices?: ReadonlyArray<ChunkChoice>;
     usage?: OpenRouterUsage;
     error?: OpenRouterErrorPayload;
+    provider?: string;
 }
 
 export const formatOpenRouterError = (err: OpenRouterErrorPayload): string => {
@@ -141,6 +236,7 @@ interface NonStreamMessage {
     content?: string | null;
     reasoning?: string;
     reasoning_content?: string;
+    reasoning_details?: ReadonlyArray<WireReasoningDetail>;
     tool_calls?: ReadonlyArray<{
         id?: string;
         type?: string;
@@ -158,6 +254,7 @@ interface NonStreamResponse {
     choices?: ReadonlyArray<NonStreamChoice>;
     usage?: OpenRouterUsage;
     error?: OpenRouterErrorPayload;
+    provider?: string;
 }
 
 // Synthesize a one-shot event sequence from a non-streamed JSON response.
@@ -202,6 +299,13 @@ export async function* parseBatch(response: Response): AsyncGenerator<ProviderEv
         yield { type: "reasoning.delta", text: reasoningOut };
     }
 
+    if (Array.isArray(message.reasoning_details) && message.reasoning_details.length > 0) {
+        const acc = new ReasoningDetailsAccumulator();
+        for (const d of message.reasoning_details) acc.push(d);
+        const details = acc.finalize();
+        if (details.length > 0) yield { type: "reasoning.complete", details };
+    }
+
     if (typeof message.content === "string" && message.content.length > 0) {
         yield { type: "text.delta", text: message.content };
     }
@@ -221,7 +325,7 @@ export async function* parseBatch(response: Response): AsyncGenerator<ProviderEv
     }
 
     if (json.usage) {
-        const ev = buildOpenRouterUsageEvent(json.usage);
+        const ev = buildOpenRouterUsageEvent(json.usage, json.provider);
         if (ev) yield ev;
     }
 
@@ -230,6 +334,8 @@ export async function* parseBatch(response: Response): AsyncGenerator<ProviderEv
 
 export async function* parseStream(response: Response): AsyncGenerator<ProviderEvent> {
     const toolCalls = new Map<number, ToolCallAccumulator>();
+    const reasoningAcc = new ReasoningDetailsAccumulator();
+    let upstreamProvider: string | undefined;
     let stopReason: StopReason = "end_turn";
     let errorPayload: ProviderError | undefined;
     let pendingUsage: OpenRouterUsage | undefined;
@@ -245,6 +351,9 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
         }
 
         if (chunk.usage) pendingUsage = chunk.usage;
+        if (typeof chunk.provider === "string" && chunk.provider.length > 0) {
+            upstreamProvider = chunk.provider;
+        }
 
         const choice = chunk.choices?.[0];
         if (!choice) continue;
@@ -267,6 +376,10 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
         }
         if (reasoningOut.length > 0) {
             yield { type: "reasoning.delta", text: reasoningOut };
+        }
+
+        if (Array.isArray(delta.reasoning_details)) {
+            for (const d of delta.reasoning_details) reasoningAcc.push(d);
         }
 
         if (typeof delta.content === "string" && delta.content.length > 0) {
@@ -304,8 +417,13 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
         }
     }
 
+    const finalizedDetails = reasoningAcc.finalize();
+    if (finalizedDetails.length > 0) {
+        yield { type: "reasoning.complete", details: finalizedDetails };
+    }
+
     if (pendingUsage) {
-        const ev = buildOpenRouterUsageEvent(pendingUsage);
+        const ev = buildOpenRouterUsageEvent(pendingUsage, upstreamProvider);
         if (ev) yield ev;
     }
 

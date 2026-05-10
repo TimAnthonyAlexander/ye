@@ -1,6 +1,6 @@
 # Ye — Overview
 
-Ye is a local Claude Code clone. TypeScript on Bun, terminal UI in React/Ink, multi-provider (OpenRouter, Anthropic-direct, OpenAI, and Ollama for local models), all state on disk under `~/.ye/`.
+Ye is a local Claude Code clone. TypeScript on Bun, terminal UI in React/Ink, multi-provider (OpenRouter, Anthropic-direct, OpenAI, DeepSeek native, and Ollama for local models), all state on disk under `~/.ye/`.
 
 It exists because Claude Code is great but closed. Ye is the same shape — a ReAct agent loop with deny-first permissions, append-only transcripts, pluggable tools — built so that I can use it daily, extend it however I want, and run it on whatever model I want.
 
@@ -19,7 +19,7 @@ Layers, in dependency order. Each is a folder under `src/` and a doc here.
 
 1. **Storage** (`storage/`, `memory/`) — `~/.ye/` filesystem layout, project hashing, session/history transcripts, the centralized `CLAUDE.md`/`YE.md` resolver, global `MEMORY.md`. See `STORAGE.md`.
 2. **Config** (`config/`) — `~/.ye/config.json` (default provider, default model). Already implemented.
-3. **Providers** (`providers/`) — abstract `Provider` interface; OpenRouter v1, Anthropic + OpenAI Phase 3, Ollama (local) — all shipped. See `PROVIDERS.md`.
+3. **Providers** (`providers/`) — abstract `Provider` interface; OpenRouter v1, Anthropic + OpenAI Phase 3, DeepSeek native (with reasoning round-trip), Ollama (local) — all shipped. See `PROVIDERS.md`.
 4. **Permissions** (`permissions/`) — deny-first rule evaluation; `AUTO` + `NORMAL` + `PLAN` modes in v1 (Shift+Tab cycles). See `PERMISSIONS.md`.
 5. **Tools** (`tools/`) — 15 tools registered: Read, Edit, Write, Bash, Grep, Glob, TodoWrite, ExitPlanMode, EnterPlanMode, AskUserQuestion, Task, WebFetch, WebSearch, Skill, SaveMemory. See `TOOLS.md`.
 6. **Pipeline** (`pipeline/`) — the 9-step turn pipeline + agent loop. Streams events. See `PIPELINE.md`.
@@ -44,12 +44,14 @@ The pipeline is the spine. Everything else feeds into it. Subagents reuse it.
 - Sidechain JSONL transcripts
 - Auto-memory (LLM scan of memory-file headers, top-N)
 - 4-level CLAUDE.md hierarchy
-- Slash commands (`/mode`, `/clear`, `/help`, `/init`, `/provider`, `/model`, `/exit`)
+- Slash commands (`/mode`, `/clear`, `/help`, `/init`, `/provider`, `/model`, `/routing`, `/exit`)
 - Interactive picker UI (`ctx.pick`) for any slash command needing a selection — filter-as-you-type + arrow nav + Enter/Esc
 
 ### Phase 3 — Provider parity
 - Anthropic direct (with prompt caching) — **shipped**
 - OpenAI (via Responses API) — **shipped**
+- DeepSeek native (with reasoning_content round-trip on tool-call sub-loops) — **shipped**. The canonical path for V4 Pro reasoning; OpenRouter strips reasoning fields on every V4 Pro upstream except DeepInfra (66k context). See `REASONING_STORING.md` for the empirical matrix.
+- Reasoning preservation across turns: `Message.reasoning_details` canonical form persisted to JSONL transcript, replayed via `/resume` and `/rewind`, stripped on `/model` / `/provider` switches — **shipped**
 - Tool-call format normalization layer — present per-provider via `adapt.ts`/`stream.ts`
 - Conformance suite across all three — pending
 

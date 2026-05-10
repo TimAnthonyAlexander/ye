@@ -19,6 +19,11 @@ const PROVIDER_LABELS: Readonly<Record<string, { label: string; description?: st
         label: "OpenAI",
         description: "GPT-5 Responses API. Default OPENAI_API_KEY. Reasoning & prompt caching.",
     },
+    deepseek: {
+        label: "DeepSeek",
+        description:
+            "DeepSeek native API. Default DEEPSEEK_API_KEY. Full reasoning round-trip on V4 Pro / V4 Flash.",
+    },
     ollama: {
         label: "Ollama",
         description:
@@ -55,7 +60,7 @@ const applyChoice = async (next: string, ctx: SlashCommandContext): Promise<Slas
 export const ProviderCommand: SlashCommand = {
     name: "provider",
     description: "Show or switch the active LLM provider.",
-    usage: "/provider [openrouter|anthropic|openai]",
+    usage: "/provider [openrouter|anthropic|openai|deepseek|ollama]",
     execute: async (args: string, ctx: SlashCommandContext): Promise<SlashCommandResult> => {
         const arg = args.trim().toLowerCase();
         if (arg.length === 0) {

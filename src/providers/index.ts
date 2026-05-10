@@ -1,5 +1,6 @@
 import type { Config } from "../config/index.ts";
 import { buildAnthropicFromConfig, MissingAnthropicKeyError } from "./anthropic/index.ts";
+import { buildDeepSeekFromConfig, MissingDeepSeekKeyError } from "./deepseek/index.ts";
 import { buildOllamaFromConfig } from "./ollama/index.ts";
 import { buildOpenAIFromConfig, MissingOpenAIKeyError } from "./openai/index.ts";
 import { buildOpenRouterFromConfig, MissingApiKeyError } from "./openrouter/index.ts";
@@ -14,6 +15,8 @@ export type {
     ProviderEvent,
     ProviderInput,
     ProviderUsage,
+    ReasoningDetail,
+    ReasoningFormat,
     Role,
     StopReason,
     ToolCallRequest,
@@ -22,6 +25,7 @@ export type {
 export { MissingApiKeyError } from "./openrouter/index.ts";
 export { MissingAnthropicKeyError } from "./anthropic/index.ts";
 export { MissingOpenAIKeyError } from "./openai/index.ts";
+export { MissingDeepSeekKeyError } from "./deepseek/index.ts";
 export {
     defaultModelFor,
     findModel,
@@ -42,20 +46,32 @@ const builders: Record<string, (config: Config) => Provider> = {
     openrouter: buildOpenRouterFromConfig,
     anthropic: buildAnthropicFromConfig,
     openai: buildOpenAIFromConfig,
+    deepseek: buildDeepSeekFromConfig,
     ollama: buildOllamaFromConfig,
 };
 
-export const PROVIDER_IDS: readonly string[] = ["openrouter", "anthropic", "openai", "ollama"];
+export const PROVIDER_IDS: readonly string[] = [
+    "openrouter",
+    "anthropic",
+    "openai",
+    "deepseek",
+    "ollama",
+];
 
-// Surfaced for command-layer error handling: the two missing-key error types
+// Surfaced for command-layer error handling: the missing-key error types
 // that callers typically catch. Adding a provider here means catching its
 // missing-key variant separately.
 export const isMissingKeyError = (
     err: unknown,
-): err is MissingApiKeyError | MissingAnthropicKeyError | MissingOpenAIKeyError =>
+): err is
+    | MissingApiKeyError
+    | MissingAnthropicKeyError
+    | MissingOpenAIKeyError
+    | MissingDeepSeekKeyError =>
     err instanceof MissingApiKeyError ||
     err instanceof MissingAnthropicKeyError ||
-    err instanceof MissingOpenAIKeyError;
+    err instanceof MissingOpenAIKeyError ||
+    err instanceof MissingDeepSeekKeyError;
 
 export const getProvider = (config: Config, id?: string): Provider => {
     const providerId = id ?? config.defaultProvider;

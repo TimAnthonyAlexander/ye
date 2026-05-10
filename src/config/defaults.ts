@@ -15,6 +15,10 @@ export const DEFAULT_CONFIG: Config = {
             baseUrl: "https://api.openai.com/v1",
             apiKeyEnv: "OPENAI_API_KEY",
         },
+        deepseek: {
+            baseUrl: "https://api.deepseek.com",
+            apiKeyEnv: "DEEPSEEK_API_KEY",
+        },
         ollama: {
             baseUrl: "http://localhost:11434",
             apiKeyEnv: "OLLAMA_API_KEY",
@@ -24,7 +28,7 @@ export const DEFAULT_CONFIG: Config = {
         provider: "openrouter",
         model: "~google/gemini-flash-latest",
         allowFallbacks: true,
-        providerSort: "price",
+        routing: "cheapest",
     },
     compact: {
         threshold: 0.5,

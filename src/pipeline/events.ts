@@ -1,5 +1,5 @@
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
-import type { ProviderError, ProviderUsage } from "../providers/index.ts";
+import type { ProviderError, ProviderUsage, ReasoningDetail } from "../providers/index.ts";
 import type { ToolResult, UserQuestionOption } from "../tools/index.ts";
 
 export interface UserQuestionPayload {
@@ -21,6 +21,10 @@ export type Event =
     | { readonly type: "turn.start"; readonly turnIndex: number }
     | { readonly type: "model.text"; readonly delta: string }
     | { readonly type: "model.reasoning"; readonly delta: string }
+    | {
+          readonly type: "model.reasoningDetails";
+          readonly details: readonly ReasoningDetail[];
+      }
     | {
           readonly type: "model.toolCall";
           readonly id: string;

@@ -1,12 +1,12 @@
 # Ye — Providers
 
-Ye talks to LLMs through a single `Provider` interface. **Shipped:** OpenRouter, Anthropic-direct (with prompt caching), OpenAI (via Responses API), and Ollama (local — `http://localhost:11434`, no API key required for local models). Adding a fifth provider is a single new folder under `src/providers/` and a registry entry — no other code changes. **Web tools (WebFetch/WebSearch) shipped early** — originally Phase 6, pulled forward.
+Ye talks to LLMs through a single `Provider` interface. **Shipped:** OpenRouter, Anthropic-direct (with prompt caching), OpenAI (via Responses API), DeepSeek (native, with reasoning round-trip), and Ollama (local — `http://localhost:11434`, no API key required for local models). Adding a sixth provider is a single new folder under `src/providers/` and a registry entry — no other code changes. **Web tools (WebFetch/WebSearch) shipped early** — originally Phase 6, pulled forward.
 
 ## The interface
 
 ```ts
 interface Provider {
-  id: string;                              // "openrouter" | "anthropic" | "openai" | "ollama"
+  id: string;                              // "openrouter" | "anthropic" | "openai" | "deepseek" | "ollama"
   stream(input: ProviderInput): AsyncIterable<ProviderEvent>;
   countTokens?(messages: Message[]): Promise<number>;
   getContextSize(model: string): Promise<number>;   // tokens; falls back to 128_000 on failure
@@ -49,6 +49,7 @@ interface ProviderCapabilities {
 - **OpenRouter:** `GET https://openrouter.ai/api/v1/models` exposes `context_length` per model.
 - **Anthropic:** hardcoded per-model lookup table (vendor doesn't expose a discovery endpoint). Lives in `src/providers/anthropic/models.ts`. Current values: 1M for opus 4.6/4.7 and sonnet 4.6 (the API exposes the 1M window on the same model ID; no beta header required as of 2026-03-13); 200K for haiku 4.5 (no 1M variant).
 - **OpenAI:** hardcoded per-model lookup table. Lives in `src/providers/openai/models.ts`.
+- **DeepSeek:** hardcoded per-model lookup table. Lives in `src/providers/deepseek/models.ts`. V4 Pro / V4 Flash both at 1M; the legacy `deepseek-chat` / `deepseek-reasoner` aliases (deprecating 2026-07-24) are also listed.
 - **Ollama:** `POST /api/show` per model. Reads Modelfile `num_ctx` first (Modelfile-author override), then scans `model_info` for any `*.context_length` field (architecture-scoped — `llama.context_length`, `qwen3.context_length`, etc.). Cached in-memory per session. Lives in `src/providers/ollama/models.ts`.
 - **Fallback on any failure:** `128_000`. Logged but not surfaced to the user.
 
@@ -114,6 +115,8 @@ New capabilities are added as boolean flags rather than `if (provider.id === ...
 - `provider.order` + `allow_fallbacks: false` from `defaultModel.providerOrder` / `defaultModel.allowFallbacks` in config.
 - Tool-call format: OpenAI-compatible `tool_calls` array on assistant deltas.
 - `capabilities.promptCache = false` (varies per upstream model; conservative default).
+- **Routing strategy:** `defaultModel.routing` (`cheapest` | `fastest` | `latency` | `sticky`, default `cheapest`) maps to OpenRouter's `provider.sort` (`price` | `throughput` | `latency`). The `sticky` strategy captures the upstream from the SSE chunk's top-level `provider` field on the first turn for a given model and pins subsequent turns to it via `provider.order`. Pins live in `SessionState.pinnedUpstream` (per-model record); `/model` and `/provider` switches clear them. User-facing toggle: `/routing`. Explicit `defaultModel.providerOrder` overrides routing entirely.
+- **Upstream provider tracking:** the SSE parser captures the top-level `provider` field from chunks and emits it on the usage event as `ProviderUsage.upstream`. Used by sticky routing to identify which upstream served the request.
 
 ## Anthropic (Phase 3 — shipped)
 
@@ -136,6 +139,21 @@ New capabilities are added as boolean flags rather than `if (provider.id === ...
 - **Prompt caching:** `capabilities.promptCache = true` (automatic 90% discount on GPT-5 family).
 - **Reasoning:** `reasoning.delta` events emitted for thought summaries. `reasoning.effort` configurable via `providerOptions.reasoningEffort`.
 - **Tool calls:** Reconstructed from `response.output_item.added` + semantic argument deltas. Map `call_id` to Assistant tool calls and use `fc_` item prefixes in multi-turn history.
+
+## DeepSeek (native, shipped)
+
+- POST `https://api.deepseek.com/chat/completions`
+- Auth: `Authorization: Bearer ${env[config.providers.deepseek.apiKeyEnv]}` (default env var: `DEEPSEEK_API_KEY`)
+- **OpenAI-compatible chat completions shape** — no Responses API. Body fields: `model`, `messages`, `stream`, `tools`, `thinking: { type: "enabled" | "disabled" }`, `reasoning_effort: "high" | "max"`, `stream_options: { include_usage: true }`.
+- **Streaming:** standard SSE, `data: {json}` lines, `[DONE]` terminator. Reasoning streams first (`delta.reasoning_content`) then content (`delta.content`) — the two never appear in the same chunk. Usage arrives in a final chunk with empty `choices` when `stream_options.include_usage: true`.
+- **Reasoning round-trip rules (the reason this provider exists):**
+  - **Inside a tool-call sub-loop within one user turn:** `reasoning_content` MUST be sent back on every assistant message (else HTTP 400). The adapter walks messages and includes it on every assistant message *at or after* the last user message.
+  - **Between user turns:** `reasoning_content` is stripped from every assistant message *before* the last user message — per DeepSeek's official guidance ("the API ignores it; concatenating long CoTs from earlier turns tends to degrade subsequent response quality").
+  - Implemented in `deepseek/adapt.ts:toWireMessages`. Source-of-truth on Ye's side is still `Message.reasoning_details` (the canonical structured form); the adapter flattens the `reasoning.text` blocks into a single `reasoning_content` string at wire time.
+- **Thinking effort:** `reasoning_effort` clamps to `"high"` or `"max"`. DeepSeek remaps `low`/`medium` → `high` and `xhigh` → `max` upstream; Ye's adapter mirrors this so the `effort` hint passed via `providerOptions.reasoning` works regardless of which value the user picked. `reasoning: false` (explicit opt-out) → `thinking: { type: "disabled" }`.
+- **Capabilities:** `promptCache: true` (automatic prefix caching, no markers needed), `toolUse: true`, `vision: false`, `serverSideWebSearch: false`.
+- **Stop reason mapping:** `stop` → `end_turn`, `tool_calls` → `tool_use`, `length` → `max_tokens`, `content_filter` / `insufficient_system_resource` → `error`.
+- **Anthropic-format passthrough not used:** DeepSeek also exposes an Anthropic-compatible base URL at `https://api.deepseek.com/anthropic`. Ye uses the OpenAI shape only — simpler and matches Ye's canonical message format.
 
 ## Ollama (shipped)
 
@@ -173,7 +191,9 @@ Current entries (full list lives in `src/providers/models.ts`):
 |---|---|---|
 | openrouter | `~google/gemini-flash-latest` | Gemini Flash (latest) |
 | openrouter | `google/gemini-3.1-pro-preview` | Gemini 3.1 Pro Preview |
-| openrouter | `deepseek/deepseek-v4-pro` | DeepSeek v4 Pro |
+| openrouter | `deepseek/deepseek-v4-pro` | DeepSeek v4 Pro (OpenRouter) |
+| deepseek | `deepseek-v4-pro` | DeepSeek V4 Pro |
+| deepseek | `deepseek-v4-flash` | DeepSeek V4 Flash |
 | openrouter | `anthropic/claude-opus-4.7` | Opus 4.7 (OpenRouter) |
 | openrouter | `anthropic/claude-sonnet-4.6` | Sonnet 4.6 (OpenRouter) |
 | openrouter | `anthropic/claude-haiku-4.5` | Haiku 4.5 (OpenRouter) |
@@ -217,6 +237,11 @@ src/providers/
 │   ├── adapt.ts        # Ye Message[] → Responses API body (recursive strict schema, instruction split)
 │   ├── stream.ts       # semantic event SSE -> ProviderEvent (reasoning deltas, function_call item support)
 │   └── models.ts       # per-model context-size table
+├── deepseek/           # native, shipped
+│   ├── index.ts        # Provider impl, MissingDeepSeekKeyError
+│   ├── adapt.ts        # Ye Message[] → DeepSeek body; tool-loop window strip rule on reasoning_content
+│   ├── stream.ts       # SSE chunk → ProviderEvent; reasoning_content + content phases
+│   └── models.ts       # per-model context-size table (V4 Pro/Flash both 1M)
 └── ollama/             # shipped
     ├── index.ts        # Provider impl + buildOllamaFromConfig (no MissingKeyError — local is keyless)
     ├── adapt.ts        # Ye Message[] → /api/chat body (parsed-object tool args, tool_name on replies)

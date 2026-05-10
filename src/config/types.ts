@@ -20,6 +20,15 @@ export interface ProviderConfig {
 
 export type ProviderSort = "price" | "throughput" | "latency";
 
+// User-facing routing strategy for the OpenRouter route. Maps to
+// providerSort / providerOrder at request time:
+//   cheapest → providerSort: "price"
+//   fastest  → providerSort: "throughput"
+//   latency  → providerSort: "latency"
+//   sticky   → pins to the upstream that served the first turn of the session;
+//              caught and remembered from the SSE chunk-level `provider` field.
+export type RoutingStrategy = "cheapest" | "fastest" | "latency" | "sticky";
+
 export interface ModelSetting {
     readonly provider: ProviderId;
     readonly model: string;
@@ -27,7 +36,11 @@ export interface ModelSetting {
     readonly allowFallbacks?: boolean;
     // OpenRouter only: sort candidate sub-providers when no explicit order is
     // given. "price" picks cheapest first; "throughput" / "latency" pick fastest.
+    // Advanced override — when set, takes precedence over `routing`.
     readonly providerSort?: ProviderSort;
+    // OpenRouter only. Default "cheapest". User-facing routing strategy
+    // adjusted via /routing. Ignored when `providerOrder` is explicitly set.
+    readonly routing?: RoutingStrategy;
 }
 
 export interface CompactConfig {

@@ -25,6 +25,22 @@ const ANTHROPIC_PRICING: Readonly<Record<string, ModelPricing>> = {
     "claude-haiku-4-5": { input: 1.0, output: 5.0, cacheRead: 0.1, cacheWrite: 1.25 },
 };
 
+// DeepSeek native (api.deepseek.com). Their chat-completions response carries
+// only token counts in `usage`, never a cost figure — every native call has to
+// be priced locally. Cache hits are read from `prompt_tokens_details.cached_tokens`.
+//
+// V4 Pro effective rate is 75% off through 2026-05-31 (input $1.74 → $0.435,
+// output $3.48 → $0.87, cache-read $0.0145 → $0.003625). After expiry, bump
+// these values back. V4 Flash and the legacy aliases (deepseek-chat /
+// deepseek-reasoner, both routing to V4 Flash, retire 2026-07-24) have no
+// promotional discount.
+const DEEPSEEK_PRICING: Readonly<Record<string, ModelPricing>> = {
+    "deepseek-v4-pro": { input: 0.435, output: 0.87, cacheRead: 0.003625 },
+    "deepseek-v4-flash": { input: 0.14, output: 0.28, cacheRead: 0.0028 },
+    "deepseek-chat": { input: 0.14, output: 0.28, cacheRead: 0.0028 },
+    "deepseek-reasoner": { input: 0.14, output: 0.28, cacheRead: 0.0028 },
+};
+
 const OPENAI_PRICING: Readonly<Record<string, ModelPricing>> = {
     "gpt-5.5-pro": { input: 30.0, output: 180.0 },
     "gpt-5.5": { input: 5.0, output: 30.0, cacheRead: 0.5 },
@@ -46,6 +62,7 @@ const OPENAI_PRICING: Readonly<Record<string, ModelPricing>> = {
 export const lookupPricing = (providerId: string, model: string): ModelPricing | undefined => {
     if (providerId === "anthropic") return ANTHROPIC_PRICING[model];
     if (providerId === "openai") return OPENAI_PRICING[model];
+    if (providerId === "deepseek") return DEEPSEEK_PRICING[model];
     // openrouter and any unknown provider: cost comes from API directly
     return undefined;
 };

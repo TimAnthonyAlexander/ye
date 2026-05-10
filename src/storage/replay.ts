@@ -1,7 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { PermissionMode } from "../config/index.ts";
-import type { Message, ToolCallRequest } from "../providers/index.ts";
+import type { Message, ReasoningDetail, ToolCallRequest } from "../providers/index.ts";
 import { getProjectSessionsDir } from "./paths.ts";
 
 export interface PromptStartEntry {
@@ -95,19 +95,30 @@ export const replaySessionFile = async (jsonlPath: string): Promise<ReplayedSess
 
     let pendingText = "";
     let pendingToolCalls: ToolCallRequest[] = [];
+    let pendingReasoningDetails: readonly ReasoningDetail[] | null = null;
     let assistantPushed = false;
 
     const commitAssistant = (): void => {
         if (assistantPushed) return;
-        if (pendingText.length === 0 && pendingToolCalls.length === 0) return;
+        if (
+            pendingText.length === 0 &&
+            pendingToolCalls.length === 0 &&
+            pendingReasoningDetails === null
+        )
+            return;
+        const reasoning =
+            pendingReasoningDetails && pendingReasoningDetails.length > 0
+                ? { reasoning_details: pendingReasoningDetails }
+                : {};
         const msg: Message =
             pendingToolCalls.length > 0
                 ? {
                       role: "assistant",
                       content: pendingText.length > 0 ? pendingText : null,
                       tool_calls: pendingToolCalls,
+                      ...reasoning,
                   }
-                : { role: "assistant", content: pendingText };
+                : { role: "assistant", content: pendingText, ...reasoning };
         history.push(msg);
         assistantPushed = true;
     };
@@ -124,17 +135,25 @@ export const replaySessionFile = async (jsonlPath: string): Promise<ReplayedSess
                 }
                 pendingText = "";
                 pendingToolCalls = [];
+                pendingReasoningDetails = null;
                 assistantPushed = false;
                 break;
             }
             case "turn.start": {
                 pendingText = "";
                 pendingToolCalls = [];
+                pendingReasoningDetails = null;
                 assistantPushed = false;
                 break;
             }
             case "model.text": {
                 if (typeof evt.delta === "string") pendingText += evt.delta;
+                break;
+            }
+            case "model.reasoningDetails": {
+                if (Array.isArray(evt.details)) {
+                    pendingReasoningDetails = evt.details as readonly ReasoningDetail[];
+                }
                 break;
             }
             case "model.toolCall": {
@@ -230,6 +249,7 @@ export const replaySessionFile = async (jsonlPath: string): Promise<ReplayedSess
                     prompts.splice(ordinal);
                     pendingText = "";
                     pendingToolCalls = [];
+                    pendingReasoningDetails = null;
                     assistantPushed = false;
                     // Drop tool-call rows that belong to rewound turns. We
                     // can't know exactly which ones without per-turn indexing,

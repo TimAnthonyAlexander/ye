@@ -44,6 +44,8 @@ import {
     tryBuildProvider,
 } from "../providers/index.ts";
 import { findFreeModelLabel } from "../providers/openrouter/freeModels.ts";
+import { stripAllReasoningDetails } from "../providers/openrouter/reasoningPolicy.ts";
+import { clearPinnedUpstreams } from "../pipeline/routing.ts";
 import {
     appendHistory,
     generateSessionTitle,
@@ -691,6 +693,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             // Keep prior window on failure — getContextSize already falls back internally.
         }
         providerRef.current = built.provider;
+        // Provider switches always cross model-version boundaries; strip
+        // reasoning_details unconditionally (same rationale as switchModel).
+        const stripped = stripAllReasoningDetails(state.history);
+        if (stripped !== state.history) {
+            state.history.length = 0;
+            state.history.push(...stripped);
+        }
+        clearPinnedUpstreams(state);
         state.activeModel = nextModel;
         state.contextWindow = nextWindow;
         setProviderId(nextId);
@@ -718,6 +728,18 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             nextWindow = await provider.getContextSize(nextModel);
         } catch {
             // Keep prior window on failure.
+        }
+        const priorModel = state.activeModel ?? cfgRef.current.defaultModel.model;
+        if (priorModel !== nextModel) {
+            // Signatures and encrypted reasoning blobs are model-version-bound;
+            // sending them into a different model produces cryptic 400s
+            // (Anthropic "Invalid signature in thinking block", etc).
+            const stripped = stripAllReasoningDetails(state.history);
+            if (stripped !== state.history) {
+                state.history.length = 0;
+                state.history.push(...stripped);
+            }
+            clearPinnedUpstreams(state);
         }
         state.activeModel = nextModel;
         state.contextWindow = nextWindow;

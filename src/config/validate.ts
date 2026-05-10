@@ -12,6 +12,7 @@ import type {
     ProviderConfig,
     ProviderSort,
     RecoveryConfig,
+    RoutingStrategy,
     SkillsConfig,
     WebSearchFallback,
     WebToolsConfig,
@@ -19,6 +20,7 @@ import type {
 
 const PERMISSION_MODES: readonly PermissionMode[] = ["AUTO", "NORMAL", "PLAN"];
 const PROVIDER_SORTS: readonly ProviderSort[] = ["price", "throughput", "latency"];
+const ROUTING_STRATEGIES: readonly RoutingStrategy[] = ["cheapest", "fastest", "latency", "sticky"];
 
 class ConfigValidationError extends Error {
     constructor(message: string) {
@@ -103,12 +105,26 @@ const validateModelSetting = (value: unknown): ModelSetting => {
         providerSort = value.providerSort as ProviderSort;
     }
 
+    let routing: RoutingStrategy | undefined;
+    if (value.routing !== undefined) {
+        if (
+            typeof value.routing !== "string" ||
+            !ROUTING_STRATEGIES.includes(value.routing as RoutingStrategy)
+        ) {
+            throw new ConfigValidationError(
+                `defaultModel.routing must be one of: ${ROUTING_STRATEGIES.join(", ")}`,
+            );
+        }
+        routing = value.routing as RoutingStrategy;
+    }
+
     return {
         provider: value.provider,
         model: value.model,
         ...(providerOrder !== undefined ? { providerOrder } : {}),
         ...(allowFallbacks !== undefined ? { allowFallbacks } : {}),
         ...(providerSort !== undefined ? { providerSort } : {}),
+        ...(routing !== undefined ? { routing } : {}),
     };
 };
 

@@ -9,6 +9,7 @@ import { ModelCommand } from "./model.ts";
 import { ProviderCommand } from "./provider.ts";
 import { ResumeCommand } from "./resume.ts";
 import { RewindCommand } from "./rewind.ts";
+import { RoutingCommand } from "./routing.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
 
 export type {
@@ -52,6 +53,7 @@ const buildBuiltins = (): readonly SlashCommand[] => {
         ModeCommand,
         ProviderCommand,
         ModelCommand,
+        RoutingCommand,
         ResumeCommand,
         RewindCommand,
         InitCommand,
