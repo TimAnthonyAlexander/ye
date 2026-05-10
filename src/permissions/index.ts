@@ -1,5 +1,5 @@
 import type { PermissionMode, PermissionRule } from "../config/index.ts";
-import { classifyBashCommand, type BashRisk } from "./heuristics.ts";
+import { classifyBashCommand } from "./heuristics.ts";
 import { USER_DENIED } from "./messages.ts";
 import { applyModeDefault } from "./modes.ts";
 import { matchFirst } from "./rules.ts";
@@ -10,7 +10,7 @@ export { USER_DENIED, PLAN_MODE_BLOCKED } from "./messages.ts";
 export { PLAN_ALLOWED } from "./modes.ts";
 export { isBlanketDeny } from "./rules.ts";
 export type { PermissionPromptPayload, PromptReason } from "./prompt.ts";
-export type { Decision, PromptResponse, ToolCall } from "./types.ts";
+export type { Decision, HeuristicReason, PromptResponse, ToolCall } from "./types.ts";
 
 export interface DecideContext {
     readonly toolCall: ToolCall;
@@ -26,11 +26,6 @@ const extractBashCommand = (toolCall: ToolCall): string | null => {
     if (args === null || args === undefined) return null;
     const cmd = args.command;
     return typeof cmd === "string" ? cmd : null;
-};
-
-const heuristicsDecision = (risk: BashRisk): Decision => {
-    if (risk === "prompt") return { kind: "prompt" };
-    return { kind: "allow" };
 };
 
 // Evaluation order per PERMISSIONS.md §Evaluation order:
@@ -65,8 +60,8 @@ export const decide = (ctx: DecideContext): Decision => {
         const command = extractBashCommand(ctx.toolCall);
         if (command !== null) {
             const risk = classifyBashCommand(command);
-            if (risk !== "allow") {
-                return heuristicsDecision(risk);
+            if (risk.kind === "prompt") {
+                return { kind: "prompt", promptReason: risk.reason };
             }
         }
     }

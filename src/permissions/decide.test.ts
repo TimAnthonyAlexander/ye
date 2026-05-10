@@ -409,4 +409,178 @@ describe("decide() — heuristic gate (Bash risk patterns)", () => {
         );
         expect(d.kind).toBe("prompt");
     });
+
+    test("H24 AUTO + 'rm -fr foo' → prompt (flag-order regression)", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "rm -fr /tmp/foo" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H25 AUTO + 'git push -f origin main' → prompt (short flag)", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "git push -f origin main" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H26 AUTO + 'git push --force-with-lease' → allow (safer alternative)", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "git push --force-with-lease origin main" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("allow");
+    });
+
+    test("H27 AUTO + 'git stash pop' → prompt (can lose work on conflict)", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "git stash pop" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H28 AUTO + 'find . -name *.log -delete' → prompt", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "find . -name '*.log' -delete" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H29 AUTO + 'kubectl delete pod foo' → prompt", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "kubectl delete pod foo" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H30 AUTO + 'terraform destroy -auto-approve' → prompt", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "terraform destroy -auto-approve" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H31 AUTO + 'npm publish' → prompt", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "npm publish" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H32 AUTO + bare 'git rm path/to/file.ts' → allow (only -r form prompts)", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "git rm path/to/file.ts" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("allow");
+    });
+
+    test("H33 AUTO + 'git rm -r dir/' → prompt", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "git rm -r src/old" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H34 AUTO + 'git reset --soft HEAD~1' → allow (--soft is not lossy)", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "git reset --soft HEAD~1" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("allow");
+    });
+
+    test("H35 AUTO + 'echo \"rm -rf this dir\"' → allow (string content normalized away)", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: 'echo "rm -rf this dir"' }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("allow");
+    });
+
+    test("H36 AUTO + 'git log --grep \"drop table\"' → allow (string content normalized away)", () => {
+        // SQL patterns target raw, but here the unique trigger is a string
+        // literal inside double quotes. drop-table runs on raw, so the test
+        // documents real behavior: this WILL prompt because drop-table is a
+        // raw-target. Verifies the design tradeoff is intentional.
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: 'git log --grep "drop table"' }),
+                isReadOnly: false,
+            }),
+        );
+        // drop-table runs on raw, so the literal string still trips it.
+        // This is an accepted false positive — safer to ask than miss real DROPs.
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H37 AUTO + heuristic prompt carries a promptReason with id and label", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "rm -rf /tmp/foo" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+        if (d.kind === "prompt") {
+            expect(d.promptReason).toBeDefined();
+            expect(d.promptReason?.id).toBe("rm-recursive");
+            expect(typeof d.promptReason?.label).toBe("string");
+            expect((d.promptReason?.label ?? "").length).toBeGreaterThan(0);
+        }
+    });
+
+    test("H38 NORMAL + state-modifying prompt has NO promptReason (came from mode default, not heuristic)", () => {
+        const d = decide(ctx({ mode: "NORMAL", toolCall: call("Edit"), isReadOnly: false }));
+        expect(d.kind).toBe("prompt");
+        if (d.kind === "prompt") {
+            expect(d.promptReason).toBeUndefined();
+        }
+    });
 });

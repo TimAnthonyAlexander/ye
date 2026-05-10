@@ -405,6 +405,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             const promptPayload: PermissionPromptPayload = {
                 reason: "tool_use",
                 toolCall,
+                ...(decision.promptReason ? { promptReason: decision.promptReason } : {}),
             };
             const promptEvent: Event = {
                 type: "permission.prompt",

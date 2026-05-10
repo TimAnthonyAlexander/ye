@@ -125,6 +125,9 @@ export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) 
             <Text bold color="yellow">
                 Allow {payload.toolCall.name}?
             </Text>
+            {payload.promptReason && (
+                <Text dimColor>auto-flagged: {payload.promptReason.label}</Text>
+            )}
             <Text>{truncate(renderArgs(payload.toolCall.name, payload.toolCall.args))}</Text>
             <Text dimColor>y allow once · s allow for session · n deny</Text>
         </Box>
