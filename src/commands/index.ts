@@ -1,4 +1,5 @@
 import { ClearCommand } from "./clear.ts";
+import { ContextCommand } from "./context.ts";
 import { CopyCommand } from "./copy.ts";
 import { ExitCommand } from "./exit.ts";
 import { buildHelpCommand } from "./help.ts";
@@ -46,6 +47,7 @@ const buildBuiltins = (): readonly SlashCommand[] => {
     return [
         helpCommand,
         ClearCommand,
+        ContextCommand,
         CopyCommand,
         ModeCommand,
         ProviderCommand,

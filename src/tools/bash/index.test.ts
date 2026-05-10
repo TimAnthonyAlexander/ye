@@ -59,9 +59,7 @@ describe("BashTool", () => {
         const r = await BashTool.execute({ command: "echo hello" }, makeCtx());
         expect(r.ok).toBe(true);
         if (r.ok && typeof r.value === "string") {
-            expect(r.value.split("\n")[0]).toMatch(
-                /^<bash exit_code="0" duration_ms="\d+">$/,
-            );
+            expect(r.value.split("\n")[0]).toMatch(/^<bash exit_code="0" duration_ms="\d+">$/);
             expect(r.value).toContain("hello");
         }
     });

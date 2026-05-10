@@ -49,6 +49,9 @@ export interface SlashCommandContext {
     // or null if the conversation has no assistant text yet. Scans from the
     // tail and skips assistant turns that are tool-call-only (no text body).
     getLastAssistantText(): string | null;
+    // Builds a context snapshot from the live session and pushes a panel into
+    // the chat. Returns false when the session isn't ready (no state yet).
+    showContextPanel(): Promise<boolean>;
     // Open the interactive picker. Resolves with the chosen option's `id`,
     // or `null` if the user dismissed (Esc).
     pick(payload: PickerPayload): Promise<string | null>;

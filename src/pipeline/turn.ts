@@ -225,6 +225,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             mode: state.mode,
             rules: [...(config.permissions?.rules ?? []), ...state.sessionRules],
             isReadOnly: true,
+            heuristicGating: config.permissions?.heuristicGating,
         });
         if (decision.kind === "allow") parallelIds.add(call.id);
     }
@@ -394,6 +395,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             mode: state.mode,
             rules: [...(config.permissions?.rules ?? []), ...state.sessionRules],
             isReadOnly: isToolReadOnly(call.name),
+            heuristicGating: config.permissions?.heuristicGating,
         });
 
         let allowed = decision.kind === "allow";

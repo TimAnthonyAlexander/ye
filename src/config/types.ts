@@ -86,6 +86,10 @@ export interface PermissionRule {
 export interface PermissionsConfig {
     readonly defaultMode: PermissionMode;
     readonly rules: readonly PermissionRule[];
+    // When true (default), deterministic Bash risk patterns gate dangerous
+    // commands even under AUTO mode — "rm -rf /", "git push --force", etc.
+    // are elevated to prompt. Disable to turn off all heuristic intervention.
+    readonly heuristicGating?: boolean;
 }
 
 export type WebSearchFallback = "duckduckgo" | "off";

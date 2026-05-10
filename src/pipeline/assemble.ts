@@ -37,11 +37,7 @@ export interface AssembleInput {
 // Parent: full system prompt + project notes hierarchy + auto-memory selection.
 // Subagent: honor `systemPromptOverride` exactly (no notes, no memory) so the
 // subagent gets exactly the role/tool framing its kind specifies.
-export const assemble = async ({
-    state,
-    model,
-    providerId,
-}: AssembleInput): Promise<Message[]> => {
+export const assemble = async ({ state, model, providerId }: AssembleInput): Promise<Message[]> => {
     if (state.systemPromptOverride) {
         return [{ role: "system", content: state.systemPromptOverride }, ...state.history];
     }

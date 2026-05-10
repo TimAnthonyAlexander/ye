@@ -1,6 +1,8 @@
 import { Box, Static, Text } from "ink";
 import { memo } from "react";
+import type { ContextSnapshot } from "../context/snapshot.ts";
 import { ChatBanner } from "./chatBanner.tsx";
+import { ContextPanel } from "./contextPanel.tsx";
 import { AssistantLine, MessageView } from "./message.tsx";
 import { Thinking } from "./thinking.tsx";
 import { ThinkingDone, ThinkingLive } from "./thinkingBlock.tsx";
@@ -23,7 +25,8 @@ export type ChatItem =
           readonly startedAt: number;
           readonly elapsedMs?: number;
       }
-    | { readonly kind: "banner"; readonly id: string; readonly version: string };
+    | { readonly kind: "banner"; readonly id: string; readonly version: string }
+    | { readonly kind: "context"; readonly id: string; readonly snapshot: ContextSnapshot };
 
 interface ChatProps {
     readonly items: readonly ChatItem[];
@@ -151,6 +154,9 @@ const RenderItem = memo(({ item }: RenderItemProps) => {
     }
     if (item.kind === "banner") {
         return <ChatBanner version={item.version} />;
+    }
+    if (item.kind === "context") {
+        return <ContextPanel snapshot={item.snapshot} />;
     }
     return <ToolCallView entry={item.entry} />;
 });

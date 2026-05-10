@@ -62,10 +62,7 @@ export const Home = memo(
                 stdout.off("resize", onResize);
             };
         }, [stdout]);
-        const modalWidth = Math.max(
-            MODAL_MIN_WIDTH,
-            Math.min(MODAL_MAX_WIDTH, columns - 4),
-        );
+        const modalWidth = Math.max(MODAL_MIN_WIDTH, Math.min(MODAL_MAX_WIDTH, columns - 4));
 
         const visibleCount = Math.min(
             recents.length,
@@ -150,8 +147,7 @@ export const Home = memo(
                     <Box marginTop={1} justifyContent="center">
                         <Text dimColor>
                             Start typing · <Text color="cyan">↑↓</Text> pick ·{" "}
-                            <Text color="cyan">↵</Text> resume ·{" "}
-                            <Text color="cyan">/help</Text>
+                            <Text color="cyan">↵</Text> resume · <Text color="cyan">/help</Text>
                         </Text>
                     </Box>
                 </Box>

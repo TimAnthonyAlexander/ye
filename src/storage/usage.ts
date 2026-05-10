@@ -3,13 +3,7 @@ import { dirname } from "node:path";
 import { computeCostUsd } from "../providers/pricing.ts";
 import { USAGE_FILE } from "./paths.ts";
 
-export type UsageCallKind =
-    | "turn"
-    | "summarize"
-    | "title"
-    | "memory"
-    | "webSearch"
-    | "webFetch";
+export type UsageCallKind = "turn" | "summarize" | "title" | "memory" | "webSearch" | "webFetch";
 
 export interface UsageRecord {
     readonly ts: string;
@@ -73,8 +67,7 @@ export const appendUsageRecord = async (
     // If the provider didn't supply cost (Anthropic / OpenAI direct), compute
     // it from the local pricing table. Unknown models → cost stays undefined
     // and the record is persisted without a cost field; totals skip it.
-    const costUsd =
-        rec.costUsd ?? computeCostUsd(rec.provider, rec.model, rec);
+    const costUsd = rec.costUsd ?? computeCostUsd(rec.provider, rec.model, rec);
     const entry: UsageRecord = {
         ts: rec.ts ?? new Date().toISOString(),
         sessionId: rec.sessionId,

@@ -93,9 +93,7 @@ export const selectMemoryFiles = async (
                         ...(evt.usage.cacheCreationTokens !== undefined
                             ? { cacheCreationTokens: evt.usage.cacheCreationTokens }
                             : {}),
-                        ...(evt.usage.costUsd !== undefined
-                            ? { costUsd: evt.usage.costUsd }
-                            : {}),
+                        ...(evt.usage.costUsd !== undefined ? { costUsd: evt.usage.costUsd } : {}),
                         callKind: "memory",
                     });
                 } catch {

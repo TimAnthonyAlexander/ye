@@ -34,7 +34,10 @@ export const createSessionState = async (
         sessionId: session.sessionId,
         projectId: input.projectId,
         projectRoot: input.projectRoot,
-        mode: (input.modeOverride as SessionState["mode"]) ?? input.config.permissions?.defaultMode ?? "NORMAL",
+        mode:
+            (input.modeOverride as SessionState["mode"]) ??
+            input.config.permissions?.defaultMode ??
+            "NORMAL",
         contextWindow,
         history: [],
         sessionRules: [],

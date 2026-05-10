@@ -38,6 +38,7 @@ export const DEFAULT_CONFIG: Config = {
     permissions: {
         defaultMode: "NORMAL",
         rules: [],
+        heuristicGating: true,
     },
     webTools: {
         cacheTtlMs: 15 * 60 * 1000,

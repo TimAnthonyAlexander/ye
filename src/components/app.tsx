@@ -16,7 +16,9 @@ import {
     buildSkillToolDescription,
     loadSkillRegistry,
     skillToSlashCommand,
+    type SkillRegistry,
 } from "../skills/index.ts";
+import { buildContextSnapshot } from "../context/snapshot.ts";
 import { setSkillRegistry } from "../tools/skill/index.ts";
 import {
     expandMentions,
@@ -272,6 +274,10 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     const stateRef = useRef<SessionState | null>(null);
     const sessionRef = useRef<SessionHandle | null>(null);
     const providerRef = useRef<Provider | null>(null);
+    // Loaded asynchronously after session boot. Held in a ref so /context can
+    // include skill manifests in its snapshot without forcing a re-render when
+    // the registry arrives.
+    const skillRegistryRef = useRef<SkillRegistry | null>(null);
     // True once a session.title has been generated (or restored from a
     // resumed session). Gates the one-shot title generator so the second user
     // message doesn't fire a fresh title call.
@@ -792,6 +798,31 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 }
                 return null;
             },
+            showContextPanel: async () => {
+                const state = stateRef.current;
+                if (!state) return false;
+                let username: string | undefined;
+                try {
+                    const u = userInfo().username;
+                    if (u.length > 0) username = u;
+                } catch {
+                    // ignore
+                }
+                const snapshot = await buildContextSnapshot({
+                    state,
+                    providerId,
+                    model,
+                    config: cfgRef.current,
+                    skillRegistry: skillRegistryRef.current ?? {
+                        all: new Map(),
+                        modelInvocable: [],
+                        slashBound: [],
+                    },
+                    ...(username ? { username } : {}),
+                });
+                setItems((prev) => [...prev, { kind: "context", id: newChatItemId(), snapshot }]);
+                return true;
+            },
             pick,
         };
         const result = await dispatch(parsed, ctx);
@@ -860,6 +891,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 })
                     .then((registry) => {
                         if (cancelled) return;
+                        skillRegistryRef.current = registry;
                         setSkillRegistry(registry, buildSkillToolDescription(registry));
                         setExtraCommands(registry.slashBound.map(skillToSlashCommand));
                     })

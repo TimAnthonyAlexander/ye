@@ -206,7 +206,15 @@ const validatePermissionsConfig = (value: unknown): PermissionsConfig => {
         throw new ConfigValidationError("permissions.rules must be an array");
     }
     const rules = value.rules.map((rule, i) => validatePermissionRule(i, rule));
-    return { defaultMode: value.defaultMode as PermissionMode, rules };
+    const heuristicGating =
+        value.heuristicGating === undefined || typeof value.heuristicGating === "boolean"
+            ? (value.heuristicGating as boolean | undefined)
+            : (() => {
+                  throw new ConfigValidationError(
+                      "permissions.heuristicGating must be boolean (default true)",
+                  );
+              })();
+    return { defaultMode: value.defaultMode as PermissionMode, rules, heuristicGating };
 };
 
 const SEARCH_FALLBACKS: readonly WebSearchFallback[] = ["duckduckgo", "off"];

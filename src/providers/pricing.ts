@@ -43,10 +43,7 @@ const OPENAI_PRICING: Readonly<Record<string, ModelPricing>> = {
     "gpt-4.1-mini": { input: 0.4, output: 1.6, cacheRead: 0.1 },
 };
 
-export const lookupPricing = (
-    providerId: string,
-    model: string,
-): ModelPricing | undefined => {
+export const lookupPricing = (providerId: string, model: string): ModelPricing | undefined => {
     if (providerId === "anthropic") return ANTHROPIC_PRICING[model];
     if (providerId === "openai") return OPENAI_PRICING[model];
     // openrouter and any unknown provider: cost comes from API directly
@@ -58,7 +55,10 @@ export const lookupPricing = (
 export const computeCostUsd = (
     providerId: string,
     model: string,
-    usage: Pick<ProviderUsage, "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheCreationTokens">,
+    usage: Pick<
+        ProviderUsage,
+        "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheCreationTokens"
+    >,
 ): number | undefined => {
     const p = lookupPricing(providerId, model);
     if (!p) return undefined;
