@@ -93,7 +93,11 @@ export async function* runShapers(input: RunShapersInput): AsyncGenerator<Event,
             appliedCount += 1;
             const tokensFreed = budget.tokensFreedThisTurn - tokensBefore;
             yield { type: "shaper.applied", name: shaper.name, tokensFreed };
-            ctx.messages = await assemble({ state: input.state, model: input.model });
+            ctx.messages = await assemble({
+                state: input.state,
+                model: input.model,
+                providerId: input.provider.id,
+            });
         }
     }
 

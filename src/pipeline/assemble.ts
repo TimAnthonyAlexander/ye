@@ -30,13 +30,18 @@ const buildMemoryBlock = (selected: readonly SelectedMemoryEntry[] | null): stri
 export interface AssembleInput {
     readonly state: SessionState;
     readonly model: string;
+    readonly providerId: string;
 }
 
 // Step 3: build the messages array sent to the model.
 // Parent: full system prompt + project notes hierarchy + auto-memory selection.
 // Subagent: honor `systemPromptOverride` exactly (no notes, no memory) so the
 // subagent gets exactly the role/tool framing its kind specifies.
-export const assemble = async ({ state, model }: AssembleInput): Promise<Message[]> => {
+export const assemble = async ({
+    state,
+    model,
+    providerId,
+}: AssembleInput): Promise<Message[]> => {
     if (state.systemPromptOverride) {
         return [{ role: "system", content: state.systemPromptOverride }, ...state.history];
     }
@@ -48,6 +53,7 @@ export const assemble = async ({ state, model }: AssembleInput): Promise<Message
         model,
         platform: process.platform,
         date: new Date().toISOString().slice(0, 10),
+        providerId,
         ...(username ? { username } : {}),
     });
     const notes = await buildNotesBlock(state.projectRoot);

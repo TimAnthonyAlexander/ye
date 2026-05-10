@@ -118,7 +118,11 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     // Step 3: assemble. Step 4: shapers (Budget Reduction → ... → Auto-Compact),
     // which may clamp the reply budget and/or rewrite state.history. Shapers
     // yield shaper.applied events as they fire.
-    const initialMessages = await assemble({ state, model: activeModel });
+    const initialMessages = await assemble({
+        state,
+        model: activeModel,
+        providerId: provider.id,
+    });
     const shaperGen = runShapers({
         state,
         initialMessages,

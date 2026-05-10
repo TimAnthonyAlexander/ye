@@ -235,7 +235,7 @@ export async function* runModelCallWithRecovery(
                     finalMessages: messages,
                 };
             }
-            messages = await assemble({ state: input.state, model });
+            messages = await assemble({ state: input.state, model, providerId: provider.id });
             attempt += 1;
             yield {
                 type: "recovery.retry",
