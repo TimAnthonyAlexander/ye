@@ -15,6 +15,10 @@ export const DEFAULT_CONFIG: Config = {
             baseUrl: "https://api.openai.com/v1",
             apiKeyEnv: "OPENAI_API_KEY",
         },
+        ollama: {
+            baseUrl: "http://localhost:11434",
+            apiKeyEnv: "OLLAMA_API_KEY",
+        },
     },
     defaultModel: {
         provider: "openrouter",

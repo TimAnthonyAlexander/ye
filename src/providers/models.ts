@@ -51,6 +51,11 @@ const MODELS: readonly ModelInfo[] = [
     { provider: "openai", id: "codex-mini-latest", label: "Codex Mini Latest" },
     { provider: "openai", id: "gpt-4.1", label: "GPT-4.1" },
     { provider: "openai", id: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+    // Ollama models are user-installed locally — these are placeholders that
+    // appear in /model alongside whatever /api/tags reports as actually pulled.
+    { provider: "ollama", id: "qwen3", label: "Qwen3 (Ollama)" },
+    { provider: "ollama", id: "llama3.2", label: "Llama 3.2 (Ollama)" },
+    { provider: "ollama", id: "gpt-oss:20b", label: "GPT-OSS 20B (Ollama)" },
 ];
 
 export const listModels = (providerId?: string): readonly ModelInfo[] =>

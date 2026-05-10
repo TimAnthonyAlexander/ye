@@ -1,5 +1,6 @@
 import { loadConfig } from "../config/index.ts";
 import { findModel, listModels, resolveApiKey } from "../providers/index.ts";
+import { fetchOllamaTags, type OllamaTag } from "../providers/ollama/models.ts";
 import {
     findFreeModelLabel,
     loadFreeModelsCache,
@@ -15,6 +16,8 @@ import type {
 const REFRESH_FREE_ID = "__refresh_free__";
 const HDR_STATIC_ID = "__hdr_static__";
 const HDR_FREE_ID = "__hdr_free__";
+const HDR_OLLAMA_LOCAL_ID = "__hdr_ollama_local__";
+const HDR_OLLAMA_DEFAULTS_ID = "__hdr_ollama_defaults__";
 
 const buildStaticOptions = (providerId: string): PickerOption[] =>
     listModels(providerId).map((m) => ({ id: m.id, label: m.label }));
@@ -41,6 +44,26 @@ const buildOpenRouterOptions = (
         label: "↻ refresh free models",
         description: "scan OpenRouter for tool-capable free models (~30–60s)",
     });
+    return opts;
+};
+
+const buildOllamaOptions = (tags: readonly OllamaTag[]): PickerOption[] => {
+    const opts: PickerOption[] = [];
+    const staticIds = new Set(listModels("ollama").map((m) => m.id));
+    if (tags.length > 0) {
+        opts.push({ id: HDR_OLLAMA_LOCAL_ID, kind: "header", label: "installed locally" });
+        for (const t of tags) {
+            opts.push({ id: t.id, label: t.label });
+            staticIds.delete(t.id);
+        }
+    }
+    const remaining = listModels("ollama").filter((m) => staticIds.has(m.id));
+    if (remaining.length > 0) {
+        opts.push({ id: HDR_OLLAMA_DEFAULTS_ID, kind: "header", label: "popular (pull to use)" });
+        for (const m of remaining) {
+            opts.push({ id: m.id, label: m.label });
+        }
+    }
     return opts;
 };
 
@@ -95,6 +118,7 @@ export const ModelCommand: SlashCommand = {
     execute: async (args: string, ctx: SlashCommandContext): Promise<SlashCommandResult> => {
         const arg = args.trim();
         const isOpenRouter = ctx.providerId === "openrouter";
+        const isOllama = ctx.providerId === "ollama";
 
         let options: PickerOption[];
         let initialId: string | undefined = ctx.model;
@@ -102,6 +126,22 @@ export const ModelCommand: SlashCommand = {
             const cached = (await loadFreeModelsCache()) ?? [];
             options = buildOpenRouterOptions(cached);
             if (cached.length === 0) initialId = REFRESH_FREE_ID;
+        } else if (isOllama) {
+            const { config } = await loadConfig();
+            const provCfg = config.providers["ollama"];
+            const baseUrl = provCfg?.baseUrl ?? "http://localhost:11434";
+            const apiKey = provCfg ? resolveApiKey(provCfg) : undefined;
+            const headers: Record<string, string> = {};
+            if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+            let tags: readonly OllamaTag[] = [];
+            try {
+                tags = await fetchOllamaTags(baseUrl, headers);
+            } catch (e) {
+                ctx.addSystemMessage(
+                    `Could not reach Ollama at ${baseUrl}: ${e instanceof Error ? e.message : String(e)}. Showing defaults only.`,
+                );
+            }
+            options = buildOllamaOptions(tags);
         } else {
             options = buildStaticOptions(ctx.providerId);
         }

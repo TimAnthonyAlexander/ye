@@ -1,5 +1,6 @@
 import type { Config } from "../config/index.ts";
 import { buildAnthropicFromConfig, MissingAnthropicKeyError } from "./anthropic/index.ts";
+import { buildOllamaFromConfig } from "./ollama/index.ts";
 import { buildOpenAIFromConfig, MissingOpenAIKeyError } from "./openai/index.ts";
 import { buildOpenRouterFromConfig, MissingApiKeyError } from "./openrouter/index.ts";
 import type { Provider } from "./types.ts";
@@ -41,9 +42,10 @@ const builders: Record<string, (config: Config) => Provider> = {
     openrouter: buildOpenRouterFromConfig,
     anthropic: buildAnthropicFromConfig,
     openai: buildOpenAIFromConfig,
+    ollama: buildOllamaFromConfig,
 };
 
-export const PROVIDER_IDS: readonly string[] = ["openrouter", "anthropic", "openai"];
+export const PROVIDER_IDS: readonly string[] = ["openrouter", "anthropic", "openai", "ollama"];
 
 // Surfaced for command-layer error handling: the two missing-key error types
 // that callers typically catch. Adding a provider here means catching its

@@ -19,6 +19,11 @@ const PROVIDER_LABELS: Readonly<Record<string, { label: string; description?: st
         label: "OpenAI",
         description: "GPT-5 Responses API. Default OPENAI_API_KEY. Reasoning & prompt caching.",
     },
+    ollama: {
+        label: "Ollama",
+        description:
+            "Local models via http://localhost:11434. No key needed for local; OLLAMA_API_KEY for cloud.",
+    },
 };
 
 const buildOptions = (): readonly PickerOption[] =>
