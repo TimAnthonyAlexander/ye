@@ -54,6 +54,9 @@ export const DEFAULT_CONFIG: Config = {
         maxRetries: 3,
         backoffBaseMs: 500,
         backoffMaxMs: 8_000,
+        rateLimitMaxRetries: 10,
+        rateLimitBackoffBaseMs: 1_000,
+        rateLimitBackoffMaxMs: 60_000,
     },
 };
 

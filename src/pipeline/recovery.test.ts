@@ -13,6 +13,9 @@ const baseConfig: Config = {
         maxRetries: 3,
         backoffBaseMs: 1,
         backoffMaxMs: 1,
+        rateLimitMaxRetries: 10,
+        rateLimitBackoffBaseMs: 1,
+        rateLimitBackoffMaxMs: 1,
     },
 };
 
@@ -333,6 +336,87 @@ describe("runModelCallWithRecovery", () => {
                 (e as { action?: string }).action === "fallback_model",
         );
         expect(fallback).toBeDefined();
+    });
+
+    test("rate_limit retries up to 10 times independent of general maxRetries", async () => {
+        const log: ProviderInput[] = [];
+        const provider = scriptedProvider(
+            [
+                ...Array.from({ length: 9 }, () => ({ events: [runError("rate_limit")] })),
+                { events: runText("ok-after-rate-limit") },
+            ],
+            log,
+        );
+
+        const gen = runModelCallWithRecovery({
+            // maxRetries=2 would have terminated a general retry loop long
+            // before 9 attempts — rate_limit must use its own budget.
+            state: mkState(),
+            config: { ...baseConfig, recovery: { ...baseConfig.recovery, maxRetries: 2 } },
+            initialProvider: provider,
+            initialModel: "model-a",
+            budget: { maxTokens: 4000, initialMaxTokens: 4000, tokensFreedThisTurn: 0 },
+            initialMessages: [{ role: "user", content: "hi" }],
+            tools: [],
+            signal: new AbortController().signal,
+            providerOptions: {},
+        });
+
+        const { events, out } = (await collect(gen)) as {
+            events: Event[];
+            out: { result: { text: string; stopReason: string } };
+        };
+
+        expect(out.result.text).toBe("ok-after-rate-limit");
+        expect(out.result.stopReason).toBe("end_turn");
+        expect(log.length).toBe(10);
+        const retries = events.filter((e) => e.type === "recovery.retry");
+        expect(retries.length).toBe(9);
+        expect(
+            retries.every(
+                (e) =>
+                    (e as { kind?: string }).kind === "rate_limit" &&
+                    (e as { action?: string }).action === "backoff",
+            ),
+        ).toBe(true);
+    });
+
+    test("rate_limit gives up after exhausting its own budget", async () => {
+        const log: ProviderInput[] = [];
+        const provider = scriptedProvider(
+            Array.from({ length: 12 }, () => ({ events: [runError("rate_limit")] })),
+            log,
+        );
+
+        const gen = runModelCallWithRecovery({
+            state: mkState(),
+            config: {
+                ...baseConfig,
+                recovery: {
+                    ...baseConfig.recovery,
+                    rateLimitMaxRetries: 3,
+                    rateLimitBackoffBaseMs: 1,
+                    rateLimitBackoffMaxMs: 1,
+                },
+            },
+            initialProvider: provider,
+            initialModel: "model-a",
+            budget: { maxTokens: 4000, initialMaxTokens: 4000, tokensFreedThisTurn: 0 },
+            initialMessages: [{ role: "user", content: "hi" }],
+            tools: [],
+            signal: new AbortController().signal,
+            providerOptions: {},
+        });
+
+        const { out } = (await collect(gen)) as {
+            events: Event[];
+            out: { result: { stopReason: string; error?: ProviderError } };
+        };
+
+        expect(out.result.stopReason).toBe("error");
+        expect(out.result.error?.kind).toBe("rate_limit");
+        // Initial attempt + 3 retries = 4 total calls.
+        expect(log.length).toBe(4);
     });
 
     test("exhausts retry budget and surfaces error", async () => {

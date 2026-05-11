@@ -76,14 +76,21 @@ export interface RecoveryFallbackModel {
 }
 
 export interface RecoveryConfig {
-    // Max retries per turn for retryable provider errors (rate_limit, overloaded,
+    // Max retries per turn for retryable provider errors (overloaded,
     // server, network, max_tokens_invalid). Excludes the streaming→batch
     // fallback, which is a single free retry, and prompt-too-long shaper
-    // escalation, which counts each forced shaper as one retry.
+    // escalation, which counts each forced shaper as one retry. `rate_limit`
+    // has its own independent budget (see rateLimit* below).
     readonly maxRetries?: number;
     // Initial backoff in ms; subsequent attempts double up to backoffMaxMs.
     readonly backoffBaseMs?: number;
     readonly backoffMaxMs?: number;
+    // Rate-limit (HTTP 429) retries are tracked separately so a busy upstream
+    // provider doesn't burn the general retry budget. Wait grows as
+    // base * (2^n - 1), capped at max: 1s, 3s, 7s, 15s, 31s, 60s, ...
+    readonly rateLimitMaxRetries?: number;
+    readonly rateLimitBackoffBaseMs?: number;
+    readonly rateLimitBackoffMaxMs?: number;
     // Fallback model used after the primary model exhausts retries. When the
     // provider differs, the recovery layer builds the fallback provider from
     // the same config.providers map.

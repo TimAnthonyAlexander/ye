@@ -36,6 +36,9 @@ export interface RecoveryOutput {
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BACKOFF_BASE_MS = 500;
 const DEFAULT_BACKOFF_MAX_MS = 8_000;
+const DEFAULT_RATE_LIMIT_MAX_RETRIES = 10;
+const DEFAULT_RATE_LIMIT_BACKOFF_BASE_MS = 1_000;
+const DEFAULT_RATE_LIMIT_BACKOFF_MAX_MS = 60_000;
 const MIN_REPLY_TOKEN_FLOOR = 1024;
 const FORCE_SHAPER_PRESERVE_RECENT = 4;
 
@@ -105,11 +108,16 @@ export async function* runModelCallWithRecovery(
     const maxRetries = recoveryCfg.maxRetries ?? DEFAULT_MAX_RETRIES;
     const baseMs = recoveryCfg.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
     const maxMs = recoveryCfg.backoffMaxMs ?? DEFAULT_BACKOFF_MAX_MS;
+    const rateLimitMaxRetries = recoveryCfg.rateLimitMaxRetries ?? DEFAULT_RATE_LIMIT_MAX_RETRIES;
+    const rateLimitBaseMs =
+        recoveryCfg.rateLimitBackoffBaseMs ?? DEFAULT_RATE_LIMIT_BACKOFF_BASE_MS;
+    const rateLimitMaxMs = recoveryCfg.rateLimitBackoffMaxMs ?? DEFAULT_RATE_LIMIT_BACKOFF_MAX_MS;
 
     let provider = input.initialProvider;
     let model = input.initialModel;
     let messages = input.initialMessages;
     let attempt = 0;
+    let rateLimitAttempt = 0;
     let triedNonStreaming = false;
     let triedFallbackModel = false;
     let triedShaperEscalation = false;
@@ -174,10 +182,14 @@ export async function* runModelCallWithRecovery(
 
         const err = result.error;
         const wasContentEmitted = result.text.length > 0 || result.toolCalls.length > 0;
+        const isRateLimit = err?.kind === "rate_limit";
+        const budgetExhausted = isRateLimit
+            ? rateLimitAttempt >= rateLimitMaxRetries
+            : attempt >= maxRetries;
 
         // Terminal: missing classification, content already streamed (replay
         // would be confusing), non-retryable kind, or retry budget exhausted.
-        if (!err || wasContentEmitted || !isRetryable(err) || attempt >= maxRetries) {
+        if (!err || wasContentEmitted || !isRetryable(err) || budgetExhausted) {
             return {
                 result,
                 finalProvider: provider,
@@ -243,6 +255,31 @@ export async function* runModelCallWithRecovery(
                 kind: err.kind,
                 action: "force_shaper",
             };
+            continue;
+        }
+
+        // Strategy 3.5: rate-limit (HTTP 429) gets its own retry budget so a
+        // busy upstream provider doesn't burn the general budget. Backoff grows
+        // as base * (2^n - 1), capped at max: 1s, 3s, 7s, 15s, 31s, 60s, ...
+        if (isRateLimit) {
+            rateLimitAttempt += 1;
+            const wait = Math.min(rateLimitMaxMs, rateLimitBaseMs * (2 ** rateLimitAttempt - 1));
+            yield {
+                type: "recovery.retry",
+                attempt: rateLimitAttempt,
+                kind: err.kind,
+                action: "backoff",
+                waitMs: wait,
+            };
+            await sleep(wait, input.signal);
+            if (input.signal.aborted) {
+                return {
+                    result: { ...result, stopReason: "abort" },
+                    finalProvider: provider,
+                    finalModel: model,
+                    finalMessages: messages,
+                };
+            }
             continue;
         }
 

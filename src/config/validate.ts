@@ -308,6 +308,9 @@ const validateRecoveryConfig = (value: unknown): RecoveryConfig => {
         maxRetries?: number;
         backoffBaseMs?: number;
         backoffMaxMs?: number;
+        rateLimitMaxRetries?: number;
+        rateLimitBackoffBaseMs?: number;
+        rateLimitBackoffMaxMs?: number;
         fallbackModel?: { provider: string; model: string };
     } = {};
     if (value.maxRetries !== undefined) {
@@ -325,6 +328,30 @@ const validateRecoveryConfig = (value: unknown): RecoveryConfig => {
     }
     if (value.backoffMaxMs !== undefined) {
         out.backoffMaxMs = validatePositiveInt("recovery.backoffMaxMs", value.backoffMaxMs);
+    }
+    if (value.rateLimitMaxRetries !== undefined) {
+        if (
+            typeof value.rateLimitMaxRetries !== "number" ||
+            !Number.isInteger(value.rateLimitMaxRetries) ||
+            value.rateLimitMaxRetries < 0
+        ) {
+            throw new ConfigValidationError(
+                "recovery.rateLimitMaxRetries must be a non-negative integer",
+            );
+        }
+        out.rateLimitMaxRetries = value.rateLimitMaxRetries;
+    }
+    if (value.rateLimitBackoffBaseMs !== undefined) {
+        out.rateLimitBackoffBaseMs = validatePositiveInt(
+            "recovery.rateLimitBackoffBaseMs",
+            value.rateLimitBackoffBaseMs,
+        );
+    }
+    if (value.rateLimitBackoffMaxMs !== undefined) {
+        out.rateLimitBackoffMaxMs = validatePositiveInt(
+            "recovery.rateLimitBackoffMaxMs",
+            value.rateLimitBackoffMaxMs,
+        );
     }
     if (value.fallbackModel !== undefined) {
         if (!isObject(value.fallbackModel)) {
