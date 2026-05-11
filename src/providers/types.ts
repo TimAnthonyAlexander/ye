@@ -72,6 +72,14 @@ export interface ProviderInput {
     // ProviderEvent emissions from the single response. Default true. Used by
     // the recovery layer's "streaming → batch" fallback after a stream_error.
     readonly stream?: boolean;
+    // Stable string that pins requests with the same prefix to the same cache
+    // shard. Without it, OpenAI's load balancer routes successive requests to
+    // different shards, missing the cache on the first 2-3 requests of every
+    // session. Set per "user" granularity per OpenAI's guidance — for ye that
+    // is projectId, since the same project shares system prompt + CLAUDE.md +
+    // tool list across sessions. Currently consumed only by the OpenAI
+    // provider; other providers ignore it.
+    readonly cacheKey?: string;
 }
 
 export type StopReason = "end_turn" | "tool_use" | "max_tokens" | "error" | "abort";

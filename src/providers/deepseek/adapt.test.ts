@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Message, ProviderInput, ReasoningDetail } from "../types.ts";
 import { _internal, buildRequestBody } from "./adapt.ts";
 
-const { toWireMessages, lastUserIndex } = _internal;
+const { toWireMessages } = _internal;
 
 const detail = (text: string): ReasoningDetail => ({
     type: "reasoning.text",
@@ -17,7 +17,7 @@ const baseInput = (messages: readonly Message[]): ProviderInput => ({
     stream: true,
 });
 
-describe("toWireMessages — tool-loop window for reasoning_content", () => {
+describe("toWireMessages — reasoning_content round-trip", () => {
     test("active turn (assistant after last user) keeps reasoning_content", () => {
         const msgs: readonly Message[] = [
             { role: "user", content: "hello" },
@@ -36,7 +36,11 @@ describe("toWireMessages — tool-loop window for reasoning_content", () => {
         expect(assistantWire.reasoning_content).toBe("I should read the file");
     });
 
-    test("closed prior turn (assistant before last user) drops reasoning_content", () => {
+    test("closed prior turn KEEPS reasoning_content for cache stability", () => {
+        // Stripping reasoning between user turns mutates assistant-message
+        // bytes and busts DeepSeek's prefix cache from the divergence point
+        // onward. The API ignores reasoning on closed prior turns (per docs),
+        // so keeping it is harmless and stabilizes the cache.
         const msgs: readonly Message[] = [
             { role: "user", content: "first" },
             {
@@ -57,7 +61,7 @@ describe("toWireMessages — tool-loop window for reasoning_content", () => {
         const wire = toWireMessages(msgs);
         const closedPrior = wire[1] as { reasoning_content?: string };
         const activeTurn = wire[3] as { reasoning_content?: string };
-        expect(closedPrior.reasoning_content).toBeUndefined();
+        expect(closedPrior.reasoning_content).toBe("thinking about first");
         expect(activeTurn.reasoning_content).toBe("thinking about second");
     });
 
@@ -100,22 +104,6 @@ describe("toWireMessages — tool-loop window for reasoning_content", () => {
         const wire = toWireMessages(msgs);
         const w = wire[1] as { reasoning_content?: string };
         expect(w.reasoning_content).toBe("readable text");
-    });
-});
-
-describe("lastUserIndex", () => {
-    test("returns the index of the most recent user message", () => {
-        const msgs: readonly Message[] = [
-            { role: "user", content: "a" },
-            { role: "assistant", content: "b" },
-            { role: "user", content: "c" },
-        ];
-        expect(lastUserIndex(msgs)).toBe(2);
-    });
-
-    test("returns -1 when no user message exists", () => {
-        const msgs: readonly Message[] = [{ role: "assistant", content: "b" }];
-        expect(lastUserIndex(msgs)).toBe(-1);
     });
 });
 

@@ -1,4 +1,5 @@
 import type { PermissionMode } from "../config/index.ts";
+import { isSmallModel } from "../providers/modelTier.ts";
 
 export interface SystemPromptEnv {
     readonly cwd: string;
@@ -7,8 +8,13 @@ export interface SystemPromptEnv {
     readonly platform: string;
     readonly date: string;
     readonly username?: string;
-    // Selects the small prompt variant for local/weaker models. Currently:
-    // "ollama" → buildSmallSystemPrompt (~1.5k tokens); anything else → full.
+    // Selects the small prompt variant when the provider or the model itself
+    // benefits from a tighter prompt. Currently triggered for:
+    //   - "ollama" provider (any model);
+    //   - any model whose name contains a "mini" or "nano" segment
+    //     (e.g. gpt-5.1-codex-mini, gpt-5.4-nano) — see providers/modelTier.ts.
+    // OpenAI-specific persistence wording is appended to either variant when
+    // env.providerId === "openai".
     readonly providerId: string;
 }
 
@@ -694,8 +700,16 @@ Persists a per-project memory note under \`~/.ye/projects/<hash>/memory/<slug>.m
 const SMALL_PROJECT_NOTES_BLOCK = `# Project notes
 If a \`CLAUDE.md\` or \`YE.md\` exists at the project root, its content is appended below as durable instructions for this project — follow it.`;
 
-export const buildSmallSystemPrompt = (env: SystemPromptEnv): string =>
-    [
+// OpenAI-only persistence addendum for the small prompt. Compressed twin of
+// PERSISTENCE_BLOCK_OPENAI for the small-prompt token budget. Lifted from
+// OpenAI's GPT-5 prompting cookbook — the standard cure for Codex models'
+// "next steps: decide which…" lazy-stop pattern.
+const SMALL_PERSISTENCE_BLOCK_OPENAI = `# Persistence
+You are an agent. Keep going until the user's request is fully resolved before ending your turn. Do not stop after partial analysis or "next steps: you decide" deflections. If ambiguous, pick the most reasonable interpretation, state it in one short line, and proceed — don't ask the user to confirm assumptions you can make yourself. Persist through implementation and verification within the current turn whenever feasible.`;
+
+export const buildSmallSystemPrompt = (env: SystemPromptEnv): string => {
+    const persistenceApplies = env.providerId === "openai" && env.mode !== "PLAN";
+    const blocks = [
         SMALL_HEADER,
         SMALL_OUTPUT_BLOCK,
         SMALL_TASKS_BLOCK,
@@ -704,13 +718,34 @@ export const buildSmallSystemPrompt = (env: SystemPromptEnv): string =>
         SMALL_TOOLS_BLOCK,
         SMALL_PROJECT_NOTES_BLOCK,
         ENV_BLOCK(env),
-    ].join("\n\n");
+    ];
+    if (persistenceApplies) blocks.push(SMALL_PERSISTENCE_BLOCK_OPENAI);
+    return blocks.join("\n\n");
+};
+
+// OpenAI-specific persistence block. Lifted from OpenAI's GPT-5 prompting
+// cookbook. The standard cure for the documented Codex failure mode where
+// GPT-5.x models end turns after partial work with deflections like
+// "next steps: decide which…". Naturally pairs with tool_choice: "auto" —
+// the model decides when it is done by emitting a no-tool-call response,
+// which lands as `end_turn` in the existing stop logic.
+const PERSISTENCE_BLOCK_OPENAI = `# Persistence (OpenAI agentic loop)
+
+You are an agent — keep going until the user's request is completely resolved before ending your turn. Do not stop after partial analysis or a "next steps: decide which…" / "let me know which angle to tackle next" deflection. If the request is ambiguous, pick the most reasonable interpretation, state your assumption in one short line, and proceed. Do not ask the user to confirm assumptions you can make yourself.
+
+Persist until the task is fully handled end-to-end within the current turn whenever feasible: do not stop at analysis or partial fixes — carry changes through implementation and verification. Decompose the user's query into all required sub-requests and confirm each is completed before yielding.`;
 
 export const buildSystemPrompt = (env: SystemPromptEnv): string => {
-    if (env.providerId === "ollama") {
+    // Route to the small prompt for Ollama and for any "mini"/"nano" model
+    // (e.g. gpt-5.1-codex-mini, gpt-5.4-nano). The full ~11k-token prompt
+    // overwhelms small models — instruction salience drops, and the
+    // OpenAI-only persistence directive in particular benefits from a less
+    // crowded context. buildSmallSystemPrompt appends that directive itself
+    // when env.providerId === "openai".
+    if (env.providerId === "ollama" || isSmallModel(env.model)) {
         return buildSmallSystemPrompt(env);
     }
-    return [
+    const blocks = [
         HEADER,
         SYSTEM_BLOCK,
         TASKS_BLOCK,
@@ -724,5 +759,11 @@ export const buildSystemPrompt = (env: SystemPromptEnv): string => {
         HOOKS_BLOCK,
         PROJECT_NOTES_BLOCK,
         ENV_BLOCK(env),
-    ].join("\n\n");
+    ];
+    // PLAN is conversational — the model is supposed to close turns on text.
+    // Persistence + Finalize only apply in NORMAL/AUTO.
+    if (env.providerId === "openai" && env.mode !== "PLAN") {
+        blocks.push(PERSISTENCE_BLOCK_OPENAI);
+    }
+    return blocks.join("\n\n");
 };

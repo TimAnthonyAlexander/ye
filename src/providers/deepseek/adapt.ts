@@ -64,26 +64,22 @@ const flattenReasoningText = (details: readonly ReasoningDetail[]): string => {
     return out;
 };
 
-// Find the index of the last user message in the array. Returns -1 if there
-// is none (shouldn't happen for a real request).
-const lastUserIndex = (messages: readonly Message[]): number => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i]?.role === "user") return i;
-    }
-    return -1;
-};
-
-// Walk messages and emit the wire-shape array per DeepSeek's reasoning-state
-// rules:
-//   * assistant messages BEFORE the last user message belong to closed prior
-//     turns → omit reasoning_content (official guidance: drop it, the API
-//     ignores it and concatenated CoTs degrade quality)
-//   * assistant messages AT-OR-AFTER the last user message belong to the
-//     current user turn's tool-call sub-loop → include reasoning_content if we
-//     have it (required, else HTTP 400 from V4 Pro consistency check)
+// Walk messages and emit the wire-shape array. Include `reasoning_content` on
+// every assistant message that has it, regardless of whether the message
+// belongs to a closed prior turn or the current tool-call loop. Per DeepSeek's
+// thinking-mode docs, two rules apply:
+//   * During an active tool-call loop, reasoning_content MUST be passed back
+//     on every assistant message — else the API returns 400.
+//   * On closed prior turns it is ignored by the model. Including it is
+//     harmless.
+// We used to strip it for closed prior turns ("bandwidth optimization") but
+// that mutates the bytes of prior assistant messages between user turns,
+// which busts DeepSeek's prefix cache for everything after the divergence
+// point. Always-keep makes the prefix byte-stable across user turns — same
+// cache entry, same hit. The wasted bandwidth is cache-read tokens (10× cheaper
+// than fresh input on V4-pro), so this is strictly better.
 const toWireMessages = (messages: readonly Message[]): readonly WireMessage[] => {
-    const userIdx = lastUserIndex(messages);
-    return messages.map((m, i): WireMessage => {
+    return messages.map((m): WireMessage => {
         const base: WireMessage = {
             role: m.role,
             content: m.content,
@@ -92,7 +88,6 @@ const toWireMessages = (messages: readonly Message[]): readonly WireMessage[] =>
             ...(m.name ? { name: m.name } : {}),
         };
         if (m.role !== "assistant") return base;
-        if (i < userIdx) return base; // closed prior turn — strip reasoning
         if (!m.reasoning_details || m.reasoning_details.length === 0) return base;
         const text = flattenReasoningText(m.reasoning_details);
         if (text.length === 0) return base;
@@ -144,6 +139,5 @@ export const buildRequestBody = (input: ProviderInput): DeepSeekRequestBody => {
     return body;
 };
 
-// Exposed for unit tests — verifies the tool-loop window rule without going
-// through the full body builder.
-export const _internal = { toWireMessages, flattenReasoningText, lastUserIndex };
+// Exposed for unit tests.
+export const _internal = { toWireMessages, flattenReasoningText };

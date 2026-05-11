@@ -18,6 +18,7 @@ interface AnthropicToolResultBlock {
     type: "tool_result";
     tool_use_id: string;
     content: string;
+    cache_control?: { type: "ephemeral" };
 }
 
 type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock | AnthropicToolResultBlock;
@@ -37,6 +38,7 @@ interface AnthropicTool {
     name: string;
     description: string;
     input_schema: object;
+    cache_control?: { type: "ephemeral" };
 }
 
 // Server-side built-in tool entry. Anthropic types these by `type` and a few
@@ -157,9 +159,30 @@ const buildSystem = (text: string): AnthropicSystemBlock[] | undefined => {
     return [{ type: "text", text, cache_control: { type: "ephemeral" } }];
 };
 
+// Mark the last content block of the last message as a cache breakpoint. Each
+// new turn places the breakpoint on its newest block, leaving a cache write
+// behind that subsequent turns hit via Anthropic's 20-block lookback. Standard
+// agentic pattern — see Anthropic's prompt-caching docs ("Caching messages").
+// String content gets converted to a single-block text array so we have a
+// concrete object to set cache_control on.
+const markLastMessageCacheable = (messages: AnthropicMessage[]): void => {
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    if (typeof last.content === "string") {
+        last.content = [{ type: "text", text: last.content, cache_control: { type: "ephemeral" } }];
+        return;
+    }
+    const lastBlock = last.content[last.content.length - 1];
+    if (!lastBlock) return;
+    if (lastBlock.type === "text" || lastBlock.type === "tool_result") {
+        lastBlock.cache_control = { type: "ephemeral" };
+    }
+};
+
 export const buildRequestBody = (input: ProviderInput): AnthropicRequestBody => {
     const { systemText, rest } = splitSystem(input.messages);
     const messages = convertMessages(rest);
+    markLastMessageCacheable(messages);
     const system = buildSystem(systemText);
 
     const body: AnthropicRequestBody = {
@@ -183,7 +206,19 @@ export const buildRequestBody = (input: ProviderInput): AnthropicRequestBody => 
           ) as AnthropicBuiltinTool[])
         : [];
     if (userTools.length > 0 || builtinTools.length > 0) {
-        body.tools = [...userTools, ...builtinTools];
+        const combined: (AnthropicTool | AnthropicBuiltinTool)[] = [...userTools, ...builtinTools];
+        // Cache breakpoint on the last tool — the whole tools array is a
+        // stable, sizeable prefix for any session that doesn't change tool
+        // surface mid-conversation. Per Anthropic's prompt-caching docs:
+        // "Tool definitions can be cached by placing cache_control on the
+        // last tool in your tools array."
+        const lastTool = combined[combined.length - 1];
+        if (lastTool) {
+            (lastTool as { cache_control?: { type: "ephemeral" } }).cache_control = {
+                type: "ephemeral",
+            };
+        }
+        body.tools = combined;
     }
 
     if (input.temperature !== undefined && !isOpus47(input.model)) {

@@ -1,3 +1,4 @@
+import { isSmallModel } from "../modelTier.ts";
 import type { ProviderInput, ToolDefinition } from "../types.ts";
 
 export type OpenAIInputItem =
@@ -21,7 +22,16 @@ export interface OpenAIRequestBody {
     reasoning?: { effort: string; summary?: string };
     store?: boolean;
     include?: string[];
+    prompt_cache_key?: string;
+    prompt_cache_retention?: string;
 }
+
+// Models that accept `prompt_cache_retention: "24h"`. Setting it on older
+// models (gpt-5, gpt-4.1, codex-mini-latest) returns 400 from the API.
+// Per OpenAI's prompt-caching docs: extended retention shipped with the
+// GPT-5.1 family — gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-mini, plus all of
+// gpt-5.2/5.3/5.4/5.5 (where gpt-5.5+ actually REQUIRES it).
+const EXTENDED_CACHE_RETENTION_RE = /^gpt-5\.[1-9]/;
 
 export interface OpenAITool {
     type: "function";
@@ -134,6 +144,22 @@ export const buildRequestBody = (input: ProviderInput): OpenAIRequestBody => {
 
     if (input.maxTokens !== undefined) body.max_output_tokens = input.maxTokens;
 
+    // Pin requests with the same prefix to the same cache shard. Without this,
+    // OpenAI's load balancer routes successive requests to different shards
+    // and the first 2-3 calls of every session miss the cache despite an
+    // identical prefix. See OpenAI's "Prompt Caching 201" cookbook.
+    if (input.cacheKey) body.prompt_cache_key = input.cacheKey;
+
+    // Extended retention pushes prefix TTL from the default 5–10 minutes
+    // (in_memory) to 24 hours, so successive sessions on the same project
+    // keep hitting the cache instead of each cold-starting it. gpt-5.5+
+    // actually require this — passing the default in_memory would 400.
+    // gpt-5.0 and older 400 on this param entirely, so it's gated on the
+    // model family.
+    if (EXTENDED_CACHE_RETENTION_RE.test(input.model)) {
+        body.prompt_cache_retention = "24h";
+    }
+
     // GPT-5 reasoning models reject temperature if it's not actually used by the model family.
     // GPT-4.1 series still uses it.
     if (input.temperature !== undefined && !input.model.startsWith("gpt-5")) {
@@ -145,8 +171,14 @@ export const buildRequestBody = (input: ProviderInput): OpenAIRequestBody => {
     if (typeof reasoningEffort === "string") {
         body.reasoning = { effort: reasoningEffort, summary: "auto" };
     } else if (input.model.startsWith("gpt-5")) {
-        // Default reasoning for GPT-5 if not specified.
-        body.reasoning = { effort: "medium", summary: "auto" };
+        // Default reasoning for GPT-5 if not specified. "mini"/"nano" variants
+        // get "low" — small reasoning models over-plan and loop at medium/high
+        // effort, especially under tool-heavy work. Note: codex-mini does NOT
+        // support "minimal" (API rejects it with "supported: low, medium,
+        // high"), so "low" is the floor for that family. Full GPT-5 models
+        // keep "medium" as a balanced default.
+        const effort = isSmallModel(input.model) ? "low" : "medium";
+        body.reasoning = { effort, summary: "auto" };
     }
 
     return body;

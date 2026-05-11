@@ -49,14 +49,9 @@ const MODELS: readonly ModelInfo[] = [
     { provider: "openai", id: "gpt-5.2-codex", label: "GPT-5.2 Codex" },
     { provider: "openai", id: "gpt-5.2", label: "GPT-5.2" },
     { provider: "openai", id: "gpt-5.1-codex-max", label: "GPT-5.1 Codex Max" },
-    { provider: "openai", id: "gpt-5.1-codex-mini", label: "GPT-5.1 Codex Mini" },
     { provider: "openai", id: "gpt-5.1", label: "GPT-5.1" },
-    { provider: "openai", id: "gpt-5-codex-mini", label: "GPT-5 Codex Mini" },
     { provider: "openai", id: "gpt-5", label: "GPT-5" },
-    { provider: "openai", id: "gpt-5-mini", label: "GPT-5 Mini" },
-    { provider: "openai", id: "codex-mini-latest", label: "Codex Mini Latest" },
     { provider: "openai", id: "gpt-4.1", label: "GPT-4.1" },
-    { provider: "openai", id: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
     // Ollama models are user-installed locally — these are placeholders that
     // appear in /model alongside whatever /api/tags reports as actually pulled.
     { provider: "ollama", id: "qwen3", label: "Qwen3 (Ollama)" },

@@ -134,6 +134,7 @@ export async function* runModelCallWithRecovery(
                 maxTokens: input.budget.maxTokens,
                 stream: useStreaming,
                 providerOptions: input.providerOptions,
+                cacheKey: input.state.projectId,
             },
             async (report) => {
                 try {

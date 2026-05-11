@@ -81,6 +81,13 @@ export const StatusBar = ({
                                 ↑{formatK(sessionTokenUsage.input)} ↓
                                 {formatK(sessionTokenUsage.output)}
                             </Text>
+                            {sessionTokenUsage.cached !== undefined &&
+                                sessionTokenUsage.cached > 0 && (
+                                    <Text color="#888888">
+                                        {" "}
+                                        ↻{formatK(sessionTokenUsage.cached)}
+                                    </Text>
+                                )}
                             {sessionTokenUsage.costUsd !== undefined &&
                                 sessionTokenUsage.costUsd > 0 && (
                                     <Text> {formatUsd(sessionTokenUsage.costUsd)}</Text>
@@ -93,6 +100,9 @@ export const StatusBar = ({
                             <Text dimColor>
                                 ↑{formatK(tokenUsage.input)} ↓{formatK(tokenUsage.output)}
                             </Text>
+                            {tokenUsage.cached !== undefined && tokenUsage.cached > 0 && (
+                                <Text color="#888888"> ↻{formatK(tokenUsage.cached)}</Text>
+                            )}
                             {tokenUsage.costUsd !== undefined && tokenUsage.costUsd > 0 && (
                                 <Text dimColor> {formatUsd(tokenUsage.costUsd)}</Text>
                             )}
