@@ -1233,8 +1233,8 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     case "turn.end": {
                         finalizeThinking();
                         commitText();
-                        if (evt.error) {
-                            setError(evt.error.message);
+                        if (evt.error || evt.stopReason === "user_cancel") {
+                            if (evt.error) setError(evt.error.message);
                             chainFailedRef.current = true;
                         }
                         void loadUsageTotals()
