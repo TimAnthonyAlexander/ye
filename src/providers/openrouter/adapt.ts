@@ -17,11 +17,17 @@ interface OpenRouterReasoningParam {
     exclude?: boolean;
 }
 
+// `tools` is the union of normal function tools and OpenRouter's server-side
+// builtin tools (e.g. {type:"openrouter:web_search"}). Builtins are forwarded
+// verbatim and never wrapped in the {type:"function", function:{...}} shape.
+type OpenRouterBuiltinTool = Readonly<Record<string, unknown>> & { readonly type: string };
+type OpenRouterAnyTool = OpenRouterToolDef | OpenRouterBuiltinTool;
+
 interface OpenRouterRequestBody {
     model: string;
     messages: ProviderInput["messages"];
     stream: boolean;
-    tools?: OpenRouterToolDef[];
+    tools?: OpenRouterAnyTool[];
     tool_choice?: "auto" | "none";
     parallel_tool_calls?: boolean;
     temperature?: number;
@@ -74,8 +80,22 @@ export const buildRequestBody = (input: ProviderInput): OpenRouterRequestBody =>
         stream: input.stream !== false,
     };
 
-    if (input.tools && input.tools.length > 0) {
-        body.tools = input.tools.map(toOpenRouterTool);
+    const fnTools: OpenRouterAnyTool[] =
+        input.tools && input.tools.length > 0 ? input.tools.map(toOpenRouterTool) : [];
+
+    const builtinRaw = input.providerOptions?.["builtinTools"];
+    const builtinTools: OpenRouterBuiltinTool[] = Array.isArray(builtinRaw)
+        ? builtinRaw.filter(
+              (t): t is OpenRouterBuiltinTool =>
+                  typeof t === "object" &&
+                  t !== null &&
+                  typeof (t as { type?: unknown }).type === "string",
+          )
+        : [];
+
+    const allTools = [...fnTools, ...builtinTools];
+    if (allTools.length > 0) {
+        body.tools = allTools;
         body.parallel_tool_calls = false;
     }
 

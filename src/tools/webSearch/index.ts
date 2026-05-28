@@ -3,6 +3,7 @@ import { validateArgs } from "../validate.ts";
 import { runAnthropicSearch } from "./anthropic.ts";
 import { runBraveSearch } from "./brave.ts";
 import { runDuckDuckGoSearch } from "./duckduckgo.ts";
+import { runOpenRouterSearch } from "./openrouter.ts";
 
 interface WebSearchArgs {
     readonly query: string;
@@ -13,51 +14,31 @@ interface WebSearchArgs {
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
 const DEFAULT_LIMIT = 10;
 
-const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
-    const v = validateArgs<WebSearchArgs>(rawArgs, WebSearchTool.schema);
-    if (!v.ok) return v;
-    const query = v.value.query.trim();
-    if (query.length < 2) return { ok: false, error: "query must be at least 2 chars" };
-
+const fallbackSearch = async (
+    args: WebSearchArgs,
+    ctx: ToolContext,
+    reason: string,
+): Promise<ToolResult<string>> => {
     const cfg = ctx.config.webTools ?? {};
-
-    if (ctx.provider.capabilities.serverSideWebSearch) {
-        ctx.emitProgress?.([`querying anthropic web_search · ${query}`]);
-        const text = await runAnthropicSearch({
-            provider: ctx.provider,
-            model: ctx.activeModel,
-            query,
-            ...(v.value.allowed_domains ? { allowedDomains: v.value.allowed_domains } : {}),
-            ...(v.value.blocked_domains ? { blockedDomains: v.value.blocked_domains } : {}),
-            signal: ctx.signal,
-            sessionId: ctx.sessionId,
-            projectId: ctx.projectId,
-        });
-        if (text.length === 0) {
-            return { ok: false, error: "anthropic search returned empty response" };
-        }
-        return { ok: true, value: text };
-    }
-
     const fallback = cfg.searchFallback ?? "duckduckgo";
     if (fallback === "off") {
         return {
             ok: false,
-            error: 'WebSearch unavailable: switch to the Anthropic provider via /provider, or set webTools.searchFallback to "duckduckgo" in ~/.ye/config.json.',
+            error: `WebSearch unavailable: ${reason}. Enable a fallback by setting webTools.searchFallback to "duckduckgo" in ~/.ye/config.json.`,
         };
     }
 
     const sharedArgs = {
-        query,
-        ...(v.value.allowed_domains ? { allowedDomains: v.value.allowed_domains } : {}),
-        ...(v.value.blocked_domains ? { blockedDomains: v.value.blocked_domains } : {}),
+        query: args.query,
+        ...(args.allowed_domains ? { allowedDomains: args.allowed_domains } : {}),
+        ...(args.blocked_domains ? { blockedDomains: args.blocked_domains } : {}),
         maxBytes: cfg.maxFetchBytes ?? DEFAULT_MAX_BYTES,
         limit: DEFAULT_LIMIT,
         ...(cfg ? { config: cfg } : {}),
         signal: ctx.signal,
     } as const;
 
-    ctx.emitProgress?.([`querying brave · ${query}`]);
+    ctx.emitProgress?.([`querying brave · ${args.query}`]);
     const brave = await runBraveSearch(sharedArgs);
     if (brave.ok) {
         ctx.emitProgress?.([`got ${brave.results.length} results from brave`]);
@@ -75,8 +56,72 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 
     return {
         ok: false,
-        error: `WebSearch: both providers failed — brave: ${brave.error}; duckduckgo: ${ddg.error}`,
+        error: `WebSearch: all providers failed — ${reason}; brave: ${brave.error}; duckduckgo: ${ddg.error}`,
     };
+};
+
+const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
+    const v = validateArgs<WebSearchArgs>(rawArgs, WebSearchTool.schema);
+    if (!v.ok) return v;
+    const query = v.value.query.trim();
+    if (query.length < 2) return { ok: false, error: "query must be at least 2 chars" };
+    const normalized: WebSearchArgs = { ...v.value, query };
+
+    if (ctx.provider.capabilities.serverSideWebSearch) {
+        if (ctx.provider.id === "anthropic") {
+            ctx.emitProgress?.([`querying anthropic web_search · ${query}`]);
+            const text = await runAnthropicSearch({
+                provider: ctx.provider,
+                model: ctx.activeModel,
+                query,
+                ...(normalized.allowed_domains
+                    ? { allowedDomains: normalized.allowed_domains }
+                    : {}),
+                ...(normalized.blocked_domains
+                    ? { blockedDomains: normalized.blocked_domains }
+                    : {}),
+                signal: ctx.signal,
+                sessionId: ctx.sessionId,
+                projectId: ctx.projectId,
+            });
+            if (text.length === 0) {
+                return { ok: false, error: "anthropic search returned empty response" };
+            }
+            return { ok: true, value: text };
+        }
+
+        if (ctx.provider.id === "openrouter") {
+            ctx.emitProgress?.([`querying openrouter:web_search · ${query}`]);
+            try {
+                const text = await runOpenRouterSearch({
+                    provider: ctx.provider,
+                    model: ctx.activeModel,
+                    query,
+                    maxResults: DEFAULT_LIMIT,
+                    ...(normalized.allowed_domains
+                        ? { allowedDomains: normalized.allowed_domains }
+                        : {}),
+                    ...(normalized.blocked_domains
+                        ? { blockedDomains: normalized.blocked_domains }
+                        : {}),
+                    signal: ctx.signal,
+                    sessionId: ctx.sessionId,
+                    projectId: ctx.projectId,
+                });
+                if (text.length > 0) {
+                    return { ok: true, value: text };
+                }
+                ctx.emitProgress?.(["openrouter:web_search returned empty; falling back"]);
+                return fallbackSearch(normalized, ctx, "openrouter:web_search returned empty");
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                ctx.emitProgress?.([`openrouter:web_search failed (${msg}); falling back`]);
+                return fallbackSearch(normalized, ctx, msg);
+            }
+        }
+    }
+
+    return fallbackSearch(normalized, ctx, "no server-side web search on active provider");
 };
 
 export const WebSearchTool: Tool = {

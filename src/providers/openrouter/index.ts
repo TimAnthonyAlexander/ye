@@ -48,7 +48,7 @@ export const createOpenRouterProvider = (deps: OpenRouterDeps): Provider => {
             promptCache: false,
             toolUse: true,
             vision: false,
-            serverSideWebSearch: false,
+            serverSideWebSearch: true,
         },
 
         async *stream(input: ProviderInput): AsyncIterable<ProviderEvent> {
