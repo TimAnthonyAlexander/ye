@@ -141,9 +141,10 @@ export const WebSearchTool: Tool = {
     description:
         "Search the web. Returns a markdown list of `- [title](url)`. " +
         "After answering with search results you MUST include a `Sources:` section with each cited URL as a markdown link. " +
-        'Pass `engine: "fallback"` to skip the provider\'s built-in search (Brave→DuckDuckGo). ' +
+        "\n\n" +
+        "Engines: `auto` (default) uses the provider's built-in search if available; `openrouter` forces OpenRouter's server-side search (Exa/Parallel/native, with cited URLs); `fallback` forces Brave→DuckDuckGo. " +
         'If results look wrong or contain opaque redirect URLs (e.g. vertexaisearch.cloud.google.com/grounding-api-redirect/…), retry with `engine: "fallback"`. ' +
-        "Follow up with WebFetch on selected results to read content.",
+        "Follow up with WebFetch on selected results to read content — pick the WebFetch engine based on whether the page is a SPA (use openrouter) or static text (use local).",
     annotations: { readOnlyHint: true },
     schema: {
         type: "object",

@@ -178,10 +178,14 @@ export const WebFetchTool: Tool = {
     description:
         "Fetch a URL and answer a question about its contents. " +
         "HTTP auto-upgrades to HTTPS. 15-min cache by URL. Cross-host redirects fail closed: re-call with the new URL if you trust it. " +
-        'Pass `engine: "local"` to skip the provider\'s built-in fetcher (uses raw HTTP + html→markdown + a summariser model). ' +
-        'If the answer looks wrong, stale, or unrelated to the URL, retry with `engine: "local"`. ' +
-        "For news.ycombinator.com / github.com URLs the local fetcher is used automatically. " +
-        "For GitHub URLs prefer `gh` (gh pr view, gh issue view, gh api) via Bash.",
+        "\n\n" +
+        "Engine selection (when running on OpenRouter):\n" +
+        "- `openrouter` (cloud headless browser): renders JS, hydrates client-side apps. Best for SPAs, dashboards, modern web apps where content only appears after JS runs (e.g. lairner.com, app store listings, framework docs landing pages).\n" +
+        "- `local` (raw HTTP + html→markdown + summariser): sees only the initial HTML the server sends. Best for text-dense static pages: news articles, blog posts, READMEs, docs MDX, Wikipedia, HN threads, GitHub issues/PRs, raw text files. Faster, no per-fetch cost, no third-party proxy.\n" +
+        "- `auto` (default): uses `openrouter` if available, except for known-static hosts (news.ycombinator.com, github.com, gist.github.com) which bypass to `local`.\n\n" +
+        'Heuristic: if you ask a `local` fetch about a page and get back only a tiny generic skeleton ("Welcome", "Loading…", a few feature bullets), the page is a SPA — retry with `engine: "openrouter"`. ' +
+        'If an `openrouter` fetch returns clearly wrong/unrelated content or stale cache, retry with `engine: "local"`. ' +
+        "For GitHub URLs prefer `gh` (gh pr view, gh issue view, gh api) via Bash over either engine.",
     annotations: { readOnlyHint: true },
     schema: {
         type: "object",
@@ -193,7 +197,7 @@ export const WebFetchTool: Tool = {
                 type: "string",
                 enum: ["auto", "openrouter", "local"],
                 description:
-                    "auto (default): provider built-in if available, else local fetcher. openrouter: force the OpenRouter server-side tool. local: force raw fetch + html→markdown + summariser.",
+                    "auto (default): openrouter if available, except known-static hosts. openrouter: cloud headless browser — renders JS/SPAs. local: raw HTTP + html→markdown + summariser — only sees initial server HTML, best for text-dense static pages.",
             },
         },
     },
