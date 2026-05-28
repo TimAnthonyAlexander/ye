@@ -7,12 +7,14 @@
 // raw Anthropic API. As of 2026-03-13 no beta header is required. Haiku 4.5
 // caps at 200K and has no 1M variant.
 export const ANTHROPIC_CONTEXT_SIZES: Readonly<Record<string, number>> = {
+    "claude-opus-4-8": 1_000_000,
     "claude-opus-4-7": 1_000_000,
     "claude-opus-4-6": 1_000_000,
     "claude-sonnet-4-6": 1_000_000,
     "claude-haiku-4-5": 200_000,
 };
 
-// Opus 4.7 rejects temperature/top_p/top_k. The adapter checks this and skips
+// Opus 4.7 & 4.8 reject temperature/top_p/top_k. The adapter checks this and skips
 // the temperature field on requests.
-export const isOpus47 = (model: string): boolean => model.startsWith("claude-opus-4-7");
+export const isOpusWithNoTemp = (model: string): boolean =>
+    model.startsWith("claude-opus-4-7") || model.startsWith("claude-opus-4-8");

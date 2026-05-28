@@ -3,9 +3,13 @@ import { computeCostUsd, lookupPricing } from "./pricing.ts";
 
 describe("lookupPricing", () => {
     test("anthropic models resolve", () => {
-        const p = lookupPricing("anthropic", "claude-opus-4-7");
-        expect(p?.input).toBe(5.0);
-        expect(p?.output).toBe(25.0);
+        const p47 = lookupPricing("anthropic", "claude-opus-4-7");
+        expect(p47?.input).toBe(5.0);
+        expect(p47?.output).toBe(25.0);
+
+        const p48 = lookupPricing("anthropic", "claude-opus-4-8");
+        expect(p48?.input).toBe(5.0);
+        expect(p48?.output).toBe(25.0);
     });
 
     test("openai models resolve", () => {

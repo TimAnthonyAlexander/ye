@@ -13,6 +13,11 @@ const MODELS: readonly ModelInfo[] = [
     { provider: "openrouter", id: "~google/gemini-flash-latest", label: "Gemini Flash (latest)" },
     {
         provider: "openrouter",
+        id: "google/gemini-2.5-flash-lite",
+        label: "Gemini 2.5 Flash Lite",
+    },
+    {
+        provider: "openrouter",
         id: "google/gemini-3.1-pro-preview",
         label: "Gemini 3.1 Pro Preview",
     },
@@ -23,6 +28,11 @@ const MODELS: readonly ModelInfo[] = [
     },
     { provider: "deepseek", id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
     { provider: "deepseek", id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+    {
+        provider: "openrouter",
+        id: "anthropic/claude-opus-4.8",
+        label: "Opus 4.8 (OpenRouter)",
+    },
     {
         provider: "openrouter",
         id: "anthropic/claude-opus-4.7",
@@ -38,6 +48,7 @@ const MODELS: readonly ModelInfo[] = [
         id: "anthropic/claude-haiku-4.5",
         label: "Haiku 4.5 (OpenRouter)",
     },
+    { provider: "anthropic", id: "claude-opus-4-8", label: "Opus 4.8" },
     { provider: "anthropic", id: "claude-opus-4-7", label: "Opus 4.7" },
     { provider: "anthropic", id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
     { provider: "anthropic", id: "claude-haiku-4-5", label: "Haiku 4.5" },

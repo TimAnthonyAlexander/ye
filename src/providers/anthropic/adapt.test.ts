@@ -147,3 +147,35 @@ describe("buildRequestBody — cache_control breakpoints", () => {
         expect(count).toBeLessThanOrEqual(4);
     });
 });
+
+describe("buildRequestBody — temperature stripping", () => {
+    test("does not include temperature for Claude Opus 4.7", () => {
+        const body = buildRequestBody(
+            baseInput([{ role: "user", content: "hi" }], {
+                model: "claude-opus-4-7",
+                temperature: 0.7,
+            }),
+        );
+        expect(body.temperature).toBeUndefined();
+    });
+
+    test("does not include temperature for Claude Opus 4.8", () => {
+        const body = buildRequestBody(
+            baseInput([{ role: "user", content: "hi" }], {
+                model: "claude-opus-4-8",
+                temperature: 0.7,
+            }),
+        );
+        expect(body.temperature).toBeUndefined();
+    });
+
+    test("includes temperature for Sonnet 4.6", () => {
+        const body = buildRequestBody(
+            baseInput([{ role: "user", content: "hi" }], {
+                model: "claude-sonnet-4-6",
+                temperature: 0.7,
+            }),
+        );
+        expect(body.temperature).toBe(0.7);
+    });
+});
