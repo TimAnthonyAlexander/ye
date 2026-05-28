@@ -38,3 +38,10 @@ const TOOLS_BY_NAME: ReadonlyMap<string, Tool> = new Map(TOOLS.map((t) => [t.nam
 export const getTool = (name: string): Tool | undefined => TOOLS_BY_NAME.get(name);
 
 export const listTools = (): readonly Tool[] => TOOLS;
+
+export const unknownToolError = (name: string): string => {
+    const names = TOOLS.map((t) => t.name);
+    const ciMatch = names.find((n) => n.toLowerCase() === name.toLowerCase());
+    const suggestion = ciMatch && ciMatch !== name ? ` Did you mean "${ciMatch}"?` : "";
+    return `unknown tool: ${name}.${suggestion} Available tools: ${names.join(", ")}.`;
+};

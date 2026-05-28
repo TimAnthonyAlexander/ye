@@ -13,6 +13,7 @@ import type { SessionHandle } from "../storage/index.ts";
 import {
     assembleToolPool,
     getTool,
+    unknownToolError,
     isRequestModeFlip,
     isUserQuestion,
     type SubagentToolContext,
@@ -315,7 +316,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
                         queue.push({
                             kind: "done",
                             id: call.id,
-                            result: { ok: false, error: `unknown tool: ${call.name}` },
+                            result: { ok: false, error: unknownToolError(call.name) },
                         });
                         wakeup.resolve();
                         return;
@@ -489,7 +490,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         // Allowed. Execute.
         const tool = getTool(call.name);
         if (!tool) {
-            const result: ToolResult = { ok: false, error: `unknown tool: ${call.name}` };
+            const result: ToolResult = { ok: false, error: unknownToolError(call.name) };
             const startEvent: Event = {
                 type: "tool.start",
                 id: call.id,

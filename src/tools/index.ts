@@ -1,5 +1,5 @@
 export { assembleToolPool, type PoolContext } from "./pool.ts";
-export { getTool, listTools } from "./registry.ts";
+export { getTool, listTools, unknownToolError } from "./registry.ts";
 export {
     toToolDefinition,
     type SubagentToolContext,
