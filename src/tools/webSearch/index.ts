@@ -5,10 +5,13 @@ import { runBraveSearch } from "./brave.ts";
 import { runDuckDuckGoSearch } from "./duckduckgo.ts";
 import { runOpenRouterSearch } from "./openrouter.ts";
 
+type Engine = "auto" | "openrouter" | "fallback";
+
 interface WebSearchArgs {
     readonly query: string;
     readonly allowed_domains?: readonly string[];
     readonly blocked_domains?: readonly string[];
+    readonly engine?: Engine;
 }
 
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
@@ -65,7 +68,13 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     if (!v.ok) return v;
     const query = v.value.query.trim();
     if (query.length < 2) return { ok: false, error: "query must be at least 2 chars" };
-    const normalized: WebSearchArgs = { ...v.value, query };
+    const engine: Engine = v.value.engine ?? "auto";
+    const normalized: WebSearchArgs = { ...v.value, query, engine };
+
+    if (engine === "fallback") {
+        ctx.emitProgress?.(["engine=fallback · skipping server-side search"]);
+        return fallbackSearch(normalized, ctx, "engine=fallback requested");
+    }
 
     if (ctx.provider.capabilities.serverSideWebSearch) {
         if (ctx.provider.id === "anthropic") {
@@ -93,7 +102,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
         if (ctx.provider.id === "openrouter") {
             ctx.emitProgress?.([`querying openrouter:web_search · ${query}`]);
             try {
-                const text = await runOpenRouterSearch({
+                const result = await runOpenRouterSearch({
                     provider: ctx.provider,
                     model: ctx.activeModel,
                     query,
@@ -108,8 +117,11 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
                     sessionId: ctx.sessionId,
                     projectId: ctx.projectId,
                 });
-                if (text.length > 0) {
-                    return { ok: true, value: text };
+                if (result.text.length > 0) {
+                    ctx.emitProgress?.([
+                        `openrouter:web_search · ${result.citations.length} citations`,
+                    ]);
+                    return { ok: true, value: result.text };
                 }
                 ctx.emitProgress?.(["openrouter:web_search returned empty; falling back"]);
                 return fallbackSearch(normalized, ctx, "openrouter:web_search returned empty");
@@ -127,8 +139,11 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 export const WebSearchTool: Tool = {
     name: "WebSearch",
     description:
-        "Search the web. Returns title + URL only — no snippets. Follow up with WebFetch on selected results to read content. " +
-        "After answering with search results you MUST include a `Sources:` section with each cited URL as a markdown link.",
+        "Search the web. Returns a markdown list of `- [title](url)`. " +
+        "After answering with search results you MUST include a `Sources:` section with each cited URL as a markdown link. " +
+        'Pass `engine: "fallback"` to skip the provider\'s built-in search (Brave→DuckDuckGo). ' +
+        'If results look wrong or contain opaque redirect URLs (e.g. vertexaisearch.cloud.google.com/grounding-api-redirect/…), retry with `engine: "fallback"`. ' +
+        "Follow up with WebFetch on selected results to read content.",
     annotations: { readOnlyHint: true },
     schema: {
         type: "object",
@@ -137,6 +152,12 @@ export const WebSearchTool: Tool = {
             query: { type: "string" },
             allowed_domains: { type: "array", items: { type: "string" } },
             blocked_domains: { type: "array", items: { type: "string" } },
+            engine: {
+                type: "string",
+                enum: ["auto", "openrouter", "fallback"],
+                description:
+                    "auto (default): provider built-in if available, else Brave/DuckDuckGo. openrouter: force the OpenRouter server-side tool. fallback: force Brave/DuckDuckGo.",
+            },
         },
     },
     execute,

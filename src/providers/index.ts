@@ -7,6 +7,7 @@ import { buildOpenRouterFromConfig, MissingApiKeyError } from "./openrouter/inde
 import type { Provider } from "./types.ts";
 
 export type {
+    Citation,
     Message,
     Provider,
     ProviderCapabilities,

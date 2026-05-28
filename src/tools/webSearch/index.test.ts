@@ -49,23 +49,37 @@ const makeCtx = (provider: Provider, cfg: Config = baseConfig): ToolContext => (
 });
 
 describe("WebSearchTool dispatch — openrouter", () => {
-    test("openrouter provider with text result returns it without fallback", async () => {
+    test("openrouter provider with citations returns canonical URLs (not text)", async () => {
         const { provider, calls } = makeProvider(
             "openrouter",
             [
-                { type: "text.delta", text: "- [A](https://a.example)" },
+                {
+                    type: "text.delta",
+                    text: "- [Bad](https://vertexaisearch.cloud.google.com/grounding-api-redirect/XYZ)",
+                },
+                {
+                    type: "citations",
+                    citations: [{ url: "https://bun.sh", title: "Bun" }],
+                },
                 { type: "stop", reason: "end_turn" },
             ],
             true,
         );
         const r = await WebSearchTool.execute({ query: "bun runtime" }, makeCtx(provider));
         expect(r.ok).toBe(true);
-        if (r.ok) expect(r.value).toContain("[A](https://a.example)");
+        if (r.ok) {
+            expect(r.value).toBe("- [Bun](https://bun.sh)");
+            expect(r.value).not.toContain("vertexaisearch");
+        }
         expect(calls).toHaveLength(1);
-        const builtins = calls[0]?.providerOptions?.["builtinTools"] as unknown as Array<
-            Record<string, unknown>
-        >;
-        expect(builtins?.[0]?.["type"]).toBe("openrouter:web_search");
+    });
+
+    test("engine=fallback skips OR entirely (no provider.stream call)", async () => {
+        const { provider, calls } = makeProvider("openrouter", [], true);
+        // No network access here; fallback to brave/ddg will fail, but the point
+        // is that OR provider.stream was never invoked.
+        await WebSearchTool.execute({ query: "anything", engine: "fallback" }, makeCtx(provider));
+        expect(calls).toHaveLength(0);
     });
 
     test("openrouter error → searchFallback off → returns error mentioning the OR failure", async () => {

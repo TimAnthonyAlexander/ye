@@ -59,12 +59,109 @@ describe("WebFetchTool dispatch — openrouter", () => {
         );
         expect(r.ok).toBe(true);
         if (r.ok) expect(r.value).toBe("The page is about cats.");
-        // One call total — the OR builtin call. No second call for local-fetch summariser.
         expect(calls).toHaveLength(1);
         const builtins = calls[0]?.providerOptions?.["builtinTools"] as unknown as Array<
             Record<string, unknown>
         >;
         expect(builtins?.[0]?.["type"]).toBe("openrouter:web_fetch");
+    });
+
+    // The local-fetch path also calls provider.stream (for the summariser),
+    // so we identify an OR side-call by its signature: providerOptions
+    // contains a `builtinTools` entry of type "openrouter:web_fetch".
+    const sawOpenRouterFetch = (calls: readonly ProviderInput[]): boolean =>
+        calls.some((c) => {
+            const builtins = c.providerOptions?.["builtinTools"];
+            if (!Array.isArray(builtins)) return false;
+            return builtins.some(
+                (t) =>
+                    typeof t === "object" &&
+                    t !== null &&
+                    (t as { type?: unknown }).type === "openrouter:web_fetch",
+            );
+        });
+
+    test("engine=local skips OR (no openrouter:web_fetch side-call)", async () => {
+        const { provider, calls } = makeProvider("openrouter", []);
+        await WebFetchTool.execute(
+            {
+                url: "https://nonexistent.invalid.example/x",
+                prompt: "p",
+                engine: "local",
+            },
+            makeCtx(provider),
+        );
+        expect(sawOpenRouterFetch(calls)).toBe(false);
+    });
+
+    test("auto + known-difficult host (news.ycombinator.com) → bypasses OR", async () => {
+        const { provider, calls } = makeProvider("openrouter", []);
+        await WebFetchTool.execute(
+            {
+                url: "https://news.ycombinator.com/item?id=39371728",
+                prompt: "what is this thread about?",
+            },
+            makeCtx(provider),
+        );
+        expect(sawOpenRouterFetch(calls)).toBe(false);
+    });
+
+    test("auto + github.com → bypasses OR", async () => {
+        const { provider, calls } = makeProvider("openrouter", []);
+        await WebFetchTool.execute(
+            { url: "https://github.com/oven-sh/bun", prompt: "what is bun?" },
+            makeCtx(provider),
+        );
+        expect(sawOpenRouterFetch(calls)).toBe(false);
+    });
+
+    test("auto + subdomain of bypass host (gist.github.com) → bypasses OR", async () => {
+        const { provider, calls } = makeProvider("openrouter", []);
+        await WebFetchTool.execute(
+            { url: "https://gist.github.com/x/y", prompt: "what's here?" },
+            makeCtx(provider),
+        );
+        expect(sawOpenRouterFetch(calls)).toBe(false);
+    });
+
+    test("engine=openrouter on bypass host overrides the bypass", async () => {
+        const { provider, calls } = makeProvider("openrouter", [
+            { type: "text.delta", text: "From HN: a thread about lairner." },
+            { type: "stop", reason: "end_turn" },
+        ]);
+        const r = await WebFetchTool.execute(
+            {
+                url: "https://news.ycombinator.com/item?id=39371728",
+                prompt: "what is this thread about?",
+                engine: "openrouter",
+            },
+            makeCtx(provider),
+        );
+        expect(r.ok).toBe(true);
+        expect(calls).toHaveLength(1);
+    });
+
+    test("engine=openrouter on error returns the OR error verbatim (no transparent fallback)", async () => {
+        const { provider } = makeProvider("openrouter", [
+            {
+                type: "stop",
+                reason: "error",
+                error: { kind: "server", message: "503", retryable: false },
+            },
+        ]);
+        const r = await WebFetchTool.execute(
+            {
+                url: "https://example.com/x",
+                prompt: "p",
+                engine: "openrouter",
+            },
+            makeCtx(provider),
+        );
+        expect(r.ok).toBe(false);
+        if (!r.ok) {
+            expect(r.error).toMatch(/openrouter:web_fetch failed/);
+            expect(r.error).toMatch(/engine="local"/);
+        }
     });
 
     test("empty prompt rejected", async () => {

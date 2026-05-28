@@ -1,12 +1,91 @@
 import { classifyMidStreamError } from "../errors.ts";
 import { sseDataLines } from "../sse.ts";
 import type {
+    Citation,
     ProviderError,
     ProviderEvent,
     ReasoningDetail,
     ReasoningFormat,
     StopReason,
 } from "../types.ts";
+
+// Wire shape of one entry in `annotations[]` (assistant message or stream
+// delta) — produced by OpenRouter's server-side web tools.
+interface WireAnnotation {
+    type?: string;
+    url_citation?: {
+        url?: string;
+        title?: string;
+        content?: string;
+        start_index?: number;
+        end_index?: number;
+    };
+}
+
+const toCitation = (raw: WireAnnotation): Citation | null => {
+    if (raw.type !== "url_citation") return null;
+    const uc = raw.url_citation;
+    if (!uc || typeof uc.url !== "string" || uc.url.length === 0) return null;
+    const out: {
+        url: string;
+        title?: string;
+        content?: string;
+        startIndex?: number;
+        endIndex?: number;
+    } = {
+        url: uc.url,
+    };
+    if (typeof uc.title === "string") out.title = uc.title;
+    if (typeof uc.content === "string") out.content = uc.content;
+    if (typeof uc.start_index === "number") out.startIndex = uc.start_index;
+    if (typeof uc.end_index === "number") out.endIndex = uc.end_index;
+    return out;
+};
+
+// De-dupe by url; merges multiple deltas that mention the same URL.
+const buildCitationsEvent = (raw: readonly WireAnnotation[]): ProviderEvent | null => {
+    const seen = new Map<string, Citation>();
+    for (const a of raw) {
+        const c = toCitation(a);
+        if (!c) continue;
+        const existing = seen.get(c.url);
+        if (!existing) {
+            seen.set(c.url, c);
+            continue;
+        }
+        // Prefer the entry with the longest content/title.
+        const merged: Citation = {
+            url: c.url,
+            title:
+                (c.title?.length ?? 0) > (existing.title?.length ?? 0) ? c.title : existing.title,
+            content:
+                (c.content?.length ?? 0) > (existing.content?.length ?? 0)
+                    ? c.content
+                    : existing.content,
+            ...(c.startIndex !== undefined
+                ? { startIndex: c.startIndex }
+                : existing.startIndex !== undefined
+                  ? { startIndex: existing.startIndex }
+                  : {}),
+            ...(c.endIndex !== undefined
+                ? { endIndex: c.endIndex }
+                : existing.endIndex !== undefined
+                  ? { endIndex: existing.endIndex }
+                  : {}),
+        };
+        // Strip undefined optional fields for cleanliness.
+        const clean: Citation = { url: merged.url };
+        if (merged.title !== undefined) (clean as { title?: string }).title = merged.title;
+        if (merged.content !== undefined) (clean as { content?: string }).content = merged.content;
+        if (merged.startIndex !== undefined)
+            (clean as { startIndex?: number }).startIndex = merged.startIndex;
+        if (merged.endIndex !== undefined)
+            (clean as { endIndex?: number }).endIndex = merged.endIndex;
+        seen.set(c.url, clean);
+    }
+    if (seen.size === 0) return null;
+    return { type: "citations", citations: Array.from(seen.values()) };
+};
 
 interface ToolCallAccumulator {
     id?: string;
@@ -115,6 +194,7 @@ interface ChunkChoiceDelta {
     reasoning?: string;
     reasoning_content?: string;
     reasoning_details?: ReadonlyArray<WireReasoningDetail>;
+    annotations?: ReadonlyArray<WireAnnotation>;
     tool_calls?: ReadonlyArray<{
         index?: number;
         id?: string;
@@ -237,6 +317,7 @@ interface NonStreamMessage {
     reasoning?: string;
     reasoning_content?: string;
     reasoning_details?: ReadonlyArray<WireReasoningDetail>;
+    annotations?: ReadonlyArray<WireAnnotation>;
     tool_calls?: ReadonlyArray<{
         id?: string;
         type?: string;
@@ -310,6 +391,11 @@ export async function* parseBatch(response: Response): AsyncGenerator<ProviderEv
         yield { type: "text.delta", text: message.content };
     }
 
+    if (Array.isArray(message.annotations) && message.annotations.length > 0) {
+        const citEvt = buildCitationsEvent(message.annotations);
+        if (citEvt) yield citEvt;
+    }
+
     if (Array.isArray(message.tool_calls)) {
         for (const tc of message.tool_calls) {
             if (!tc.id || !tc.function?.name) continue;
@@ -335,6 +421,7 @@ export async function* parseBatch(response: Response): AsyncGenerator<ProviderEv
 export async function* parseStream(response: Response): AsyncGenerator<ProviderEvent> {
     const toolCalls = new Map<number, ToolCallAccumulator>();
     const reasoningAcc = new ReasoningDetailsAccumulator();
+    const annotationsAcc: WireAnnotation[] = [];
     let upstreamProvider: string | undefined;
     let stopReason: StopReason = "end_turn";
     let errorPayload: ProviderError | undefined;
@@ -382,6 +469,10 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
             for (const d of delta.reasoning_details) reasoningAcc.push(d);
         }
 
+        if (Array.isArray(delta.annotations)) {
+            for (const a of delta.annotations) annotationsAcc.push(a);
+        }
+
         if (typeof delta.content === "string" && delta.content.length > 0) {
             yield { type: "text.delta", text: delta.content };
         }
@@ -420,6 +511,11 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
     const finalizedDetails = reasoningAcc.finalize();
     if (finalizedDetails.length > 0) {
         yield { type: "reasoning.complete", details: finalizedDetails };
+    }
+
+    if (annotationsAcc.length > 0) {
+        const citEvt = buildCitationsEvent(annotationsAcc);
+        if (citEvt) yield citEvt;
     }
 
     if (pendingUsage) {

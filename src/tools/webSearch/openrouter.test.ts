@@ -36,21 +36,71 @@ const baseArgs = {
 };
 
 describe("runOpenRouterSearch", () => {
-    test("declares openrouter:web_search builtin tool with max_results and returns text", async () => {
+    test("declares openrouter:web_search builtin and forces reasoning exclude", async () => {
         const provider = makeProvider([
-            { type: "text.delta", text: "- [A](https://a.example)\n" },
-            { type: "text.delta", text: "- [B](https://b.example)" },
+            { type: "text.delta", text: "- [A](https://a.example)" },
+            { type: "stop", reason: "end_turn" },
+        ]);
+        await runOpenRouterSearch({ provider, ...baseArgs, maxResults: 10 });
+
+        const opts = provider.calls[0]?.providerOptions as Record<string, unknown>;
+        const builtins = opts["builtinTools"] as Array<Record<string, unknown>>;
+        expect(builtins).toEqual([{ type: "openrouter:web_search", max_results: 10 }]);
+        expect(opts["reasoning"]).toEqual({ exclude: true });
+    });
+
+    test("citations from engine take precedence over the model's typed text", async () => {
+        const provider = makeProvider([
+            // Model leaks Gemini-style grounding-redirect URLs as text…
+            {
+                type: "text.delta",
+                text: "- [lairner](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AAA)",
+            },
+            // …but the engine returned the resolved URLs as citations.
+            {
+                type: "citations",
+                citations: [
+                    { url: "https://lairner.app", title: "lairner — language learning" },
+                    {
+                        url: "https://apps.apple.com/us/app/lairner/id6446864115",
+                        title: "App Store",
+                    },
+                ],
+            },
             { type: "stop", reason: "end_turn" },
         ]);
 
-        const text = await runOpenRouterSearch({ provider, ...baseArgs, maxResults: 10 });
-        expect(text).toBe("- [A](https://a.example)\n- [B](https://b.example)");
-        expect(provider.calls).toHaveLength(1);
+        const result = await runOpenRouterSearch({ provider, ...baseArgs });
+        expect(result.citations).toHaveLength(2);
+        expect(result.text).toContain("lairner.app");
+        expect(result.text).not.toContain("vertexaisearch");
+        expect(result.text.split("\n")).toEqual([
+            "- [lairner — language learning](https://lairner.app)",
+            "- [App Store](https://apps.apple.com/us/app/lairner/id6446864115)",
+        ]);
+    });
 
-        const builtins = provider.calls[0]?.providerOptions?.["builtinTools"] as unknown as Array<
-            Record<string, unknown>
-        >;
-        expect(builtins).toEqual([{ type: "openrouter:web_search", max_results: 10 }]);
+    test("falls back to text when no citations event, stripping leading 'thought\\n…' CoT leak", async () => {
+        const provider = makeProvider([
+            {
+                type: "text.delta",
+                text: "thought\nLet me pick the best results from the search tool output.\n- [A](https://a.example)\n- [B](https://b.example)",
+            },
+            { type: "stop", reason: "end_turn" },
+        ]);
+        const result = await runOpenRouterSearch({ provider, ...baseArgs });
+        expect(result.citations).toEqual([]);
+        expect(result.text.startsWith("- [A]")).toBe(true);
+        expect(result.text).not.toMatch(/thought/i);
+    });
+
+    test("returns plain text when there's no CoT leak and no citations", async () => {
+        const provider = makeProvider([
+            { type: "text.delta", text: "- [Only](https://only.example)" },
+            { type: "stop", reason: "end_turn" },
+        ]);
+        const result = await runOpenRouterSearch({ provider, ...baseArgs });
+        expect(result.text).toBe("- [Only](https://only.example)");
     });
 
     test("forwards allowed_domains and excluded_domains (note: excluded, not blocked)", async () => {

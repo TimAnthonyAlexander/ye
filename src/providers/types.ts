@@ -122,10 +122,23 @@ export interface ProviderUsage {
     readonly upstream?: string;
 }
 
+// One URL the model cited from a server-side web tool (e.g. OpenRouter's
+// openrouter:web_search annotations). When present, these are the canonical
+// links — the model's free-text URLs may be opaque redirect URLs (e.g.
+// vertexaisearch.cloud.google.com/...) that can't be fetched directly.
+export interface Citation {
+    readonly url: string;
+    readonly title?: string;
+    readonly content?: string;
+    readonly startIndex?: number;
+    readonly endIndex?: number;
+}
+
 export type ProviderEvent =
     | { readonly type: "text.delta"; readonly text: string }
     | { readonly type: "reasoning.delta"; readonly text: string }
     | { readonly type: "reasoning.complete"; readonly details: readonly ReasoningDetail[] }
+    | { readonly type: "citations"; readonly citations: readonly Citation[] }
     | {
           readonly type: "tool_call";
           readonly id: string;

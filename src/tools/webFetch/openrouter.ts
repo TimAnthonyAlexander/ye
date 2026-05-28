@@ -1,4 +1,4 @@
-import type { Message, Provider } from "../../providers/index.ts";
+import type { Citation, Message, Provider } from "../../providers/index.ts";
 import { appendUsageRecord } from "../../storage/index.ts";
 
 export interface OpenRouterFetchArgs {
@@ -12,6 +12,11 @@ export interface OpenRouterFetchArgs {
     readonly signal: AbortSignal;
     readonly sessionId: string;
     readonly projectId: string;
+}
+
+export interface OpenRouterFetchResult {
+    readonly text: string;
+    readonly citations: readonly Citation[];
 }
 
 const buildBuiltinTool = (a: OpenRouterFetchArgs): Record<string, unknown> => {
@@ -46,17 +51,38 @@ const buildPrompt = (a: OpenRouterFetchArgs): string =>
         "- " + RULES,
     ].join("\n");
 
-export const runOpenRouterFetch = async (a: OpenRouterFetchArgs): Promise<string> => {
+const stripThoughtLeak = (s: string): string => {
+    if (!/^\s*thought\b/i.test(s)) return s;
+    // Find the first blank line after the "thought" preamble.
+    const m = s.match(/\n\s*\n/);
+    if (!m || m.index === undefined) return s.trim();
+    return s.slice(m.index).trim();
+};
+
+const appendSources = (body: string, citations: readonly Citation[]): string => {
+    if (citations.length === 0) return body;
+    const lines = citations.map((c) => `- [${c.title?.trim() || c.url}](${c.url})`);
+    return `${body}\n\nSources:\n${lines.join("\n")}`;
+};
+
+export const runOpenRouterFetch = async (
+    a: OpenRouterFetchArgs,
+): Promise<OpenRouterFetchResult> => {
     const messages: Message[] = [{ role: "user", content: buildPrompt(a) }];
     let text = "";
+    let citations: readonly Citation[] = [];
     for await (const evt of a.provider.stream({
         model: a.model,
         messages,
         signal: a.signal,
         maxTokens: 1024,
-        providerOptions: { builtinTools: [buildBuiltinTool(a)] },
+        providerOptions: {
+            builtinTools: [buildBuiltinTool(a)],
+            reasoning: { exclude: true },
+        },
     })) {
         if (evt.type === "text.delta") text += evt.text;
+        else if (evt.type === "citations") citations = evt.citations;
         else if (evt.type === "usage") {
             try {
                 await appendUsageRecord({
@@ -86,5 +112,10 @@ export const runOpenRouterFetch = async (a: OpenRouterFetchArgs): Promise<string
             break;
         }
     }
-    return text.trim();
+
+    const cleaned = stripThoughtLeak(text).trim();
+    return {
+        text: appendSources(cleaned, citations),
+        citations,
+    };
 };
