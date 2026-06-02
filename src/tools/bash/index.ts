@@ -115,8 +115,9 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
         stdout: "pipe",
         stderr: "pipe",
         // New process group so backgrounded children get killed with the shell
-        // when we send signals to -pid.
-        detached: true,
+        // when we send signals to -pid. POSIX only — on Windows `detached` opens
+        // a separate console window and detaches stdio, so piped output is lost.
+        detached: process.platform !== "win32",
     });
 
     let timedOut = false;
