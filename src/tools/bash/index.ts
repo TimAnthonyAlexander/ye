@@ -81,6 +81,16 @@ const raceAbort = <T>(p: Promise<T>, signal: AbortSignal): Promise<T | "aborted"
         );
     });
 
+// Pick the shell + invocation flag for the host platform. Bun's `sh` does not
+// exist on Windows; use the comspec (cmd.exe) there. POSIX hosts get `sh -c`.
+const shellCommand = (command: string): readonly string[] => {
+    if (process.platform === "win32") {
+        const comspec = process.env.ComSpec ?? "cmd.exe";
+        return [comspec, "/d", "/s", "/c", command];
+    }
+    return ["sh", "-c", command];
+};
+
 const timeoutHint = (ms: number): string => {
     const next = Math.min(ms * 2, MAX_TIMEOUT_MS);
     return (
@@ -100,7 +110,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     const startedAt = performance.now();
 
     const proc = Bun.spawn({
-        cmd: ["sh", "-c", command],
+        cmd: [...shellCommand(command)],
         cwd: ctx.cwd,
         stdout: "pipe",
         stderr: "pipe",
@@ -157,7 +167,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 export const BashTool: Tool = {
     name: "Bash",
     description:
-        "Execute a shell command via `sh -c`. Default 120s timeout, max 900s (15 min) via the optional `timeout` arg (ms). " +
+        "Execute a shell command via the system shell (`sh -c` on macOS/Linux, `cmd.exe /c` on Windows). Default 120s timeout, max 900s (15 min) via the optional `timeout` arg (ms). " +
         "Do NOT use this to start dev servers, watchers, or any command that runs indefinitely — those will hang the turn until timeout. " +
         "v1 has NO sandbox: in AUTO mode this command runs immediately with the user's privileges. " +
         "Prefer Read/Edit/Write/Glob/Grep over Bash when they fit.",
