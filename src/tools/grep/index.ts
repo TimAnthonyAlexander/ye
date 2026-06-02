@@ -1,5 +1,7 @@
+import { isAbsolute, join } from "node:path";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
+import { grepFallback } from "./fallback.ts";
 
 type GrepMode = "content" | "files_with_matches" | "count";
 
@@ -29,12 +31,21 @@ const flagsForMode = (mode: GrepMode): string[] => {
     }
 };
 
-const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
-    const v = validateArgs<GrepArgs>(rawArgs, GrepTool.schema);
-    if (!v.ok) return v;
-    const { pattern, path = ctx.cwd, output_mode = "content", type, glob } = v.value;
+// Bun throws synchronously when the binary isn't on PATH. The message looks
+// like: Executable not found in $PATH: "rg". Windows installs often lack rg, so
+// detect this and switch to the pure-Bun fallback instead of failing the tool.
+const isMissingRipgrep = (e: unknown): boolean =>
+    e instanceof Error && /not found|ENOENT/i.test(e.message);
 
-    const args = ["rg", "--no-heading", "--color", "never", ...flagsForMode(output_mode)];
+const runRipgrep = async (
+    pattern: string,
+    path: string,
+    mode: GrepMode,
+    type: string | undefined,
+    glob: string | undefined,
+    ctx: ToolContext,
+): Promise<{ stdout: string; exitCode: number }> => {
+    const args = ["rg", "--no-heading", "--color", "never", ...flagsForMode(mode)];
     if (type) args.push("-t", type);
     if (glob) args.push("-g", glob);
     args.push(pattern, path);
@@ -55,10 +66,39 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 
     // ripgrep: exit 1 = no matches (not an error)
     if (exitCode !== 0 && exitCode !== 1) {
-        return {
-            ok: false,
-            error: stderr.trim() || `rg exited with code ${exitCode}`,
-        };
+        throw new Error(stderr.trim() || `rg exited with code ${exitCode}`);
+    }
+    return { stdout, exitCode };
+};
+
+const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
+    const v = validateArgs<GrepArgs>(rawArgs, GrepTool.schema);
+    if (!v.ok) return v;
+    const { pattern, path = ctx.cwd, output_mode = "content", type, glob } = v.value;
+
+    let stdout: string;
+    let exitCode: number;
+    try {
+        ({ stdout, exitCode } = await runRipgrep(pattern, path, output_mode, type, glob, ctx));
+    } catch (e) {
+        if (!isMissingRipgrep(e)) {
+            return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+        const root = isAbsolute(path) ? path : join(ctx.cwd, path);
+        try {
+            stdout = await grepFallback({
+                pattern,
+                root,
+                mode: output_mode,
+                type,
+                glob,
+                signal: ctx.signal,
+            });
+        } catch (fe) {
+            return { ok: false, error: fe instanceof Error ? fe.message : String(fe) };
+        }
+        // Mirror ripgrep's exit semantics: 0 = matched, 1 = no match.
+        exitCode = stdout.length > 0 ? 0 : 1;
     }
 
     const output = truncate(stdout);
@@ -69,7 +109,8 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 export const GrepTool: Tool = {
     name: "Grep",
     description:
-        "Search file contents using ripgrep. Modes: content (matching lines, default), " +
+        "Search file contents using ripgrep (falls back to a built-in scanner when `rg` is not installed). " +
+        "Modes: content (matching lines, default), " +
         "files_with_matches (paths only), count (matches per file). Supports type/glob filters.",
     annotations: { readOnlyHint: true },
     schema: {
