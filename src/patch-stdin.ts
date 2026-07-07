@@ -158,10 +158,7 @@ process.stdin.read = function (size?: number) {
 
     // If new data arrived and the buffer looks like the start of a
     // CSI u or modifyOtherKeys sequence, wait for the next read.
-    if (
-        chunk !== null &&
-        (PARTIAL_CSI_U.test(buf) || PARTIAL_MODIFY.test(buf) || buf === "\x1b")
-    ) {
+    if (chunk !== null && (PARTIAL_CSI_U.test(buf) || PARTIAL_MODIFY.test(buf) || buf === "\x1b")) {
         return null;
     }
 
