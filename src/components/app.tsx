@@ -74,6 +74,7 @@ import { destroyBackgroundManager, getBackgroundManager } from "../tools/bash/ba
 import {
     destroyBackgroundSubagentManager,
     getBackgroundSubagentManager,
+    type BackgroundSubagentTask,
 } from "../subagents/background.ts";
 import { Home, HOME_MIN_COLS, HOME_MIN_ROWS } from "./home.tsx";
 import { pickTip } from "./homeTips.ts";
@@ -81,6 +82,7 @@ import { KeyPrompt } from "./keyPrompt.tsx";
 import { MentionPicker } from "./mentionPicker.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
 import { Picker } from "./picker.tsx";
+import { SubagentInspector } from "./subagentInspector.tsx";
 import { SlashPicker } from "./slashPicker.tsx";
 import { StatusBar } from "./statusBar.tsx";
 import { TodoPanel } from "./todoPanel.tsx";
@@ -312,6 +314,9 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     const [usedTokens, setUsedTokens] = useState(0);
     const [contextWindow, setContextWindow] = useState(0);
     const [bgTaskCount, setBgTaskCount] = useState(0);
+    const [inspectorOpen, setInspectorOpen] = useState(false);
+    const [inspectorTab, setInspectorTab] = useState("main");
+    const [inspectorTasks, setInspectorTasks] = useState<readonly BackgroundSubagentTask[]>([]);
     const [tokenUsage, setTokenUsage] = useState<{
         readonly input: number;
         readonly output: number;
@@ -414,6 +419,23 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             setBgTaskCount(bashCount + subagentCount);
         }
     };
+
+    // Poll the background subagent manager when the inspector is open so live
+    // logs and statuses update without user interaction.
+    useEffect(() => {
+        if (!inspectorOpen) return;
+        const id = setInterval(() => {
+            const s = stateRef.current;
+            if (!s) return;
+            const mgr = getBackgroundSubagentManager(s.sessionId);
+            const tasks: BackgroundSubagentTask[] = [];
+            for (const t of mgr.allTasks()) {
+                if (t.status === "running" || !t.delivered) tasks.push(t);
+            }
+            setInspectorTasks(tasks);
+        }, 500);
+        return () => clearInterval(id);
+    }, [inspectorOpen]);
 
     const recordHistory = (text: string): void => {
         if (historyRef.current[0] === text) return;
@@ -1006,6 +1028,15 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             setGroupsExpanded((v) => !v);
             return;
         }
+        if (key.ctrl && input === "g") {
+            // Ctrl+G: toggle subagent inspector. Only works when background
+            // subagents are running (or recently finished and undelivered).
+            if (bgTaskCount > 0) {
+                setInspectorOpen((v) => !v);
+                setInspectorTab("main");
+            }
+            return;
+        }
         if (
             key.tab &&
             key.shift &&
@@ -1585,72 +1616,86 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     }}
                 />
             )}
-            <Chat
-                key={chatKey}
-                items={items}
-                streamingText={streamingText}
-                streaming={
-                    streaming &&
-                    !pendingPrompt &&
-                    !pendingUserQuestion &&
-                    !pendingPicker &&
-                    !pendingKeyPrompt
-                }
-                committedCount={committedCount}
-                groupsExpanded={groupsExpanded}
-            />
-            {error !== null && (
-                <Box paddingX={1} marginBottom={1}>
-                    <Text color="red">error: {error}</Text>
-                </Box>
-            )}
-            <TodoPanel todos={todos} />
-            {queuedDisplay.length > 0 && (
-                <Box paddingX={1} flexDirection="column" marginBottom={1}>
-                    {queuedDisplay.map((q) => (
-                        <Text key={q.id} color="cyan">
-                            <Text dimColor>↳ queued </Text>
-                            {q.text}
-                        </Text>
-                    ))}
-                </Box>
-            )}
-            {pendingPrompt ? (
-                <PermissionPrompt
-                    payload={pendingPrompt.payload}
-                    onRespond={pendingPrompt.respond}
-                />
-            ) : pendingUserQuestion ? (
-                <UserQuestion
-                    payload={pendingUserQuestion.payload}
-                    onRespond={pendingUserQuestion.respond}
-                />
-            ) : pendingPicker ? (
-                <Picker payload={pendingPicker.payload} onRespond={pendingPicker.respond} />
-            ) : pendingKeyPrompt ? (
-                <KeyPrompt
-                    payload={pendingKeyPrompt.payload}
-                    onRespond={pendingKeyPrompt.respond}
+            {inspectorOpen ? (
+                <SubagentInspector
+                    tasks={inspectorTasks}
+                    selectedTab={inspectorTab}
+                    onSelectTab={setInspectorTab}
+                    onClose={() => setInspectorOpen(false)}
                 />
             ) : (
                 <>
-                    <SlashPicker input={currentInput} />
-                    {mentionOpen && (
-                        <MentionPicker matches={mentionMatches} activeIndex={mentionActive} />
-                    )}
-                    <ChatInput
-                        ref={chatInputRef}
-                        onSubmit={send}
-                        disabled={false}
-                        onValueChange={handleValueChange}
-                        getCompletion={completeCommand}
-                        history={history}
-                        mentionOpen={mentionOpen}
-                        onMentionMove={handleMentionMove}
-                        onMentionAccept={handleMentionAccept}
-                        onMentionDismiss={handleMentionDismiss}
-                        historyDisabled={showHome}
+                    <Chat
+                        key={chatKey}
+                        items={items}
+                        streamingText={streamingText}
+                        streaming={
+                            streaming &&
+                            !pendingPrompt &&
+                            !pendingUserQuestion &&
+                            !pendingPicker &&
+                            !pendingKeyPrompt
+                        }
+                        committedCount={committedCount}
+                        groupsExpanded={groupsExpanded}
                     />
+                    {error !== null && (
+                        <Box paddingX={1} marginBottom={1}>
+                            <Text color="red">error: {error}</Text>
+                        </Box>
+                    )}
+                    <TodoPanel todos={todos} />
+                    {queuedDisplay.length > 0 && (
+                        <Box paddingX={1} flexDirection="column" marginBottom={1}>
+                            {queuedDisplay.map((q) => (
+                                <Text key={q.id} color="cyan">
+                                    <Text dimColor>↳ queued </Text>
+                                    {q.text}
+                                </Text>
+                            ))}
+                        </Box>
+                    )}
+                    {pendingPrompt ? (
+                        <PermissionPrompt
+                            payload={pendingPrompt.payload}
+                            onRespond={pendingPrompt.respond}
+                        />
+                    ) : pendingUserQuestion ? (
+                        <UserQuestion
+                            payload={pendingUserQuestion.payload}
+                            onRespond={pendingUserQuestion.respond}
+                        />
+                    ) : pendingPicker ? (
+                        <Picker payload={pendingPicker.payload} onRespond={pendingPicker.respond} />
+                    ) : pendingKeyPrompt ? (
+                        <KeyPrompt
+                            payload={pendingKeyPrompt.payload}
+                            onRespond={pendingKeyPrompt.respond}
+                        />
+                    ) : (
+                        <>
+                            <SlashPicker input={currentInput} />
+                            {mentionOpen && (
+                                <MentionPicker
+                                    matches={mentionMatches}
+                                    activeIndex={mentionActive}
+                                />
+                            )}
+                            <ChatInput
+                                ref={chatInputRef}
+                                onSubmit={send}
+                                disabled={false}
+                                onValueChange={handleValueChange}
+                                getCompletion={completeCommand}
+                                history={history}
+                                mentionOpen={mentionOpen}
+                                onMentionMove={handleMentionMove}
+                                onMentionAccept={handleMentionAccept}
+                                onMentionDismiss={handleMentionDismiss}
+                                historyDisabled={showHome}
+                            />
+                        </>
+                    )}
                 </>
             )}
             <Box paddingX={1}>

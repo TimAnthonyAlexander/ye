@@ -8,6 +8,10 @@ import {
     verificationTurnBudget,
 } from "./kinds/verification.ts";
 import type { SubagentKind, SubagentResult, SubagentSpec } from "./types.ts";
+import type { Event } from "../pipeline/events.ts";
+import { formatChildLine } from "./formatLine.ts";
+
+const LIVE_LOG_CAP = 30;
 
 export interface BackgroundSubagentTask {
     readonly id: string;
@@ -21,6 +25,7 @@ export interface BackgroundSubagentTask {
     delivered: boolean;
     readonly startedAt: number;
     abortController: AbortController | null;
+    readonly liveLog: string[];
 }
 
 class BackgroundSubagentManager {
@@ -41,6 +46,7 @@ class BackgroundSubagentManager {
             delivered: false,
             startedAt: Date.now(),
             abortController: null,
+            liveLog: [],
         };
         this.tasks.set(id, task);
 
@@ -76,6 +82,13 @@ class BackgroundSubagentManager {
         const abort = new AbortController();
         task.abortController = abort;
 
+        const onChildEvent = (evt: Event): void => {
+            const line = formatChildLine(evt, ctx.parentProjectRoot);
+            if (line === null) return;
+            task.liveLog.push(line);
+            if (task.liveLog.length > LIVE_LOG_CAP) task.liveLog.shift();
+        };
+
         void runInProcess({
             parentProjectId: ctx.parentProjectId,
             parentProjectRoot: ctx.parentProjectRoot,
@@ -88,6 +101,7 @@ class BackgroundSubagentManager {
             config: ctx.config,
             provider: ctx.provider,
             signal: abort.signal,
+            onChildEvent,
         })
             .then((result: SubagentResult) => {
                 task.summary = result.summary;
@@ -131,6 +145,10 @@ class BackgroundSubagentManager {
             if (task.status === "running") return true;
         }
         return false;
+    }
+
+    allTasks(): IterableIterator<BackgroundSubagentTask> {
+        return this.tasks.values();
     }
 
     runningCount(): number {
