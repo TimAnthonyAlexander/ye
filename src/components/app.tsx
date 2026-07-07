@@ -75,6 +75,7 @@ import {
     destroyBackgroundSubagentManager,
     getBackgroundSubagentManager,
     type BackgroundSubagentTask,
+    type SubagentItem,
 } from "../subagents/background.ts";
 import { Home, HOME_MIN_COLS, HOME_MIN_ROWS } from "./home.tsx";
 import { pickTip } from "./homeTips.ts";
@@ -82,7 +83,7 @@ import { KeyPrompt } from "./keyPrompt.tsx";
 import { MentionPicker } from "./mentionPicker.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
 import { Picker } from "./picker.tsx";
-import { SubagentInspector } from "./subagentInspector.tsx";
+import { SubagentTabBar } from "./subagentTabBar.tsx";
 import { SlashPicker } from "./slashPicker.tsx";
 import { StatusBar } from "./statusBar.tsx";
 import { TodoPanel } from "./todoPanel.tsx";
@@ -227,6 +228,20 @@ const buildItemsFromReplay = (replayed: ReplayedSession): ChatItem[] => {
     return items;
 };
 
+const toChatItem = (item: SubagentItem): ChatItem => {
+    if (item.kind === "text") {
+        return { kind: "message", id: item.id, role: "assistant", content: item.content };
+    }
+    const entry: ToolCallEntry = {
+        id: item.id,
+        name: item.name,
+        args: item.args,
+        status: item.status,
+        ...(item.progress ? { progress: item.progress } : {}),
+    };
+    return { kind: "toolCall", entry };
+};
+
 export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: AppProps) => {
     const initialCfg = config.config;
     const { exit } = useApp();
@@ -314,9 +329,11 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     const [usedTokens, setUsedTokens] = useState(0);
     const [contextWindow, setContextWindow] = useState(0);
     const [bgTaskCount, setBgTaskCount] = useState(0);
-    const [inspectorOpen, setInspectorOpen] = useState(false);
-    const [inspectorTab, setInspectorTab] = useState("main");
-    const [inspectorTasks, setInspectorTasks] = useState<readonly BackgroundSubagentTask[]>([]);
+    // null = normal chat view, "main" = tabs visible, task id = inside subagent
+    const [subagentView, setSubagentView] = useState<string | null>(null);
+    const [subagentTasks, setSubagentTasks] = useState<readonly BackgroundSubagentTask[]>([]);
+    // When true, arrow keys go to the tab bar instead of history.
+    const [tabBarFocused, setTabBarFocused] = useState(false);
     const [tokenUsage, setTokenUsage] = useState<{
         readonly input: number;
         readonly output: number;
@@ -420,10 +437,10 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         }
     };
 
-    // Poll the background subagent manager when the inspector is open so live
-    // logs and statuses update without user interaction.
+    // Poll the background subagent manager when tabs are visible so items and
+    // statuses update live.
     useEffect(() => {
-        if (!inspectorOpen) return;
+        if (subagentView === null) return;
         const id = setInterval(() => {
             const s = stateRef.current;
             if (!s) return;
@@ -432,10 +449,22 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             for (const t of mgr.allTasks()) {
                 if (t.status === "running" || !t.delivered) tasks.push(t);
             }
-            setInspectorTasks(tasks);
+            // Auto-hide tabs when no tasks remain.
+            if (tasks.length === 0) {
+                setSubagentView(null);
+                setTabBarFocused(false);
+            } else {
+                setSubagentTasks(tasks);
+                // If viewing a subagent that just finished, return to main.
+                const viewed = tasks.find((t) => t.id === subagentView);
+                if (viewed && viewed.status !== "running") {
+                    setSubagentView("main");
+                    setTabBarFocused(true);
+                }
+            }
         }, 500);
         return () => clearInterval(id);
-    }, [inspectorOpen]);
+    }, [subagentView]);
 
     const recordHistory = (text: string): void => {
         if (historyRef.current[0] === text) return;
@@ -1023,18 +1052,12 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             return;
         }
         if (key.ctrl && input === "o") {
-            // Ctrl+O: toggle expansion of grouped read-only tool calls in the
-            // dynamic section. Doesn't affect anything already in scrollback.
             setGroupsExpanded((v) => !v);
             return;
         }
-        if (key.ctrl && input === "g") {
-            // Ctrl+G: toggle subagent inspector. Only works when background
-            // subagents are running (or recently finished and undelivered).
-            if (bgTaskCount > 0) {
-                setInspectorOpen((v) => !v);
-                setInspectorTab("main");
-            }
+        if (key.downArrow && subagentView === null && bgTaskCount > 0) {
+            setSubagentView("main");
+            setTabBarFocused(true);
             return;
         }
         if (
@@ -1616,29 +1639,33 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     }}
                 />
             )}
-            {inspectorOpen ? (
-                <SubagentInspector
-                    tasks={inspectorTasks}
-                    selectedTab={inspectorTab}
-                    onSelectTab={setInspectorTab}
-                    onClose={() => setInspectorOpen(false)}
-                />
-            ) : (
+            <Chat
+                key={chatKey}
+                items={
+                    subagentView !== null && subagentView !== "main"
+                        ? (subagentTasks
+                              .find((t) => t.id === subagentView)
+                              ?.items.map(toChatItem) ?? [])
+                        : items
+                }
+                streamingText={
+                    subagentView !== null && subagentView !== "main" ? "" : streamingText
+                }
+                streaming={
+                    (subagentView === null || subagentView === "main") &&
+                    streaming &&
+                    !pendingPrompt &&
+                    !pendingUserQuestion &&
+                    !pendingPicker &&
+                    !pendingKeyPrompt
+                }
+                committedCount={
+                    subagentView !== null && subagentView !== "main" ? 0 : committedCount
+                }
+                groupsExpanded={groupsExpanded}
+            />
+            {(subagentView === null || subagentView === "main") && (
                 <>
-                    <Chat
-                        key={chatKey}
-                        items={items}
-                        streamingText={streamingText}
-                        streaming={
-                            streaming &&
-                            !pendingPrompt &&
-                            !pendingUserQuestion &&
-                            !pendingPicker &&
-                            !pendingKeyPrompt
-                        }
-                        committedCount={committedCount}
-                        groupsExpanded={groupsExpanded}
-                    />
                     {error !== null && (
                         <Box paddingX={1} marginBottom={1}>
                             <Text color="red">error: {error}</Text>
@@ -1692,7 +1719,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                                 onMentionMove={handleMentionMove}
                                 onMentionAccept={handleMentionAccept}
                                 onMentionDismiss={handleMentionDismiss}
-                                historyDisabled={showHome}
+                                historyDisabled={showHome || tabBarFocused}
                             />
                         </>
                     )}
@@ -1714,6 +1741,27 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 sessionTokenUsage={sessionTokenUsage}
                 bgTaskCount={bgTaskCount}
             />
+            {subagentView !== null && (
+                <SubagentTabBar
+                    tasks={subagentTasks}
+                    selectedTab={subagentView}
+                    onSelectTab={(tab) => {
+                        setSubagentView(tab);
+                        setTabBarFocused(true);
+                    }}
+                    onEnter={(tab) => {
+                        setSubagentView(tab);
+                        // Keep focus when entering a subagent so arrow keys still work.
+                        if (tab !== "main") setTabBarFocused(true);
+                    }}
+                    focused={tabBarFocused}
+                    onFocusBack={() => {
+                        setTabBarFocused(false);
+                        setSubagentView("main");
+                    }}
+                    alwaysFocused={subagentView !== null && subagentView !== "main"}
+                />
+            )}
         </Box>
     );
 };

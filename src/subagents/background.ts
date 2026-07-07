@@ -9,9 +9,28 @@ import {
 } from "./kinds/verification.ts";
 import type { SubagentKind, SubagentResult, SubagentSpec } from "./types.ts";
 import type { Event } from "../pipeline/events.ts";
-import { formatChildLine } from "./formatLine.ts";
 
-const LIVE_LOG_CAP = 30;
+export interface SubagentToolItem {
+    readonly kind: "tool";
+    readonly id: string;
+    readonly name: string;
+    readonly args: unknown;
+    status: "running" | "done" | "error";
+    progress?: readonly string[];
+}
+
+export interface SubagentTextItem {
+    readonly kind: "text";
+    readonly id: string;
+    readonly content: string;
+}
+
+export type SubagentItem = SubagentToolItem | SubagentTextItem;
+
+let itemSeq = 0;
+const nextItemId = (): string => `sa-${++itemSeq}`;
+
+const MAX_ITEMS = 200;
 
 export interface BackgroundSubagentTask {
     readonly id: string;
@@ -25,7 +44,7 @@ export interface BackgroundSubagentTask {
     delivered: boolean;
     readonly startedAt: number;
     abortController: AbortController | null;
-    readonly liveLog: string[];
+    readonly items: SubagentItem[];
 }
 
 class BackgroundSubagentManager {
@@ -46,7 +65,7 @@ class BackgroundSubagentManager {
             delivered: false,
             startedAt: Date.now(),
             abortController: null,
-            liveLog: [],
+            items: [],
         };
         this.tasks.set(id, task);
 
@@ -82,11 +101,70 @@ class BackgroundSubagentManager {
         const abort = new AbortController();
         task.abortController = abort;
 
+        let textBuf = "";
+        const flushText = (): void => {
+            if (textBuf.length === 0) return;
+            task.items.push({
+                kind: "text",
+                id: nextItemId(),
+                content: textBuf,
+            });
+            if (task.items.length > MAX_ITEMS) task.items.shift();
+            textBuf = "";
+        };
+
         const onChildEvent = (evt: Event): void => {
-            const line = formatChildLine(evt, ctx.parentProjectRoot);
-            if (line === null) return;
-            task.liveLog.push(line);
-            if (task.liveLog.length > LIVE_LOG_CAP) task.liveLog.shift();
+            switch (evt.type) {
+                case "model.text":
+                    textBuf += evt.delta;
+                    return;
+                case "tool.start":
+                    flushText();
+                    task.items.push({
+                        kind: "tool",
+                        id: evt.id,
+                        name: evt.name,
+                        args: evt.args,
+                        status: "running",
+                    });
+                    if (task.items.length > MAX_ITEMS) task.items.shift();
+                    return;
+                case "tool.end": {
+                    flushText();
+                    for (let i = task.items.length - 1; i >= 0; i--) {
+                        const item = task.items[i];
+                        if (item?.kind === "tool" && item.id === evt.id) {
+                            item.status = evt.result.ok ? "done" : "error";
+                            // Append the formatted line as post-label
+                            return;
+                        }
+                    }
+                    // Orphan tool.end — create a done item.
+                    task.items.push({
+                        kind: "tool",
+                        id: evt.id,
+                        name: evt.name,
+                        args: {},
+                        status: evt.result.ok ? "done" : "error",
+                    });
+                    if (task.items.length > MAX_ITEMS) task.items.shift();
+                    return;
+                }
+                case "tool.progress":
+                    for (let i = task.items.length - 1; i >= 0; i--) {
+                        const item = task.items[i];
+                        if (item?.kind === "tool" && item.id === evt.id) {
+                            item.progress = evt.lines;
+                            return;
+                        }
+                    }
+                    return;
+                case "turn.start":
+                    flushText();
+                    return;
+                default:
+                    return;
+            }
         };
 
         void runInProcess({
