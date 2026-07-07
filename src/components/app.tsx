@@ -71,6 +71,10 @@ import { Chat, type ChatItem, computeDynamicStart, newChatItemId } from "./chat.
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
 import { runEventHooks } from "../hooks/index.ts";
 import { destroyBackgroundManager, getBackgroundManager } from "../tools/bash/background.ts";
+import {
+    destroyBackgroundSubagentManager,
+    getBackgroundSubagentManager,
+} from "../subagents/background.ts";
 import { Home, HOME_MIN_COLS, HOME_MIN_ROWS } from "./home.tsx";
 import { pickTip } from "./homeTips.ts";
 import { KeyPrompt } from "./keyPrompt.tsx";
@@ -404,7 +408,11 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
 
     const refreshBgCount = (): void => {
         const s = stateRef.current;
-        if (s) setBgTaskCount(getBackgroundManager(s.sessionId).runningCount());
+        if (s) {
+            const bashCount = getBackgroundManager(s.sessionId).runningCount();
+            const subagentCount = getBackgroundSubagentManager(s.sessionId).runningCount();
+            setBgTaskCount(bashCount + subagentCount);
+        }
     };
 
     const recordHistory = (text: string): void => {
@@ -475,6 +483,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         sessionRef.current = newSession;
         if (oldSession) {
             destroyBackgroundManager(oldSession.sessionId);
+            destroyBackgroundSubagentManager(oldSession.sessionId);
             await oldSession.close().catch(() => {});
         }
         state.history = [];
@@ -952,7 +961,10 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         return () => {
             cancelled = true;
             const s = sessionRef.current;
-            if (s) destroyBackgroundManager(s.sessionId);
+            if (s) {
+                destroyBackgroundManager(s.sessionId);
+                destroyBackgroundSubagentManager(s.sessionId);
+            }
             s?.close().catch(() => {});
         };
         // The config prop never changes for the lifetime of App (cli.tsx mounts
@@ -1344,6 +1356,26 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 if (!ctrl.signal.aborted) {
                     await sendNow(
                         "<system-reminder>A background task finished — check the output.</system-reminder>",
+                    );
+                }
+            } catch {
+                // Aborted — user sent a message, normal flow takes over.
+            } finally {
+                if (bgWakeupRef.current === ctrl) bgWakeupRef.current = null;
+            }
+        }
+
+        // Same pattern for background subagents.
+        const subagentMgr = getBackgroundSubagentManager(stateRef.current!.sessionId);
+        if (subagentMgr.hasRunning()) {
+            const ctrl = new AbortController();
+            bgWakeupRef.current = ctrl;
+            try {
+                await subagentMgr.waitForCompletion(ctrl.signal);
+                refreshBgCount();
+                if (!ctrl.signal.aborted) {
+                    await sendNow(
+                        "<system-reminder>A background subagent finished — check its output.</system-reminder>",
                     );
                 }
             } catch {

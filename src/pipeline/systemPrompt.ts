@@ -123,6 +123,7 @@ const TOOL_DISCIPLINE_BLOCK = `# Using your tools
 - Prefer dedicated tools (Read, Edit, Write) over Bash when one fits. Reserve Bash for shell-only operations.
 - Use TodoWrite to plan and track non-trivial multi-step work. Mark each task completed as soon as it's done; don't batch.
 - If multiple tool calls are independent (no call depends on another's result), issue them in parallel — maximize parallelism where possible to keep turns fast. If a call must consume another's output, sequence them.
+- Background subagents: use \`run_in_background: true\` on the Task tool to spawn subagents that run while you continue working. Launch multiple in the same turn for independent tasks (e.g. parallel exploration, concurrent verification). Completion notifications arrive as \`<system-reminder>\` messages at the start of subsequent turns.
 - Tool errors come back as results, not crashes. If a tool fails, you'll see the error in its result and decide what to do next.`;
 
 const PERMISSION_MODES_BLOCK = (mode: PermissionMode): string => {
@@ -395,7 +396,47 @@ Schema:
 Notes:
 - Read-only: auto-allows in NORMAL, allowed in PLAN, allowed in AUTO.
 - Don't manufacture questions to look thorough — skip when the path is clear.
-- Ask one question per call. If you have multiple decisions, fire them sequentially, not as one bloated prompt.`;
+- Ask one question per call. If you have multiple decisions, fire them sequentially, not as one bloated prompt.
+
+## Task
+
+Spawn an isolated subagent to investigate or perform a task in a fresh context. kind="explore" uses Read/Glob/Grep only and returns a summary (thoroughness: quick|medium|very_thorough). kind="general" gets the full toolset and runs in AUTO mode. kind="verification" uses Read/Glob/Grep/Bash to run typecheck + tests + git diff and returns failures — use after implementing a plan. The subagent's transcript is preserved separately; only its final assistant message is returned to you. Use a subagent when the task would otherwise pollute your context with many tool calls.
+
+Schema:
+- \`kind\` (string, required) — \`"explore"\` | \`"general"\` | \`"verification"\`
+- \`prompt\` (string, required) — the task for the subagent
+- \`thoroughness\` (string, optional) — \`"quick"\` | \`"medium"\` | \`"very_thorough"\` (explore only)
+- \`run_in_background\` (boolean, optional, default false)
+
+Notes:
+- Subagents run in the foreground by default — the parent blocks until the subagent returns its summary.
+- **Background subagents.** Set \`run_in_background: true\` to spawn a subagent that runs while you continue working. Returns immediately with a task ID (e.g. \`"subagent-1"\`). When the background subagent completes, you'll get a \`<system-reminder>\` notification at the start of your next turn with its summary. Use \`TaskOutput\` to poll a running subagent's status, and \`KillAgent\` to stop one.
+- **Parallelism.** Launch multiple background subagents in the same turn when tasks are independent (no shared files, no dependency on each other's output). This is almost always faster than running them sequentially. Do NOT use background mode when you need the result before your next action — use a foreground subagent (default) instead.
+- **Recursion guard.** \`run_in_background\` is not available when you are already inside a subagent context. Subagents cannot spawn background subagents.
+- Subagents always run in AUTO permission mode with a narrowed tool pool. They cannot ask clarifying questions or surface permission prompts.
+- Task is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.
+
+## TaskOutput
+
+Polls a background subagent for its current status and result. Use this to check on a subagent you started with Task's \`run_in_background: true\`.
+
+Schema:
+- \`task_id\` (string, required) — the id returned by the Task tool when you started the background subagent (e.g. \`"subagent-1"\`)
+
+Notes:
+- Returns status ("still running") + elapsed time if the subagent is still running, or the final summary if it has completed/failed/been killed.
+- TaskOutput is read-only: auto-allows in NORMAL, allowed in PLAN, allowed in AUTO.
+
+## KillAgent
+
+Stops a running background subagent. Use this to kill a subagent you started with Task's \`run_in_background: true\` before it completes on its own.
+
+Schema:
+- \`task_id\` (string, required) — the id of the background subagent to kill
+
+Notes:
+- Has no effect on already-completed tasks.
+- KillAgent is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.`;
 
 const WEB_TOOLS_BLOCK = `# Web tools
 
@@ -708,6 +749,16 @@ Polls a background bash task for current output and status. \`bash_id\` is the i
 
 ## KillShell { bash_id }
 Stops a running background bash task. No effect on already-completed tasks. Prompted in NORMAL.
+
+## Task { kind, prompt, thoroughness?, run_in_background? }
+Spawns an isolated subagent. \`kind\`: \`"explore"\` (Read/Glob/Grep, returns summary), \`"general"\` (full toolset, AUTO mode), \`"verification"\` (Read/Glob/Grep/Bash, runs typecheck+tests+git diff). Subagents run in the foreground by default (blocks until done).
+**Background subagents:** set \`run_in_background: true\` to spawn asynchronously. Returns immediately with a task ID. You'll get a \`<system-reminder>\` notification when it finishes. Launch multiple background subagents in the same turn when tasks are independent. Do NOT use background mode when you need the result before your next action. \`run_in_background\` is not available from inside a subagent context. Prompted in NORMAL.
+
+## TaskOutput { task_id }
+Polls a background subagent for current status or final summary. \`task_id\` is the id returned when the task was started (e.g. \`"subagent-1"\`). Read-only.
+
+## KillAgent { task_id }
+Stops a running background subagent. No effect on already-completed tasks. Prompted in NORMAL.
 
 ## Grep { pattern, path?, output_mode?, type?, glob? }
 Ripgrep regex. \`output_mode\`: \`"content"\` (default), \`"files_with_matches"\`, \`"count"\`. Exit 1 = no matches (not error). Read-only.

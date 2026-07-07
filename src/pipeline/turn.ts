@@ -22,6 +22,7 @@ import {
     type TurnState,
 } from "../tools/index.ts";
 import { getBackgroundManager, formatBashResult } from "../tools/bash/background.ts";
+import { getBackgroundSubagentManager } from "../subagents/background.ts";
 import { assemble } from "./assemble.ts";
 import { type CollectedToolCall } from "./dispatch.ts";
 import { transcriptable, type Event, type StopReason } from "./events.ts";
@@ -138,6 +139,20 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         state.history.push({
             role: "user",
             content: `<system-reminder>\nBackground task ${task.id} finished.\n${output}\n</system-reminder>`,
+        });
+    }
+
+    // Drain completed background subagents and inject their summaries.
+    const subagentMgr = getBackgroundSubagentManager(state.sessionId);
+    for (const task of subagentMgr.drainCompleted()) {
+        const durationMs = Date.now() - task.startedAt;
+        const content =
+            task.status === "completed"
+                ? task.summary
+                : `[${task.status}] ${task.error || "no details"}`;
+        state.history.push({
+            role: "user",
+            content: `<system-reminder>\nBackground subagent ${task.id} (${task.kind}) finished after ${durationMs}ms.\n${content}\n</system-reminder>`,
         });
     }
 

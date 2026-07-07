@@ -1,6 +1,7 @@
 import type { Event } from "../../pipeline/events.ts";
-import type { ExploreThoroughness, SubagentKind } from "../../subagents/index.ts";
+import type { ExploreThoroughness, SubagentKind, SubagentSpec } from "../../subagents/index.ts";
 import { isSubagentKind, spawn, SubagentError } from "../../subagents/index.ts";
+import { getBackgroundSubagentManager } from "../../subagents/background.ts";
 import { prettyPath } from "../../ui/path.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
@@ -9,6 +10,7 @@ interface TaskArgs {
     readonly kind: SubagentKind;
     readonly prompt: string;
     readonly thoroughness?: ExploreThoroughness;
+    readonly run_in_background?: boolean;
 }
 
 interface TaskResultValue {
@@ -75,6 +77,33 @@ const execute = async (
         };
     }
 
+    if (v.value.run_in_background) {
+        const spec: SubagentSpec = {
+            kind,
+            prompt,
+            ...(thoroughness ? { options: { thoroughness } } : {}),
+        };
+        const spawnCtx = {
+            parentProjectId: subagentCtx.projectId,
+            parentProjectRoot: subagentCtx.projectRoot,
+            parentSessionId: subagentCtx.parentSessionId,
+            contextWindow: subagentCtx.contextWindow,
+            config: subagentCtx.config,
+            provider: subagentCtx.provider,
+            signal: ctx.signal,
+        };
+        const mgr = getBackgroundSubagentManager(ctx.sessionId);
+        const id = mgr.start(spec, spawnCtx);
+        return {
+            ok: true,
+            value: {
+                summary: `Background subagent started: ${id}\nKind: ${kind}\nPrompt: ${prompt}\nUse TaskOutput to check status, KillAgent to stop it.`,
+                transcriptPath: "",
+                turnCount: 0,
+            },
+        };
+    }
+
     const recent: string[] = [];
     const onChildEvent = (evt: Event): void => {
         const line = formatChildLine(evt, ctx.cwd);
@@ -128,7 +157,12 @@ export const TaskTool: Tool = {
         "typecheck + tests + git diff and returns failures — use after implementing a plan. " +
         "The subagent's transcript is preserved separately; only " +
         "its final assistant message is returned to you. Use a subagent when the task " +
-        "would otherwise pollute your context with many tool calls.",
+        "would otherwise pollute your context with many tool calls. " +
+        "Set run_in_background: true to run the subagent in the background — returns " +
+        "immediately with a task ID, and you'll be notified when it completes. " +
+        "Use background mode when you can continue working while the subagent runs " +
+        "(e.g. parallel independent tasks, long-running analysis). " +
+        "Do NOT use background mode when you need the result before your next action.",
     annotations: { readOnlyHint: false },
     schema: {
         type: "object",
@@ -140,6 +174,7 @@ export const TaskTool: Tool = {
                 type: "string",
                 enum: ["quick", "medium", "very_thorough"],
             },
+            run_in_background: { type: "boolean" },
         },
     },
     execute,
