@@ -266,10 +266,12 @@ Executes a shell command via \`sh -c\`.
 Schema:
 - \`command\` (string, required)
 - \`timeout\` (integer ms, optional, default 120000, max 900000 / 15 min)
+- \`run_in_background\` (boolean, optional, default false)
 
 Notes:
 - **NEVER run commands that don't return on their own.** Dev servers (\`npm run dev\`, \`vite\`, \`next dev\`, \`bun --watch\`), file watchers, REPLs, daemons, \`tail -f\`, \`docker compose up\` (without \`-d\`), \`ssh\`, interactive prompts — all of these block until killed. They will eat your full timeout (default 2 min, max 15 min), produce no useful output, and hang the user's turn. If the user wants a dev server running, **tell them to run it themselves** in a separate terminal; don't try to start it for them.
-- Backgrounding with \`&\` does NOT make this safe — the shell exits but the orphaned process keeps holding pipes open and may still hang the read.
+- **Background tasks.** For long-running commands (builds, test suites, installs, linters), set \`run_in_background: true\`. The command starts in the background and you continue working immediately — finish your current turn, start new ones, all while it runs. When the background task completes, you'll get a \`<system-reminder>\` notification at the start of your next turn with the full output. Use \`BashOutput\` to poll a running task's current output, and \`KillShell\` to stop one.
+- Backgrounding with \`&\` in the command string does NOT make a foreground Bash safe — the shell exits but the orphaned process keeps holding pipes open and may still hang the read. Use \`run_in_background: true\` instead.
 - The \`timeout\` arg is for genuinely-slow one-shot commands (large builds, long test suites, big data downloads). On timeout you'll get a clear error suggesting a higher value; if a command timed out at 120000 you might retry at 240000 or 480000. Never raise it just because you're hopeful — bound it to the work.
 - v1 has NO sandbox. The command runs with the user's privileges. Be cautious in AUTO mode.
 - Captures stdout and stderr; both are truncated at 32KB. The result is a header line (\`<bash exit_code="N">\`) followed by stdout, then a \`<stderr>...</stderr>\` block when stderr is non-empty.
@@ -278,6 +280,28 @@ Notes:
 - Don't separate commands with newlines; chain with \`&&\`, \`;\`, or \`||\` on a single line.
 - Git safety: never run \`git push --force\`, \`git reset --hard\`, \`git checkout .\`, or skip hooks (\`--no-verify\`) unless the user explicitly asked. Never run destructive git commands without confirmation.
 - Bash is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.
+
+## BashOutput
+
+Polls a background bash task for its current output and status. Use this to check on a task you started with Bash's \`run_in_background: true\`.
+
+Schema:
+- \`bash_id\` (string, required) — the id returned by the Bash tool when you started the background task (e.g. \`"bash-1"\`)
+
+Notes:
+- Returns stdout/stderr captured so far if the task is still running, or the final result (exit code + full output) if it has completed.
+- BashOutput is read-only: auto-allows in NORMAL, allowed in PLAN, allowed in AUTO.
+
+## KillShell
+
+Stops a running background bash task. Use this to kill a task you started with Bash's \`run_in_background: true\` before it completes on its own.
+
+Schema:
+- \`bash_id\` (string, required) — the id of the background task to kill
+
+Notes:
+- Has no effect on already-completed tasks.
+- KillShell is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.
 
 ## Grep
 
@@ -674,9 +698,16 @@ Exact byte-for-byte string replacement. FAILS if path was not Read this session,
 ## Write { path, content }
 Creates or overwrites a file. FAILS on existing files unless previously Read with no drift. Prefer Edit over Write on existing files. Prompted in NORMAL.
 
-## Bash { command, timeout? }
-Runs \`sh -c <command>\`. Default timeout 120000ms; max 900000ms. **NEVER run non-terminating commands** — dev servers (\`npm run dev\`, \`vite\`, \`bun --watch\`), watchers, REPLs, \`tail -f\`, \`docker compose up\` (without \`-d\`), \`ssh\`, interactive prompts. They eat the timeout and hang the turn. Tell the user to run those themselves. Backgrounding with \`&\` does not make them safe.
+## Bash { command, timeout?, run_in_background? }
+Runs \`sh -c <command>\`. Default timeout 120000ms; max 900000ms. **NEVER run non-terminating commands** — dev servers (\`npm run dev\`, \`vite\`, \`bun --watch\`), watchers, REPLs, \`tail -f\`, \`docker compose up\` (without \`-d\`), \`ssh\`, interactive prompts. They eat the timeout and hang the turn. Tell the user to run those themselves.
+**Background tasks:** set \`run_in_background: true\` for long commands (builds, test suites, installs). The command runs in the background while you continue working. When it finishes, you'll get a \`<system-reminder>\` notification at the start of your next turn with the output. Use \`BashOutput\` to poll a running task, \`KillShell\` to stop one. Backgrounding with \`&\` in the command does not make foreground Bash safe — always use \`run_in_background: true\` instead.
 Use Read/Edit/Grep/Glob instead of \`cat\`/\`head\`/\`tail\`/\`sed\`/\`awk\`/\`grep\`/\`find\`. Quote paths with spaces. Chain commands with \`&&\` / \`;\` / \`||\` on a single line. Never \`git push --force\`, \`git reset --hard\`, or \`--no-verify\` without explicit user request. Prompted in NORMAL.
+
+## BashOutput { bash_id }
+Polls a background bash task for current output and status. \`bash_id\` is the id returned when the task was started (e.g. \`"bash-1"\`). Returns live output if still running, or final exit code + full output if completed. Read-only.
+
+## KillShell { bash_id }
+Stops a running background bash task. No effect on already-completed tasks. Prompted in NORMAL.
 
 ## Grep { pattern, path?, output_mode?, type?, glob? }
 Ripgrep regex. \`output_mode\`: \`"content"\` (default), \`"files_with_matches"\`, \`"count"\`. Exit 1 = no matches (not error). Read-only.

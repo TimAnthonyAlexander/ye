@@ -21,6 +21,7 @@ import {
     type ToolResult,
     type TurnState,
 } from "../tools/index.ts";
+import { getBackgroundManager, formatBashResult } from "../tools/bash/background.ts";
 import { assemble } from "./assemble.ts";
 import { type CollectedToolCall } from "./dispatch.ts";
 import { transcriptable, type Event, type StopReason } from "./events.ts";
@@ -126,6 +127,18 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
                 config,
             });
         }
+    }
+
+    // Drain completed background bash tasks and inject their output into
+    // history so the model sees them at the start of this turn.
+    const bgMgr = getBackgroundManager(state.sessionId);
+    for (const task of bgMgr.drainCompleted()) {
+        const durationMs = Date.now() - task.startedAt;
+        const output = formatBashResult(task.stdout, task.stderr, task.exitCode ?? 1, durationMs);
+        state.history.push({
+            role: "user",
+            content: `<system-reminder>\nBackground task ${task.id} finished.\n${output}\n</system-reminder>`,
+        });
     }
 
     const activeModel = state.activeModel ?? config.defaultModel.model;

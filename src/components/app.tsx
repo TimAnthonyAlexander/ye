@@ -70,6 +70,7 @@ import { refreshUpdateStatus, type UpdateStatus } from "../update/check.ts";
 import { Chat, type ChatItem, computeDynamicStart, newChatItemId } from "./chat.tsx";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
 import { runEventHooks } from "../hooks/index.ts";
+import { destroyBackgroundManager, getBackgroundManager } from "../tools/bash/background.ts";
 import { Home, HOME_MIN_COLS, HOME_MIN_ROWS } from "./home.tsx";
 import { pickTip } from "./homeTips.ts";
 import { KeyPrompt } from "./keyPrompt.tsx";
@@ -292,6 +293,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     const streamingRef = useRef(false);
     const queueRef = useRef<QueuedSend[]>([]);
     const abortRef = useRef<AbortController | null>(null);
+    const bgWakeupRef = useRef<AbortController | null>(null);
     const chatInputRef = useRef<ChatInputHandle | null>(null);
     // Track total work time across a chain of queued sends so the
     // "Worked for Xs" message reflects the full hand-off duration, not just
@@ -305,6 +307,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     const [queuedDisplay, setQueuedDisplay] = useState<readonly QueuedDisplayItem[]>([]);
     const [usedTokens, setUsedTokens] = useState(0);
     const [contextWindow, setContextWindow] = useState(0);
+    const [bgTaskCount, setBgTaskCount] = useState(0);
     const [tokenUsage, setTokenUsage] = useState<{
         readonly input: number;
         readonly output: number;
@@ -399,6 +402,11 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         };
     }, [stdout]);
 
+    const refreshBgCount = (): void => {
+        const s = stateRef.current;
+        if (s) setBgTaskCount(getBackgroundManager(s.sessionId).runningCount());
+    };
+
     const recordHistory = (text: string): void => {
         if (historyRef.current[0] === text) return;
         const next = [text, ...historyRef.current];
@@ -465,7 +473,10 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         const oldSession = sessionRef.current;
         const newSession = await openSession(state.projectId);
         sessionRef.current = newSession;
-        if (oldSession) await oldSession.close().catch(() => {});
+        if (oldSession) {
+            destroyBackgroundManager(oldSession.sessionId);
+            await oldSession.close().catch(() => {});
+        }
         state.history = [];
         state.sessionRules = [];
         state.denialTrail = null;
@@ -477,6 +488,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         setError(null);
         setUsedTokens(0);
         setSessionTokenUsage({ input: 0, output: 0, cached: 0, costUsd: 0 });
+        setBgTaskCount(0);
         titleGeneratedRef.current = false;
         resetTerminalTitle();
         bumpChatKey();
@@ -939,7 +951,9 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         })();
         return () => {
             cancelled = true;
-            sessionRef.current?.close().catch(() => {});
+            const s = sessionRef.current;
+            if (s) destroyBackgroundManager(s.sessionId);
+            s?.close().catch(() => {});
         };
         // The config prop never changes for the lifetime of App (cli.tsx mounts
         // once); cfgRef is mutated in place. eslint-disable-next-line is
@@ -1267,6 +1281,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             if (stateRef.current) {
                 setUsedTokens(estimateTokens(stateRef.current.history));
             }
+            refreshBgCount();
         }
 
         // Drain the next queued message, if any. User messages are flushed to
@@ -1315,6 +1330,28 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 ]);
             }
         }
+
+        // Proactive background-task wakeup: if any tasks are still running,
+        // wait for one to complete and auto-trigger a new turn so the model
+        // sees the notification without the user having to send a message.
+        const bgMgr = getBackgroundManager(stateRef.current!.sessionId);
+        if (bgMgr.hasRunning()) {
+            const ctrl = new AbortController();
+            bgWakeupRef.current = ctrl;
+            try {
+                await bgMgr.waitForCompletion(ctrl.signal);
+                refreshBgCount();
+                if (!ctrl.signal.aborted) {
+                    await sendNow(
+                        "<system-reminder>A background task finished — check the output.</system-reminder>",
+                    );
+                }
+            } catch {
+                // Aborted — user sent a message, normal flow takes over.
+            } finally {
+                if (bgWakeupRef.current === ctrl) bgWakeupRef.current = null;
+            }
+        }
     };
 
     const send = async (text: string): Promise<void> => {
@@ -1324,6 +1361,10 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         }
         setError(null);
         recordHistory(text);
+
+        // Abort any pending background-task wakeup — user input takes priority.
+        bgWakeupRef.current?.abort();
+        bgWakeupRef.current = null;
 
         if (parseSlash(text)) {
             await runSlash(text);
@@ -1594,6 +1635,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 updateStatus={updateStatus}
                 tokenUsage={tokenUsage}
                 sessionTokenUsage={sessionTokenUsage}
+                bgTaskCount={bgTaskCount}
             />
         </Box>
     );

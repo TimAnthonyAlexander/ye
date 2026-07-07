@@ -21,6 +21,7 @@ interface StatusBarProps {
     readonly updateStatus?: UpdateStatus | null;
     readonly tokenUsage?: TokenUsage;
     readonly sessionTokenUsage?: TokenUsage;
+    readonly bgTaskCount?: number;
 }
 
 const usageColor = (pct: number): string => {
@@ -61,6 +62,7 @@ export const StatusBar = ({
     updateStatus,
     tokenUsage,
     sessionTokenUsage,
+    bgTaskCount = 0,
 }: StatusBarProps) => {
     const pct = contextWindow > 0 ? (usedTokens / contextWindow) * 100 : 0;
     const showUpdate = updateStatus?.hasUpdate === true;
@@ -129,6 +131,7 @@ export const StatusBar = ({
                 <Text bold color={modeColor(mode)}>
                     {mode}
                 </Text>
+                {bgTaskCount > 0 && <Text dimColor> · {bgTaskCount} bg</Text>}
             </Box>
         </Box>
     );

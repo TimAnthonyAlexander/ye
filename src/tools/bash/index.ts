@@ -1,9 +1,11 @@
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
+import { formatBashResult, getBackgroundManager } from "./background.ts";
 
 interface BashArgs {
     readonly command: string;
     readonly timeout?: number; // ms
+    readonly run_in_background?: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -15,18 +17,6 @@ const truncate = (text: string): string =>
     text.length > OUTPUT_CAP
         ? `${text.slice(0, OUTPUT_CAP)}\n…(truncated, ${text.length - OUTPUT_CAP} more chars)`
         : text;
-
-const formatBashResult = (
-    stdout: string,
-    stderr: string,
-    exitCode: number,
-    durationMs: number,
-): string => {
-    const sections = [`<bash exit_code="${exitCode}" duration_ms="${durationMs}">`];
-    if (stdout.length > 0) sections.push(stdout);
-    if (stderr.length > 0) sections.push(`<stderr>\n${stderr}\n</stderr>`);
-    return sections.join("\n");
-};
 
 // Kill the whole process group of a detached child. We use the negative-pid
 // trick so backgrounded grandchildren (anything started with `&`) die with the
@@ -107,6 +97,16 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     if (!v.ok) return v;
     const command = v.value.command;
     const timeoutMs = Math.min(v.value.timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
+
+    if (v.value.run_in_background) {
+        const mgr = getBackgroundManager(ctx.sessionId);
+        const id = mgr.start(command, ctx.cwd, timeoutMs, "");
+        return {
+            ok: true,
+            value: `Background task started: ${id}\nCommand: ${command}\nUse BashOutput to check status, KillShell to stop it.`,
+        };
+    }
+
     const startedAt = performance.now();
 
     const proc = Bun.spawn({
@@ -170,6 +170,8 @@ export const BashTool: Tool = {
     description:
         "Execute a shell command via the system shell (`sh -c` on macOS/Linux, `cmd.exe /c` on Windows). Default 120s timeout, max 900s (15 min) via the optional `timeout` arg (ms). " +
         "Do NOT use this to start dev servers, watchers, or any command that runs indefinitely — those will hang the turn until timeout. " +
+        "For long-running commands (builds, test suites, installs), set `run_in_background: true` to start the command as a background task and continue working while it runs. " +
+        "When the background task finishes, you'll be notified at the start of your next turn. Use BashOutput to poll a running task's output, and KillShell to stop it. " +
         "v1 has NO sandbox: in AUTO mode this command runs immediately with the user's privileges. " +
         "Prefer Read/Edit/Write/Glob/Grep over Bash when they fit.",
     annotations: { readOnlyHint: false },
@@ -179,6 +181,7 @@ export const BashTool: Tool = {
         properties: {
             command: { type: "string" },
             timeout: { type: "integer" },
+            run_in_background: { type: "boolean" },
         },
     },
     execute,

@@ -1,10 +1,12 @@
 import { AskUserQuestionTool } from "./askUserQuestion/index.ts";
 import { BashTool } from "./bash/index.ts";
+import { BashOutputTool } from "./bashOutput/index.ts";
 import { EditTool } from "./edit/index.ts";
 import { EnterPlanModeTool } from "./enterPlanMode/index.ts";
 import { ExitPlanModeTool } from "./exitPlanMode/index.ts";
 import { GlobTool } from "./glob/index.ts";
 import { GrepTool } from "./grep/index.ts";
+import { KillShellTool } from "./killShell/index.ts";
 import { ReadTool } from "./read/index.ts";
 import { SaveMemoryTool } from "./saveMemory/index.ts";
 import { SkillTool } from "./skill/index.ts";
@@ -20,6 +22,7 @@ const TOOLS: readonly Tool[] = [
     EditTool,
     WriteTool,
     BashTool,
+    BashOutputTool,
     GrepTool,
     GlobTool,
     TodoWriteTool,
@@ -31,6 +34,7 @@ const TOOLS: readonly Tool[] = [
     WebSearchTool,
     SkillTool,
     SaveMemoryTool,
+    KillShellTool,
 ];
 
 const TOOLS_BY_NAME: ReadonlyMap<string, Tool> = new Map(TOOLS.map((t) => [t.name, t]));
