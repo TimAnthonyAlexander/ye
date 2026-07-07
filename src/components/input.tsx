@@ -7,6 +7,26 @@ import { findActiveMention } from "../mentions/index.ts";
 // land in the buffer as plain \n so cursor math and rendering line up.
 const normalizePaste = (s: string): string => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
+// Word navigation helpers for Ctrl+Arrow and Ctrl/Meta+Backspace.
+// Word separators: newline, space, tab.
+const isWordSep = (ch: string): boolean => ch === " " || ch === "\t" || ch === "\n";
+
+const prevWordStart = (value: string, cursor: number): number => {
+    if (cursor <= 0) return 0;
+    let i = cursor - 1;
+    while (i > 0 && isWordSep(value[i]!)) i--;
+    while (i > 0 && !isWordSep(value[i - 1]!)) i--;
+    return i;
+};
+
+const nextWordStart = (value: string, cursor: number): number => {
+    if (cursor >= value.length) return value.length;
+    let i = cursor;
+    while (i < value.length && !isWordSep(value[i]!)) i++;
+    while (i < value.length && isWordSep(value[i]!)) i++;
+    return i;
+};
+
 interface ChatInputProps {
     readonly onSubmit: (text: string) => void;
     readonly disabled: boolean;
@@ -179,6 +199,38 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             apply("", 0);
             setHistoryIndex(null);
             setLiveBuffer("");
+            return;
+        }
+
+        // Ctrl/Meta + Backspace/Delete: delete word
+        if ((key.ctrl || key.meta) && key.backspace) {
+            exitHistoryNav();
+            const v = valueRef.current;
+            const c = cursorRef.current;
+            const start = prevWordStart(v, c);
+            apply(v.slice(0, start) + v.slice(c), start);
+            return;
+        }
+        if ((key.ctrl || key.meta) && key.delete) {
+            exitHistoryNav();
+            const v = valueRef.current;
+            const c = cursorRef.current;
+            const end = nextWordStart(v, c);
+            apply(v.slice(0, c) + v.slice(end), c);
+            return;
+        }
+
+        // Ctrl/Meta + Arrows: word navigation
+        if ((key.ctrl || key.meta) && key.leftArrow) {
+            const v = valueRef.current;
+            const c = cursorRef.current;
+            apply(v, prevWordStart(v, c));
+            return;
+        }
+        if ((key.ctrl || key.meta) && key.rightArrow) {
+            const v = valueRef.current;
+            const c = cursorRef.current;
+            apply(v, nextWordStart(v, c));
             return;
         }
 
