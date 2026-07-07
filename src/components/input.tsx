@@ -202,7 +202,24 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             return;
         }
 
-        // Ctrl/Meta + Backspace/Delete: delete word
+        // Ctrl+W: delete word backwards (readline standard). Also covers
+        // Ctrl+Backspace — with the Kitty keyboard protocol enabled, Ctrl+Backspace
+        // produces a distinct sequence (ESC [ 127 ; 5 u) which our patched
+        // parseKeypress decodes as { name: 'backspace', ctrl: true }, handled below.
+        if (key.ctrl && input === "w") {
+            exitHistoryNav();
+            const v = valueRef.current;
+            const c = cursorRef.current;
+            const start = prevWordStart(v, c);
+            apply(v.slice(0, start) + v.slice(c), start);
+            return;
+        }
+
+        // Ctrl/Meta + Backspace/Delete: delete word.
+        // With Kitty protocol: Ctrl+Backspace = { name:'backspace', ctrl:true },
+        // Option+Backspace = { name:'backspace', meta:true }.
+        // Without Kitty (legacy terminals): Option+Backspace sends ESC DEL which
+        // the original parser decodes as { name:'delete', meta:true }.
         if ((key.ctrl || key.meta) && key.backspace) {
             exitHistoryNav();
             const v = valueRef.current;
@@ -220,14 +237,17 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             return;
         }
 
-        // Ctrl/Meta + Arrows: word navigation
-        if ((key.ctrl || key.meta) && key.leftArrow) {
+        // Word navigation.
+        // With Kitty protocol: Ctrl/Alt+Arrow set leftArrow/rightArrow + ctrl/meta.
+        // Without Kitty (macOS Terminal.app etc.): Option+Arrow sends ESC b / ESC f
+        // which the original parser decodes as { meta:true } with input='b'/'f'.
+        if ((key.ctrl || key.meta) && (key.leftArrow || input === "b")) {
             const v = valueRef.current;
             const c = cursorRef.current;
             apply(v, prevWordStart(v, c));
             return;
         }
-        if ((key.ctrl || key.meta) && key.rightArrow) {
+        if ((key.ctrl || key.meta) && (key.rightArrow || input === "f")) {
             const v = valueRef.current;
             const c = cursorRef.current;
             apply(v, nextWordStart(v, c));

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import "./patch-stdin.ts";
 import { render } from "ink";
 import { App } from "./components/app.tsx";
 import { ConfigValidationError, loadConfig } from "./config/index.ts";
