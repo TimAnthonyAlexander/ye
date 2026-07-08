@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { evaluateStop } from "./stop.ts";
+import { evaluateStop, PLAN_START_REMINDER, shouldNudgePlanStart } from "./stop.ts";
 import { newShapingFlags, newTurnState, type DenialTrail, type SessionState } from "./state.ts";
 
 const makeState = (overrides: Partial<SessionState> = {}): SessionState => ({
@@ -102,5 +102,28 @@ describe("evaluateStop", () => {
             hadToolCalls: true,
         });
         expect(r).toBe("plan_loop_guard");
+    });
+});
+
+describe("shouldNudgePlanStart", () => {
+    test("N1 plan just approved + text-only end_turn → nudge", () => {
+        expect(shouldNudgePlanStart(true, "end_turn")).toBe(true);
+    });
+
+    test("N2 plan just approved but the model started working (continue) → no nudge", () => {
+        expect(shouldNudgePlanStart(true, "continue")).toBe(false);
+    });
+
+    test("N3 plan just approved + max_turns → no nudge (real budget stop)", () => {
+        expect(shouldNudgePlanStart(true, "max_turns")).toBe(false);
+    });
+
+    test("N4 no recent approval + text-only end_turn → no nudge (ordinary stop)", () => {
+        expect(shouldNudgePlanStart(false, "end_turn")).toBe(false);
+    });
+
+    test("N5 reminder is a system-reminder that tells the model to start", () => {
+        expect(PLAN_START_REMINDER).toContain("<system-reminder>");
+        expect(PLAN_START_REMINDER.toLowerCase()).toContain("begin executing");
     });
 });

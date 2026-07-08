@@ -7,17 +7,17 @@ interface PermissionPromptProps {
     readonly onRespond: (decision: PromptResponse) => void;
 }
 
-const previewBash = (args: unknown): string => {
+export const previewBash = (args: unknown): string => {
     const a = args as { command?: string };
     return a.command ? `$ ${a.command}` : "(unknown command)";
 };
-const previewEdit = (args: unknown): string => {
+export const previewEdit = (args: unknown): string => {
     const a = args as { path?: string; old_string?: string };
     const head = (a.old_string ?? "").replace(/\s+/g, " ").slice(0, 80);
     const path = a.path ? prettyPath(a.path) : "?";
     return `${path}\n  old: ${head}${(a.old_string ?? "").length > 80 ? "…" : ""}`;
 };
-const previewWrite = (args: unknown): string => {
+export const previewWrite = (args: unknown): string => {
     const a = args as { path?: string };
     return a.path ? prettyPath(a.path) : "?";
 };
@@ -29,7 +29,7 @@ const previewSimple = (args: unknown): string => {
     }
 };
 
-const renderArgs = (name: string, args: unknown): string => {
+export const renderArgs = (name: string, args: unknown): string => {
     switch (name) {
         case "Bash":
             return previewBash(args);

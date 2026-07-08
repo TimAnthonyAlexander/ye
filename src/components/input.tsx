@@ -5,13 +5,13 @@ import { findActiveMention } from "../mentions/index.ts";
 // Convert any line-ending shape to \n. Bracketed-paste content from terminals
 // can carry \r\n (CRLF) or lone \r (legacy Mac, some clipboards) — both must
 // land in the buffer as plain \n so cursor math and rendering line up.
-const normalizePaste = (s: string): string => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+export const normalizePaste = (s: string): string => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
 // Word navigation helpers for Ctrl+Arrow and Ctrl/Meta+Backspace.
 // Word separators: newline, space, tab.
 const isWordSep = (ch: string): boolean => ch === " " || ch === "\t" || ch === "\n";
 
-const prevWordStart = (value: string, cursor: number): number => {
+export const prevWordStart = (value: string, cursor: number): number => {
     if (cursor <= 0) return 0;
     let i = cursor - 1;
     while (i > 0 && isWordSep(value[i]!)) i--;
@@ -19,7 +19,7 @@ const prevWordStart = (value: string, cursor: number): number => {
     return i;
 };
 
-const nextWordStart = (value: string, cursor: number): number => {
+export const nextWordStart = (value: string, cursor: number): number => {
     if (cursor >= value.length) return value.length;
     let i = cursor;
     while (i < value.length && !isWordSep(value[i]!)) i++;
@@ -382,7 +382,7 @@ interface VisualRow {
 // on \n (preserving empty rows for blank lines), then on `width` for any
 // logical line longer than the viewport. The cursor's logical position is
 // preserved by tracking each row's byte offset back into `value`.
-const buildVisualRows = (value: string, width: number): readonly VisualRow[] => {
+export const buildVisualRows = (value: string, width: number): readonly VisualRow[] => {
     const rows: VisualRow[] = [];
     const w = Math.max(1, width);
     const lines = value.split("\n");
@@ -401,7 +401,7 @@ const buildVisualRows = (value: string, width: number): readonly VisualRow[] => 
     return rows;
 };
 
-const findCursorRow = (rows: readonly VisualRow[], cursor: number): number => {
+export const findCursorRow = (rows: readonly VisualRow[], cursor: number): number => {
     for (let i = rows.length - 1; i >= 0; i--) {
         if (rows[i]!.startInValue <= cursor) return i;
     }

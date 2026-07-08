@@ -123,7 +123,7 @@ const TOOL_DISCIPLINE_BLOCK = `# Using your tools
 - Prefer dedicated tools (Read, Edit, Write) over Bash when one fits. Reserve Bash for shell-only operations.
 - Use TodoWrite to plan and track non-trivial multi-step work. Mark each task completed as soon as it's done; don't batch.
 - If multiple tool calls are independent (no call depends on another's result), issue them in parallel — maximize parallelism where possible to keep turns fast. If a call must consume another's output, sequence them.
-- Background subagents: use \`run_in_background: true\` on the Task tool to spawn subagents that run while you continue working. Launch multiple in the same turn for independent tasks (e.g. parallel exploration, concurrent verification). Completion notifications arrive as \`<system-reminder>\` messages at the start of subsequent turns.
+- Background subagents: use \`run_in_background: true\` on the Task tool to spawn subagents that run while you continue working. Launch multiple in the same turn for independent tasks (e.g. parallel exploration, concurrent verification). When each finishes you are woken automatically with a \`<system-reminder>\` — this fires **even if you have ended your turn and gone idle**. So once you've launched background work and have nothing else productive to do, **end your turn and wait for the wakeup**. Do NOT call \`TaskOutput\`/\`BashOutput\` in a loop to wait for completion — that busy-polling is pure waste; the wakeup is guaranteed. When you launched several, **prefer to let all of them finish before acting**: each wakeup carries just one completion, so if others are still running, briefly acknowledge it (e.g. \"subagent-1 has responded — waiting for the rest\") and end your turn again; you'll be re-woken as each remaining one reports. Begin synthesizing or acting only once every subagent you're waiting on has come back (unless one result is independently actionable and time-sensitive).
 - Tool errors come back as results, not crashes. If a tool fails, you'll see the error in its result and decide what to do next.`;
 
 const PERMISSION_MODES_BLOCK = (mode: PermissionMode): string => {
@@ -271,7 +271,7 @@ Schema:
 
 Notes:
 - **NEVER run commands that don't return on their own.** Dev servers (\`npm run dev\`, \`vite\`, \`next dev\`, \`bun --watch\`), file watchers, REPLs, daemons, \`tail -f\`, \`docker compose up\` (without \`-d\`), \`ssh\`, interactive prompts — all of these block until killed. They will eat your full timeout (default 2 min, max 15 min), produce no useful output, and hang the user's turn. If the user wants a dev server running, **tell them to run it themselves** in a separate terminal; don't try to start it for them.
-- **Background tasks.** For long-running commands (builds, test suites, installs, linters), set \`run_in_background: true\`. The command starts in the background and you continue working immediately — finish your current turn, start new ones, all while it runs. When the background task completes, you'll get a \`<system-reminder>\` notification at the start of your next turn with the full output. Use \`BashOutput\` to poll a running task's current output, and \`KillShell\` to stop one.
+- **Background tasks.** For long-running commands (builds, test suites, installs, linters), set \`run_in_background: true\`. The command starts in the background and you continue working immediately — finish your current turn, start new ones, all while it runs. When it completes you are woken automatically with a \`<system-reminder>\` carrying the full output — this fires **even if you have ended your turn and gone idle**, so you never need to keep the turn alive to receive it. If you have nothing else to do, end your turn and wait for that wakeup; do NOT call \`BashOutput\` repeatedly to wait for completion. Reserve \`BashOutput\` for an on-demand peek at a running task while you're actively doing other work, and \`KillShell\` to stop one.
 - Backgrounding with \`&\` in the command string does NOT make a foreground Bash safe — the shell exits but the orphaned process keeps holding pipes open and may still hang the read. Use \`run_in_background: true\` instead.
 - The \`timeout\` arg is for genuinely-slow one-shot commands (large builds, long test suites, big data downloads). On timeout you'll get a clear error suggesting a higher value; if a command timed out at 120000 you might retry at 240000 or 480000. Never raise it just because you're hopeful — bound it to the work.
 - v1 has NO sandbox. The command runs with the user's privileges. Be cautious in AUTO mode.
@@ -284,7 +284,7 @@ Notes:
 
 ## BashOutput
 
-Polls a background bash task for its current output and status. Use this to check on a task you started with Bash's \`run_in_background: true\`.
+Peeks at a background bash task's current output and status on demand. Use it only when you actively need a running task's partial output while doing other work — NOT to wait for completion. When the task finishes you are woken automatically with the full output, so never call this in a poll loop just to wait.
 
 Schema:
 - \`bash_id\` (string, required) — the id returned by the Bash tool when you started the background task (e.g. \`"bash-1"\`)
@@ -410,7 +410,8 @@ Schema:
 
 Notes:
 - Subagents run in the foreground by default — the parent blocks until the subagent returns its summary.
-- **Background subagents.** Set \`run_in_background: true\` to spawn a subagent that runs while you continue working. Returns immediately with a task ID (e.g. \`"subagent-1"\`). When the background subagent completes, you'll get a \`<system-reminder>\` notification at the start of your next turn with its summary. Use \`TaskOutput\` to poll a running subagent's status, and \`KillAgent\` to stop one.
+- **Background subagents.** Set \`run_in_background: true\` to spawn a subagent that runs while you continue working. Returns immediately with a task ID (e.g. \`"subagent-1"\`). When it completes you are woken automatically with a \`<system-reminder>\` carrying its summary — this fires **even if you have ended your turn and gone idle**, so you never need to keep the turn alive to receive it. Once you've launched background subagents and have nothing else to do, end your turn and wait for the wakeup; do NOT call \`TaskOutput\` in a loop to wait for completion. Reserve \`TaskOutput\` for an on-demand status check while you're actively doing other work, and \`KillAgent\` to stop one.
+- **Wait for the whole batch.** When you launched several background subagents, prefer to let **all** of them finish before you act. Each wakeup delivers a single completion, so if others are still running, just acknowledge the one that reported (e.g. \"subagent-1 has responded — waiting for the rest\") and end your turn again; the loop re-wakes you as each remaining subagent completes. Only start synthesizing once every subagent you're waiting on has come back — unless a single result is independently actionable and time-sensitive.
 - **Parallelism.** Launch multiple background subagents in the same turn when tasks are independent (no shared files, no dependency on each other's output). This is almost always faster than running them sequentially. Do NOT use background mode when you need the result before your next action — use a foreground subagent (default) instead.
 - **Recursion guard.** \`run_in_background\` is not available when you are already inside a subagent context. Subagents cannot spawn background subagents.
 - Subagents always run in AUTO permission mode with a narrowed tool pool. They cannot ask clarifying questions or surface permission prompts.
@@ -418,7 +419,7 @@ Notes:
 
 ## TaskOutput
 
-Polls a background subagent for its current status and result. Use this to check on a subagent you started with Task's \`run_in_background: true\`.
+Peeks at a background subagent's current status and result on demand. Use it only when you actively need a subagent's status while doing other work — NOT to wait for completion. When it finishes you are woken automatically with the summary, so never call this in a poll loop just to wait.
 
 Schema:
 - \`task_id\` (string, required) — the id returned by the Task tool when you started the background subagent (e.g. \`"subagent-1"\`)
@@ -741,21 +742,21 @@ Creates or overwrites a file. FAILS on existing files unless previously Read wit
 
 ## Bash { command, timeout?, run_in_background? }
 Runs \`sh -c <command>\`. Default timeout 120000ms; max 900000ms. **NEVER run non-terminating commands** — dev servers (\`npm run dev\`, \`vite\`, \`bun --watch\`), watchers, REPLs, \`tail -f\`, \`docker compose up\` (without \`-d\`), \`ssh\`, interactive prompts. They eat the timeout and hang the turn. Tell the user to run those themselves.
-**Background tasks:** set \`run_in_background: true\` for long commands (builds, test suites, installs). The command runs in the background while you continue working. When it finishes, you'll get a \`<system-reminder>\` notification at the start of your next turn with the output. Use \`BashOutput\` to poll a running task, \`KillShell\` to stop one. Backgrounding with \`&\` in the command does not make foreground Bash safe — always use \`run_in_background: true\` instead.
+**Background tasks:** set \`run_in_background: true\` for long commands (builds, test suites, installs). The command runs in the background while you continue working. When it finishes you are woken automatically with a \`<system-reminder>\` carrying the output — even if you have ended your turn and gone idle. If you have nothing else to do, end your turn and wait; do NOT poll \`BashOutput\` in a loop to wait for completion. \`BashOutput\` is for an on-demand peek while doing other work; \`KillShell\` stops a task. Backgrounding with \`&\` in the command does not make foreground Bash safe — always use \`run_in_background: true\` instead.
 Use Read/Edit/Grep/Glob instead of \`cat\`/\`head\`/\`tail\`/\`sed\`/\`awk\`/\`grep\`/\`find\`. Quote paths with spaces. Chain commands with \`&&\` / \`;\` / \`||\` on a single line. Never \`git push --force\`, \`git reset --hard\`, or \`--no-verify\` without explicit user request. Prompted in NORMAL.
 
 ## BashOutput { bash_id }
-Polls a background bash task for current output and status. \`bash_id\` is the id returned when the task was started (e.g. \`"bash-1"\`). Returns live output if still running, or final exit code + full output if completed. Read-only.
+On-demand peek at a background bash task's current output and status. \`bash_id\` is the id returned when the task was started (e.g. \`"bash-1"\`). Returns live output if still running, or final exit code + full output if completed. Read-only. Not for waiting — you are auto-woken with the full output when the task finishes, so never call this in a poll loop.
 
 ## KillShell { bash_id }
 Stops a running background bash task. No effect on already-completed tasks. Prompted in NORMAL.
 
 ## Task { kind, prompt, thoroughness?, run_in_background? }
 Spawns an isolated subagent. \`kind\`: \`"explore"\` (Read/Glob/Grep, returns summary), \`"general"\` (full toolset, AUTO mode), \`"verification"\` (Read/Glob/Grep/Bash, runs typecheck+tests+git diff). Subagents run in the foreground by default (blocks until done).
-**Background subagents:** set \`run_in_background: true\` to spawn asynchronously. Returns immediately with a task ID. You'll get a \`<system-reminder>\` notification when it finishes. Launch multiple background subagents in the same turn when tasks are independent. Do NOT use background mode when you need the result before your next action. \`run_in_background\` is not available from inside a subagent context. Prompted in NORMAL.
+**Background subagents:** set \`run_in_background: true\` to spawn asynchronously. Returns immediately with a task ID. You are woken automatically with a \`<system-reminder>\` when it finishes — even if you have ended your turn and gone idle, so once you've launched them and have nothing else to do, end your turn and wait; do NOT poll \`TaskOutput\` in a loop to wait for completion. Launch multiple background subagents in the same turn when tasks are independent. When you launched several, prefer to wait for ALL to finish: each wakeup carries one completion, so if others are still running, acknowledge it (\"subagent-1 has responded — waiting for the rest\") and end your turn again until every one has reported. Do NOT use background mode when you need the result before your next action. \`run_in_background\` is not available from inside a subagent context. Prompted in NORMAL.
 
 ## TaskOutput { task_id }
-Polls a background subagent for current status or final summary. \`task_id\` is the id returned when the task was started (e.g. \`"subagent-1"\`). Read-only.
+On-demand peek at a background subagent's current status or final summary. \`task_id\` is the id returned when the task was started (e.g. \`"subagent-1"\`). Read-only. Not for waiting — you are auto-woken with the summary when it finishes, so never call this in a poll loop.
 
 ## KillAgent { task_id }
 Stops a running background subagent. No effect on already-completed tasks. Prompted in NORMAL.

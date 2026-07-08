@@ -35,6 +35,13 @@ export interface SessionState {
     sessionRules: PermissionRule[];
     denialTrail: DenialTrail | null;
     compactedThisTurn: boolean;
+    // Set the moment a plan is approved (ExitPlanMode flips PLAN → NORMAL). Read
+    // at the next turn's stop check: if that turn is text-only, the model is
+    // stalling ("ready when you are") instead of executing the just-approved
+    // plan — nudge it to start and keep looping. Cleared after that one turn so
+    // the nudge fires at most once. Optional: only the interactive loop enters
+    // PLAN mode, so subagent/headless states leave it undefined.
+    planJustAccepted?: boolean;
     shapingFlags: ShapingFlags;
     // Session-monotonic turn counter, incremented at the top of every runTurn.
     // Distinct from queryLoop's per-prompt turnIndex (which resets each user

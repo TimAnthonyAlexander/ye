@@ -583,4 +583,59 @@ describe("decide() — heuristic gate (Bash risk patterns)", () => {
             expect(d.promptReason).toBeUndefined();
         }
     });
+
+    test("H39 AUTO + 'bash -c \"rm -rf /tmp/foo\"' → prompt", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: 'bash -c "rm -rf /tmp/foo"' }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H40 AUTO + \"sh -c 'rm -rf /tmp/foo'\" → prompt", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "sh -c 'rm -rf /tmp/foo'" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H41 AUTO + \"bash -c 'git reset --hard HEAD~1'\" → prompt", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "bash -c 'git reset --hard HEAD~1'" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+
+    test("H42 AUTO + \"bash -c 'echo hello'\" → allow", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "bash -c 'echo hello'" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("allow");
+    });
+
+    test("H43 AUTO + \"zsh -c 'sudo rm file'\" → prompt", () => {
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "zsh -c 'sudo rm file'" }),
+                isReadOnly: false,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
 });

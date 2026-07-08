@@ -8,9 +8,10 @@
 // (SQL via psql -c '...', curl|sh chains, fork bombs, persistent shell-config
 // echos) target the raw command instead.
 //
-// Known limitation: `bash -c '<dangerous>'` style invocations are not caught
-// by the shell-token patterns once normalized. The user should rely on the
-// raw-target executor patterns or an explicit deny rule for these.
+// Executor-wrapper unwrapping: commands like `bash -c "rm -rf /"` hide
+// dangerous payloads inside a quoted -c argument. If the normalized-pattern
+// loop returns "allow", we extract the -c payload and recursively classify
+// it, so the inner command still trips the appropriate heuristic.
 
 import type { HeuristicReason } from "./types.ts";
 
@@ -295,6 +296,17 @@ const PATTERNS: readonly HeuristicPattern[] = [
     },
 ];
 
+// Match `sh -c "..."`, `bash -c '...'`, etc. and extract the inner payload.
+// Group 1: executor name, Group 2: quote char (" or '), Group 3: inner command.
+// Non-greedy .*? ensures the closing quote is the first matching one.
+const UNWRAP_EXECUTOR_RE = /(sh|bash|zsh|dash)\s+-c\s+(["'])(.*?)\2/;
+
+const unwrapExecutorWrapper = (cmd: string): string | null => {
+    const m = cmd.match(UNWRAP_EXECUTOR_RE);
+    if (!m) return null;
+    return m[3] ?? null;
+};
+
 // Replace contents of "..." and '...' with empty quotes. Lets shell-token
 // patterns ignore string literals — `echo "rm -rf x"` becomes `echo ""`.
 const stripQuotedStrings = (cmd: string): string =>
@@ -307,6 +319,12 @@ export const classifyBashCommand = (command: string): BashRisk => {
         if (p.pattern.test(target)) {
             return { kind: "prompt", reason: { id: p.id, label: p.label } };
         }
+    }
+    // If nothing matched, try unwrapping an executor wrapper like
+    // `bash -c "..."` and recursively classify the inner payload.
+    const inner = unwrapExecutorWrapper(command);
+    if (inner && inner !== command && inner.length > 0) {
+        return classifyBashCommand(inner);
     }
     return { kind: "allow" };
 };

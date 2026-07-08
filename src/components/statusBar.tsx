@@ -24,19 +24,19 @@ interface StatusBarProps {
     readonly bgTaskCount?: number;
 }
 
-const usageColor = (pct: number): string => {
+export const usageColor = (pct: number): string => {
     if (pct < 50) return "green";
     if (pct < 75) return "yellow";
     if (pct < 90) return "#ff8800";
     return "red";
 };
 
-const formatPct = (pct: number): string => {
+export const formatPct = (pct: number): string => {
     if (pct < 1) return "0%";
     return `${Math.round(pct)}%`;
 };
 
-const formatK = (n: number): string => {
+export const formatK = (n: number): string => {
     if (n < 1000) return String(n);
     if (n < 10_000) return `${(n / 1000).toFixed(1)}K`;
     if (n < 1_000_000) return `${Math.round(n / 1000)}K`;
@@ -44,7 +44,7 @@ const formatK = (n: number): string => {
     return `${Math.round(n / 1_000_000)}M`;
 };
 
-const formatUsd = (n: number): string => {
+export const formatUsd = (n: number): string => {
     if (n < 0.01) return `$${n.toFixed(4)}`;
     if (n < 1) return `$${n.toFixed(3)}`;
     if (n < 100) return `$${n.toFixed(2)}`;
