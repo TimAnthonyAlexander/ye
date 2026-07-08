@@ -18,7 +18,7 @@ const SELECT_SYSTEM =
 
 const INDEX_RE = /\[\s*(\d+(?:\s*,\s*\d+)*)?\s*\]/;
 
-const parseIndexResponse = (text: string, count: number, max: number): readonly number[] => {
+export const parseIndexResponse = (text: string, count: number, max: number): readonly number[] => {
     const m = INDEX_RE.exec(text);
     if (!m || !m[1]) return [];
     const seen = new Set<number>();

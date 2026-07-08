@@ -40,12 +40,25 @@ export interface ExecuteToolCallsDeps {
     readonly activeModel: string;
     readonly signal: AbortSignal;
     readonly parallelIds: ReadonlySet<string>;
+    // Injectable so tests can supply a fake without globally mocking the
+    // permissions module — Bun's mock.module is process-global and leaks into
+    // other test files (it was clobbering permissions/decide.test.ts).
+    readonly decide?: typeof decide;
 }
 
-export async function* executeToolCalls(
-    deps: ExecuteToolCallsDeps,
-): AsyncGenerator<Event, void> {
-    const { toolCalls, session, state, turnState, config, provider, activeModel, signal, parallelIds } = deps;
+export async function* executeToolCalls(deps: ExecuteToolCallsDeps): AsyncGenerator<Event, void> {
+    const {
+        toolCalls,
+        session,
+        state,
+        turnState,
+        config,
+        provider,
+        activeModel,
+        signal,
+        parallelIds,
+    } = deps;
+    const decideImpl = deps.decide ?? decide;
 
     const parallelResults = new Map<string, ToolResult>();
     if (parallelIds.size > 0) {
@@ -207,7 +220,7 @@ export async function* executeToolCalls(
             continue;
         }
         const toolCall: ToolCall = { id: call.id, name: call.name, args: call.args };
-        const decision = decide({
+        const decision = decideImpl({
             toolCall,
             mode: state.mode,
             rules: [...(config.permissions?.rules ?? []), ...state.sessionRules],
