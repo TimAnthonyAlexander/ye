@@ -13,10 +13,14 @@ export const formatBashResult = (
     exitCode: number,
     durationMs: number,
 ): string => {
-    const sections = [`<bash exit_code="${exitCode}" duration_ms="${durationMs}">`];
-    if (stdout.length > 0) sections.push(stdout);
-    if (stderr.length > 0) sections.push(`<stderr>\n${stderr}\n</stderr>`);
-    return sections.join("\n");
+    const body: string[] = [];
+    if (stdout.length > 0) body.push(stdout);
+    if (stderr.length > 0) body.push(`<stderr>\n${stderr}\n</stderr>`);
+    // A closing </bash> tag (and an explicit note when there was no output)
+    // makes the block unambiguously COMPLETE — a blocking command that printed
+    // nothing must never read as still-running.
+    if (body.length === 0) body.push("(command completed with no output)");
+    return `<bash exit_code="${exitCode}" duration_ms="${durationMs}">\n${body.join("\n")}\n</bash>`;
 };
 
 export interface BackgroundTask {
