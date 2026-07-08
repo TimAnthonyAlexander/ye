@@ -343,21 +343,25 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     // Box uses paddingX=1 (2 cols), the prefix Box renders ">" + marginRight=1
     // (2 cols). Floor at 8 to keep the math sane on absurdly narrow terminals.
     const inner = Math.max(8, columns - 4);
+    // `!<command>` runs in the shell — accent the whole input (border, marker,
+    // text) the moment the buffer starts with "!" so command mode is obvious.
+    const bang = !disabled && value.trimStart().startsWith("!");
+    const accent = disabled ? "gray" : bang ? "yellow" : "cyan";
 
     return (
         <Box
             borderStyle="single"
-            borderColor={disabled ? "gray" : "cyan"}
+            borderColor={accent}
             borderLeft={false}
             borderRight={false}
             paddingX={1}
             width="100%"
         >
             <Box marginRight={1}>
-                <Text color={disabled ? "gray" : "cyan"}>{">"}</Text>
+                <Text color={accent}>{">"}</Text>
             </Box>
             <Box flexGrow={1} flexDirection="column">
-                {renderWithCursor(value, cursor, disabled, inner)}
+                {renderWithCursor(value, cursor, disabled, inner, bang ? "yellow" : undefined)}
             </Box>
         </Box>
     );
@@ -408,7 +412,13 @@ export const findCursorRow = (rows: readonly VisualRow[], cursor: number): numbe
     return 0;
 };
 
-const renderWithCursor = (value: string, cursor: number, disabled: boolean, width: number) => {
+const renderWithCursor = (
+    value: string,
+    cursor: number,
+    disabled: boolean,
+    width: number,
+    color?: string,
+) => {
     if (disabled) {
         return <Text dimColor>{value.length > 0 ? value : "…"}</Text>;
     }
@@ -438,7 +448,7 @@ const renderWithCursor = (value: string, cursor: number, disabled: boolean, widt
             {visible.map((row, idx) => {
                 const absoluteIdx = start + idx;
                 const cursorOffset = absoluteIdx === focusRow ? cursor - row.startInValue : null;
-                return renderRow(row, cursorOffset, absoluteIdx);
+                return renderRow(row, cursorOffset, absoluteIdx, color);
             })}
             {below > 0 && (
                 <Text dimColor>
@@ -449,19 +459,19 @@ const renderWithCursor = (value: string, cursor: number, disabled: boolean, widt
     );
 };
 
-const renderRow = (row: VisualRow, cursorOffset: number | null, key: number) => {
+const renderRow = (row: VisualRow, cursorOffset: number | null, key: number, color?: string) => {
     if (cursorOffset === null) {
         // Render an empty row as a single space so it claims one row of
         // vertical space — an empty <Text> can collapse and skew the layout.
         return (
-            <Text key={key} wrap="truncate">
+            <Text key={key} wrap="truncate" color={color}>
                 {row.text.length > 0 ? row.text : " "}
             </Text>
         );
     }
     if (cursorOffset >= row.text.length) {
         return (
-            <Text key={key} wrap="truncate">
+            <Text key={key} wrap="truncate" color={color}>
                 {row.text}
                 <Text inverse> </Text>
             </Text>
@@ -471,7 +481,7 @@ const renderRow = (row: VisualRow, cursorOffset: number | null, key: number) => 
     const at = row.text.slice(cursorOffset, cursorOffset + 1);
     const after = row.text.slice(cursorOffset + 1);
     return (
-        <Text key={key} wrap="truncate">
+        <Text key={key} wrap="truncate" color={color}>
             {before}
             <Text inverse>{at}</Text>
             {after}

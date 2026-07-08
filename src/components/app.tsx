@@ -69,6 +69,7 @@ import { cycleMode } from "../ui/keybinds.ts";
 import { refreshUpdateStatus, type UpdateStatus } from "../update/check.ts";
 import { Chat, type ChatItem, computeDynamicStart, newChatItemId } from "./chat.tsx";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
+import { runBangCommand } from "./bangCommand.ts";
 import { runEventHooks } from "../hooks/index.ts";
 import { destroyBackgroundManager, getBackgroundManager } from "../tools/bash/background.ts";
 import {
@@ -925,6 +926,32 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         }
     };
 
+    // `!<command>` runs the command in the local shell, shows the output in the
+    // chat, and feeds it to the model as a turn so it can react. Detected in
+    // `send` before @-expansion, mirroring the slash short-circuit.
+    const runBang = async (raw: string): Promise<void> => {
+        const state = stateRef.current;
+        if (!state) {
+            setError("session not ready");
+            return;
+        }
+        const command = raw.trimStart().slice(1).trim();
+        if (command.length === 0) return;
+        setItems((prev) => [
+            ...prev,
+            { kind: "message", id: newChatItemId(), role: "user", content: `! ${command}` },
+        ]);
+        const output = await runBangCommand(
+            command,
+            state.projectRoot,
+            new AbortController().signal,
+        );
+        addSystemMessage(output);
+        sendHiddenPrompt(
+            `I ran a shell command in the terminal via the \`!\` prefix:\n\n$ ${command}\n\n${output}`,
+        );
+    };
+
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -1454,6 +1481,11 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
 
         if (parseSlash(text)) {
             await runSlash(text);
+            return;
+        }
+
+        if (text.trimStart().startsWith("!")) {
+            await runBang(text);
             return;
         }
 
