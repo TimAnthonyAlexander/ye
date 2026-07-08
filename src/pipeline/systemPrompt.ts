@@ -121,7 +121,7 @@ const TONE_BLOCK = `# Tone and style
 
 const TOOL_DISCIPLINE_BLOCK = `# Using your tools
 - Prefer dedicated tools (Read, Edit, Write) over Bash when one fits. Reserve Bash for shell-only operations.
-- Use TodoWrite to plan and track non-trivial multi-step work. Mark each task completed as soon as it's done; don't batch.
+- Use TodoWrite to plan and track non-trivial multi-step work. Keep **exactly one** todo \`in_progress\` at a time — never flip several to \`in_progress\` at once (that returns an error). When you first create the list, only the task you're starting is \`in_progress\` and the rest are \`pending\`; then mark the current one \`completed\` before you promote the next from \`pending\` to \`in_progress\`. Mark each task completed as soon as it's done; don't batch.
 - If multiple tool calls are independent (no call depends on another's result), issue them in parallel — maximize parallelism where possible to keep turns fast. If a call must consume another's output, sequence them.
 - Background subagents: use \`run_in_background: true\` on the Task tool to spawn subagents that run while you continue working. Launch multiple in the same turn for independent tasks (e.g. parallel exploration, concurrent verification). When each finishes you are woken automatically with a \`<system-reminder>\` — this fires **even if you have ended your turn and gone idle**. So once you've launched background work and have nothing else productive to do, **end your turn and wait for the wakeup**. After launching, do NOT check on it — no \`TaskOutput\`/\`BashOutput\` to see its progress or confirm it's done, **not even a single peek**. The result is delivered to you automatically; there is nothing to watch, so any status check is wasted. When you launched several, **prefer to let all of them finish before acting**: each wakeup carries just one completion, so if others are still running, briefly acknowledge it (e.g. \"subagent-1 has responded — waiting for the rest\") and end your turn again; you'll be re-woken as each remaining one reports. Begin synthesizing or acting only once every subagent you're waiting on has come back (unless one result is independently actionable and time-sensitive).
 - Tool errors come back as results, not crashes. If a tool fails, you'll see the error in its result and decide what to do next.`;
@@ -345,7 +345,7 @@ Schema:
   - \`status\` — one of \`"pending"\`, \`"in_progress"\`, \`"completed"\`
 
 Rules:
-- At most ONE todo may be \`in_progress\` at a time. Submitting more than one returns an error.
+- Exactly ONE todo may be \`in_progress\` at a time; submitting a list with two or more \`in_progress\` returns an error. Sequence it: the single task you're actively working is \`in_progress\`, everything else is \`pending\` or \`completed\`. Flip the current task to \`completed\` before you promote the next one from \`pending\` to \`in_progress\` — never mark two as \`in_progress\` in the same list.
 - Mark a todo \`completed\` as soon as the underlying work is done — don't batch.
 - Use TodoWrite for non-trivial multi-step tasks. Skip it for trivial single-step requests.
 - Submitting an empty list clears the panel.
@@ -691,7 +691,7 @@ When you hit an obstacle, find the root cause — don't bypass safety checks (\`
 
 const SMALL_TOOL_DISCIPLINE_BLOCK = `# Using your tools
 - Prefer dedicated tools (Read, Edit, Write, Grep, Glob) over Bash when one fits.
-- Use TodoWrite to plan and track non-trivial multi-step work; mark each todo \`completed\` as soon as it's done.
+- Use TodoWrite to plan and track non-trivial multi-step work; keep exactly one todo \`in_progress\` at a time (mark the current one \`completed\` before promoting the next), and mark each \`completed\` as soon as it's done.
 - Independent tool calls run in parallel — issue them in a single response. Sequence only when one consumes another's output.`;
 
 const SMALL_PERMISSION_BLOCK = (mode: PermissionMode): string => {
@@ -768,7 +768,7 @@ Ripgrep regex. \`output_mode\`: \`"content"\` (default), \`"files_with_matches"\
 Match files by glob (e.g. \`"**/*.ts"\`). Returns up to 200 absolute paths sorted by mtime descending. Read-only.
 
 ## TodoWrite { todos: [{ id, content, status }] }
-Status: \`"pending" | "in_progress" | "completed"\`. At most ONE \`in_progress\` at a time. Mark \`completed\` as soon as work is done — don't batch. Empty array clears the panel. Prompted in NORMAL.
+Status: \`"pending" | "in_progress" | "completed"\`. Exactly ONE \`in_progress\` at a time — a list with two or more \`in_progress\` errors; complete the current task before promoting the next. Mark \`completed\` as soon as work is done — don't batch. Empty array clears the panel. Prompted in NORMAL.
 
 ## ExitPlanMode { plan }
 The only state-modifying tool allowed in PLAN. Submits a plan and requests a switch to NORMAL. \`plan\` must follow the template above.
