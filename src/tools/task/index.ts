@@ -52,7 +52,13 @@ const execute = async (
         };
     }
 
-    if (v.value.run_in_background) {
+    // Background is the default. The model opts into a blocking foreground run
+    // only by passing run_in_background: false (when it needs the result before
+    // its next action). Resolved after the recursion guard above, which already
+    // rejects any Task call inside a subagent — so nesting can't reach here.
+    const runInBackground = v.value.run_in_background ?? true;
+
+    if (runInBackground) {
         const spec: SubagentSpec = {
             kind,
             prompt,
@@ -133,11 +139,11 @@ export const TaskTool: Tool = {
         "The subagent's transcript is preserved separately; only " +
         "its final assistant message is returned to you. Use a subagent when the task " +
         "would otherwise pollute your context with many tool calls. " +
-        "Set run_in_background: true to run the subagent in the background — returns " +
-        "immediately with a task ID, and you'll be notified when it completes. " +
-        "Use background mode when you can continue working while the subagent runs " +
-        "(e.g. parallel independent tasks, long-running analysis). " +
-        "Do NOT use background mode when you need the result before your next action.",
+        "By DEFAULT the subagent runs in the BACKGROUND: Task returns immediately with a " +
+        "task ID and you are notified via a system-reminder when it finishes (even while " +
+        "you are idle), so fire one or several and let them run. Pass run_in_background: false " +
+        "ONLY when you need the subagent's result before your next action — it then blocks " +
+        "and streams progress until done.",
     annotations: { readOnlyHint: false },
     schema: {
         type: "object",
@@ -149,7 +155,11 @@ export const TaskTool: Tool = {
                 type: "string",
                 enum: ["quick", "medium", "very_thorough"],
             },
-            run_in_background: { type: "boolean" },
+            run_in_background: {
+                type: "boolean",
+                description:
+                    "Defaults to true (background/async). Set false to block in the foreground until the subagent finishes, when you need its result before your next action.",
+            },
         },
     },
     execute,
