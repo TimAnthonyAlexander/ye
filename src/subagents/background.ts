@@ -32,6 +32,16 @@ const nextItemId = (): string => `sa-${++itemSeq}`;
 
 const MAX_ITEMS = 200;
 
+// Backstop watchdog: if a running subagent emits no events for this long it is
+// presumed dead and force-failed, so it can never stay "running" forever (which
+// would leave the parent waiting on a ghost). The threshold sits above the
+// longest legitimate silence — a single foreground tool call (Bash caps at
+// 900s) — so active work is never false-killed. The provider-stream stall
+// timeout in dispatch.ts is the fast, precise path; this only catches the rare
+// non-stream hang.
+const SUBAGENT_STALL_TIMEOUT_MS = 20 * 60 * 1000;
+const SUBAGENT_SWEEP_INTERVAL_MS = 30 * 1000;
+
 export interface BackgroundSubagentTask {
     readonly id: string;
     readonly kind: SubagentKind;
@@ -43,6 +53,9 @@ export interface BackgroundSubagentTask {
     error: string;
     delivered: boolean;
     readonly startedAt: number;
+    // Updated on every child event; the watchdog fails a task whose activity
+    // has gone silent past SUBAGENT_STALL_TIMEOUT_MS.
+    lastActivityAt: number;
     abortController: AbortController | null;
     readonly items: SubagentItem[];
 }
@@ -50,6 +63,7 @@ export interface BackgroundSubagentTask {
 class BackgroundSubagentManager {
     private readonly tasks = new Map<string, BackgroundSubagentTask>();
     private counter = 0;
+    private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
     start(spec: SubagentSpec, ctx: SpawnContext): string {
         const id = `subagent-${++this.counter}`;
@@ -64,10 +78,12 @@ class BackgroundSubagentManager {
             error: "",
             delivered: false,
             startedAt: Date.now(),
+            lastActivityAt: Date.now(),
             abortController: null,
             items: [],
         };
         this.tasks.set(id, task);
+        this.ensureSweep();
 
         const subagentBudget = ctx.config.maxTurns?.subagent ?? 25;
         let systemPrompt: string;
@@ -114,6 +130,7 @@ class BackgroundSubagentManager {
         };
 
         const onChildEvent = (evt: Event): void => {
+            task.lastActivityAt = Date.now();
             switch (evt.type) {
                 case "model.text":
                     textBuf += evt.delta;
@@ -237,6 +254,34 @@ class BackgroundSubagentManager {
         return count;
     }
 
+    // Lazily arm the watchdog when the first task starts. It self-clears once no
+    // task is running, so it never lingers.
+    private ensureSweep(): void {
+        if (this.sweepTimer !== null) return;
+        this.sweepTimer = setInterval(() => this.sweepStalled(), SUBAGENT_SWEEP_INTERVAL_MS);
+        this.sweepTimer.unref?.();
+    }
+
+    private sweepStalled(): void {
+        const now = Date.now();
+        for (const task of this.tasks.values()) {
+            if (
+                task.status === "running" &&
+                now - task.lastActivityAt > SUBAGENT_STALL_TIMEOUT_MS
+            ) {
+                task.status = "failed";
+                task.error = `subagent produced no activity for ${Math.round(
+                    SUBAGENT_STALL_TIMEOUT_MS / 60000,
+                )} minutes and is presumed dead`;
+                task.abortController?.abort();
+            }
+        }
+        if (this.sweepTimer !== null && !this.hasRunning()) {
+            clearInterval(this.sweepTimer);
+            this.sweepTimer = null;
+        }
+    }
+
     // Returns a promise that resolves with the completed task when any running
     // task finishes. Polls every 500ms. Rejects if the signal is aborted.
     waitForCompletion(signal: AbortSignal): Promise<BackgroundSubagentTask> {
@@ -264,6 +309,10 @@ class BackgroundSubagentManager {
     }
 
     cleanup(): void {
+        if (this.sweepTimer !== null) {
+            clearInterval(this.sweepTimer);
+            this.sweepTimer = null;
+        }
         for (const task of this.tasks.values()) {
             if (task.status === "running") {
                 task.status = "killed";

@@ -3,12 +3,7 @@ import { ensureSelectedMemory } from "../memory/index.ts";
 import { decide } from "../permissions/index.ts";
 import type { Message, Provider, ReasoningDetail, ToolCallRequest } from "../providers/index.ts";
 import type { SessionHandle } from "../storage/index.ts";
-import {
-    assembleToolPool,
-    getTool,
-    type ToolResult,
-    type TurnState,
-} from "../tools/index.ts";
+import { assembleToolPool, getTool, type ToolResult, type TurnState } from "../tools/index.ts";
 import { getBackgroundManager, formatBashResult } from "../tools/bash/background.ts";
 import { getBackgroundSubagentManager } from "../subagents/background.ts";
 import { assemble } from "./assemble.ts";
@@ -122,17 +117,29 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         });
     }
 
-    // Drain completed background subagents and inject their summaries.
+    // Drain completed background subagents and inject their summaries. State the
+    // liveness explicitly — whether it finished or died, and how many are still
+    // running — so a dead subagent can never leave the model waiting on a ghost.
     const subagentMgr = getBackgroundSubagentManager(state.sessionId);
     for (const task of subagentMgr.drainCompleted()) {
         const durationMs = Date.now() - task.startedAt;
-        const content =
-            task.status === "completed"
-                ? task.summary
-                : `[${task.status}] ${task.error || "no details"}`;
+        const stillRunning = subagentMgr.runningCount();
+        const runningNote =
+            stillRunning === 0
+                ? "0 background subagents are running now — none left to wait for."
+                : `${stillRunning} background subagent${stillRunning === 1 ? "" : "s"} still running.`;
+        let body: string;
+        if (task.status === "completed") {
+            body = `Background subagent ${task.id} (${task.kind}) completed after ${durationMs}ms and is no longer running.\n${task.summary}`;
+        } else {
+            const reason = task.error || "no details";
+            body =
+                `Background subagent ${task.id} (${task.kind}) ${task.status} after ${durationMs}ms — it is now 100% gone and will send NO result. ` +
+                `Do not wait on it. If its task still needs doing, start a fresh subagent. Reason: ${reason}`;
+        }
         state.history.push({
             role: "user",
-            content: `<system-reminder>\nBackground subagent ${task.id} (${task.kind}) finished after ${durationMs}ms.\n${content}\n</system-reminder>`,
+            content: `<system-reminder>\n${body}\n${runningNote}\n</system-reminder>`,
         });
     }
 
