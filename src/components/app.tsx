@@ -33,6 +33,11 @@ import { type Config, type LoadResult, type PermissionMode, saveConfig } from ".
 import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
 import { createSessionState, queryLoop, type SessionState } from "../pipeline/index.ts";
 import { resetShapingFlags } from "../pipeline/state.ts";
+import {
+    anyBackgroundRunning,
+    waitForAnyBackgroundCompletion,
+    WAKEUP_REMINDERS,
+} from "../pipeline/backgroundWakeup.ts";
 import type { Message, ToolCallRequest } from "../providers/index.ts";
 import type { ReplayedSession } from "../storage/index.ts";
 import { estimateTokens } from "../pipeline/shapers/tokens.ts";
@@ -1424,40 +1429,20 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             }
         }
 
-        // Proactive background-task wakeup: if any tasks are still running,
-        // wait for one to complete and auto-trigger a new turn so the model
-        // sees the notification without the user having to send a message.
-        const bgMgr = getBackgroundManager(stateRef.current!.sessionId);
-        if (bgMgr.hasRunning()) {
+        // Proactive background wakeup: if any bash task or subagent is still
+        // running, wait for whichever finishes FIRST and auto-trigger a new turn
+        // so the model sees the notification without the user having to send a
+        // message. One raced wait, not one per kind — waiting on bash first would
+        // hold a finished subagent's summary hostage to an unrelated build.
+        const sessionId = stateRef.current!.sessionId;
+        if (anyBackgroundRunning(sessionId)) {
             const ctrl = new AbortController();
             bgWakeupRef.current = ctrl;
             try {
-                await bgMgr.waitForCompletion(ctrl.signal);
+                const kind = await waitForAnyBackgroundCompletion(sessionId, ctrl.signal);
                 refreshBgCount();
                 if (!ctrl.signal.aborted) {
-                    await sendNow(
-                        "<system-reminder>A background task finished — check the output.</system-reminder>",
-                    );
-                }
-            } catch {
-                // Aborted — user sent a message, normal flow takes over.
-            } finally {
-                if (bgWakeupRef.current === ctrl) bgWakeupRef.current = null;
-            }
-        }
-
-        // Same pattern for background subagents.
-        const subagentMgr = getBackgroundSubagentManager(stateRef.current!.sessionId);
-        if (subagentMgr.hasRunning()) {
-            const ctrl = new AbortController();
-            bgWakeupRef.current = ctrl;
-            try {
-                await subagentMgr.waitForCompletion(ctrl.signal);
-                refreshBgCount();
-                if (!ctrl.signal.aborted) {
-                    await sendNow(
-                        "<system-reminder>A background subagent finished — check its output.</system-reminder>",
-                    );
+                    await sendNow(WAKEUP_REMINDERS[kind]);
                 }
             } catch {
                 // Aborted — user sent a message, normal flow takes over.

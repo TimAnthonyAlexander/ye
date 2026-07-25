@@ -2,8 +2,20 @@ import type { LoadResult } from "../config/index.ts";
 import { runEventHooks } from "../hooks/index.ts";
 import { getProjectId, openSession, type SessionHandle } from "../storage/index.ts";
 import { getProvider, isMissingKeyError } from "../providers/index.ts";
+import { destroyBackgroundManager } from "../tools/bash/background.ts";
+import { destroyBackgroundSubagentManager } from "../subagents/background.ts";
+import {
+    anyBackgroundRunning,
+    waitForAnyBackgroundCompletion,
+    WAKEUP_REMINDERS,
+    type BackgroundKind,
+} from "./backgroundWakeup.ts";
 import { queryLoop } from "./index.ts";
 import type { SessionState } from "./state.ts";
+
+// Backstop so a subagent that keeps spawning background work can't pin a
+// headless run open forever.
+const MAX_HEADLESS_WAKEUPS = 50;
 
 export const runHeadless = async (config: LoadResult, prompt: string): Promise<void> => {
     const cfg = config.config;
@@ -77,17 +89,17 @@ export const runHeadless = async (config: LoadResult, prompt: string): Promise<v
         expanded = `${promptHook.context}\n\n${expanded}`;
     }
 
-    const stream = queryLoop({
-        provider,
-        config: cfg,
-        state,
-        session,
-        userPrompt: expanded,
-        signal,
-    });
-
     let hadError = false;
-    try {
+
+    const drain = async (prompt: string): Promise<void> => {
+        const stream = queryLoop({
+            provider,
+            config: cfg,
+            state,
+            session,
+            userPrompt: prompt,
+            signal,
+        });
         for await (const evt of stream) {
             switch (evt.type) {
                 case "model.text":
@@ -115,7 +127,33 @@ export const runHeadless = async (config: LoadResult, prompt: string): Promise<v
                     break;
             }
         }
+    };
+
+    try {
+        await drain(expanded);
+
+        // Background work is async by default (Task) or opt-in (Bash), and the
+        // model is told to end its turn and wait for the wakeup. Headless has no
+        // UI loop to deliver that wakeup, so without this the process would exit
+        // the moment the model stopped talking and every background result —
+        // including the entire output of a backgrounded subagent — would be
+        // silently discarded. Keep pumping turns while work is outstanding.
+        let wakeups = 0;
+        while (anyBackgroundRunning(state.sessionId) && wakeups < MAX_HEADLESS_WAKEUPS) {
+            let kind: BackgroundKind;
+            try {
+                kind = await waitForAnyBackgroundCompletion(state.sessionId, signal);
+            } catch {
+                break;
+            }
+            wakeups += 1;
+            await drain(WAKEUP_REMINDERS[kind]);
+        }
     } finally {
+        // Kills any still-running background shell command or subagent, so
+        // nothing outlives the process.
+        destroyBackgroundManager(state.sessionId);
+        destroyBackgroundSubagentManager(state.sessionId);
         await session.close();
     }
 
