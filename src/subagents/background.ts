@@ -242,6 +242,15 @@ class BackgroundSubagentManager {
         return false;
     }
 
+    // Non-mutating counterpart to drainCompleted, so a waiter can detect a
+    // finished subagent without consuming it.
+    hasUndelivered(): boolean {
+        for (const task of this.tasks.values()) {
+            if (!task.delivered && task.status !== "running") return true;
+        }
+        return false;
+    }
+
     allTasks(): IterableIterator<BackgroundSubagentTask> {
         return this.tasks.values();
     }

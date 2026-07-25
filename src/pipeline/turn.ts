@@ -4,7 +4,7 @@ import { decide } from "../permissions/index.ts";
 import type { Message, Provider, ReasoningDetail, ToolCallRequest } from "../providers/index.ts";
 import type { SessionHandle } from "../storage/index.ts";
 import { assembleToolPool, getTool, type ToolResult, type TurnState } from "../tools/index.ts";
-import { getBackgroundManager, formatBashResult } from "../tools/bash/background.ts";
+import { getBackgroundManager, formatBackgroundNotice } from "../tools/bash/background.ts";
 import { getBackgroundSubagentManager } from "../subagents/background.ts";
 import { assemble } from "./assemble.ts";
 import { type CollectedToolCall } from "./dispatch.ts";
@@ -109,11 +109,9 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     // history so the model sees them at the start of this turn.
     const bgMgr = getBackgroundManager(state.sessionId);
     for (const task of bgMgr.drainCompleted()) {
-        const durationMs = Date.now() - task.startedAt;
-        const output = formatBashResult(task.stdout, task.stderr, task.exitCode ?? 1, durationMs);
         state.history.push({
             role: "user",
-            content: `<system-reminder>\nBackground task ${task.id} finished.\n${output}\n</system-reminder>`,
+            content: `<system-reminder>\n${formatBackgroundNotice(task, Date.now() - task.startedAt)}\n</system-reminder>`,
         });
     }
 

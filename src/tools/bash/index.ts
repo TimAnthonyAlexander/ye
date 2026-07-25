@@ -1,6 +1,7 @@
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
 import { formatBashResult, getBackgroundManager } from "./background.ts";
+import { killGroup } from "./kill.ts";
 
 interface BashArgs {
     readonly command: string;
@@ -18,26 +19,11 @@ const truncate = (text: string): string =>
         ? `${text.slice(0, OUTPUT_CAP)}\n…(truncated, ${text.length - OUTPUT_CAP} more chars)`
         : text;
 
-// Kill the whole process group of a detached child. We use the negative-pid
-// trick so backgrounded grandchildren (anything started with `&`) die with the
-// shell, not just the immediate sh process. Falls back to a plain proc.kill if
-// the group-kill throws (race with already-exited proc).
-const killGroup = (
-    proc: { pid: number; kill: (sig?: number) => void },
-    sig: NodeJS.Signals,
-): void => {
-    try {
-        process.kill(-proc.pid, sig);
-        return;
-    } catch {
-        // Process group already gone, or pid not a group leader — try direct.
-    }
-    try {
-        proc.kill(sig === "SIGKILL" ? 9 : 15);
-    } catch {
-        // Already dead.
-    }
-};
+// Background tasks exist for work that outlasts a foreground call, so they
+// default to the ceiling rather than 2 minutes — inheriting the foreground
+// default silently SIGKILLed long builds and installs mid-flight.
+export const resolveTimeoutMs = (timeout: number | undefined, runInBackground: boolean): number =>
+    Math.min(timeout ?? (runInBackground ? MAX_TIMEOUT_MS : DEFAULT_TIMEOUT_MS), MAX_TIMEOUT_MS);
 
 // Race a promise against an abort signal. Resolves to "aborted" if the signal
 // fires first; otherwise resolves/rejects with the original promise. Lets us
@@ -96,14 +82,19 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     const v = validateArgs<BashArgs>(rawArgs, BashTool.schema);
     if (!v.ok) return v;
     const command = v.value.command;
-    const timeoutMs = Math.min(v.value.timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
+    const timeoutMs = resolveTimeoutMs(v.value.timeout, v.value.run_in_background === true);
 
     if (v.value.run_in_background) {
         const mgr = getBackgroundManager(ctx.sessionId);
         const id = mgr.start(command, ctx.cwd, timeoutMs, "");
         return {
             ok: true,
-            value: `Background task started: ${id}\nCommand: ${command}\nUse BashOutput to check status, KillShell to stop it.`,
+            value:
+                `Background task started: ${id}\nCommand: ${command}\n` +
+                `${id} is now running on its own. Its full output is delivered to you automatically in a <system-reminder> when it finishes, ` +
+                `even if you have ended your turn and gone idle. If you have no other work to do right now, END YOUR TURN — you will be woken. ` +
+                `Do NOT call BashOutput to find out whether it is done; that is never something you need to check. ` +
+                `Call BashOutput only if you need this task's partial output to decide something you cannot defer. KillShell stops it.`,
         };
     }
 
@@ -168,10 +159,12 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 export const BashTool: Tool = {
     name: "Bash",
     description:
-        "Execute a shell command via the system shell (`sh -c` on macOS/Linux, `cmd.exe /c` on Windows). Default 120s timeout, max 900s (15 min) via the optional `timeout` arg (ms). " +
+        "Execute a shell command via the system shell (`sh -c` on macOS/Linux, `cmd.exe /c` on Windows). Default 120s timeout, max 900s (15 min) via the optional `timeout` arg (ms); " +
+        "background tasks default to the 900s maximum instead. " +
         "Do NOT use this to start dev servers, watchers, or any command that runs indefinitely — those will hang the turn until timeout. " +
         "For long-running commands (builds, test suites, installs), set `run_in_background: true` to start the command as a background task and continue working while it runs. " +
-        "When the background task finishes, you'll be notified at the start of your next turn. Use BashOutput to poll a running task's output, and KillShell to stop it. " +
+        "Its output is then delivered to you automatically in a system-reminder when it finishes, even while you are idle — so end your turn and wait rather than checking on it. " +
+        "BashOutput reads a running task's partial output when you need it to decide something you cannot defer (never to check whether it is done); KillShell stops a task. " +
         "v1 has NO sandbox: in AUTO mode this command runs immediately with the user's privileges. " +
         "Prefer Read/Edit/Write/Glob/Grep over Bash when they fit.",
     annotations: { readOnlyHint: false },

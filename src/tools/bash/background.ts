@@ -1,4 +1,5 @@
 import type { Subprocess } from "bun";
+import { killGroupHard } from "./kill.ts";
 
 const OUTPUT_CAP = 32_000;
 
@@ -23,6 +24,25 @@ export const formatBashResult = (
     return `<bash exit_code="${exitCode}" duration_ms="${durationMs}">\n${body.join("\n")}\n</bash>`;
 };
 
+// Completion notice for a terminal background task. A killed or timed-out task
+// has no exit code, so it gets a plain partial-output body instead of a
+// <bash exit_code="…"> block that would imply the command ran and failed.
+export const formatBackgroundNotice = (task: BackgroundTask, durationMs: number): string => {
+    const body =
+        task.exitCode === null
+            ? `${task.stdout}${task.stderr ? `\n<stderr>\n${task.stderr}\n</stderr>` : ""}`
+            : formatBashResult(task.stdout, task.stderr, task.exitCode, durationMs);
+    let headline: string;
+    if (task.timedOut) {
+        headline = `Background task ${task.id} was killed after hitting its timeout at ${durationMs}ms and did not complete — the output below is partial and there is no exit code.`;
+    } else if (task.status === "killed") {
+        headline = `Background task ${task.id} was killed after ${durationMs}ms before it completed — the output below is partial and there is no exit code.`;
+    } else {
+        headline = `Background task ${task.id} finished after ${durationMs}ms.`;
+    }
+    return `${headline}\nCommand: ${task.command}\n${body}`;
+};
+
 export interface BackgroundTask {
     readonly id: string;
     readonly command: string;
@@ -31,12 +51,21 @@ export interface BackgroundTask {
     stdout: string;
     stderr: string;
     exitCode: number | null;
+    // Distinguishes a timeout kill from a command that exited non-zero on its
+    // own, so the completion notice can say which happened instead of inventing
+    // an exit code.
+    timedOut: boolean;
     delivered: boolean;
     readonly startedAt: number;
 }
 
 class BackgroundTaskManager {
     private readonly tasks = new Map<string, BackgroundTask>();
+    // Live process handles and timeout timers, kept out of BackgroundTask so the
+    // task stays a plain data record. Both are needed to actually stop a task:
+    // without the handle, kill() could only ever set a status flag.
+    private readonly procs = new Map<string, Subprocess>();
+    private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
     private counter = 0;
 
     start(command: string, cwd: string, timeoutMs: number, toolCallId: string): string {
@@ -49,6 +78,7 @@ class BackgroundTaskManager {
             stdout: "",
             stderr: "",
             exitCode: null,
+            timedOut: false,
             delivered: false,
             startedAt: Date.now(),
         };
@@ -64,7 +94,12 @@ class BackgroundTaskManager {
             cwd,
             stdout: "pipe",
             stderr: "pipe",
+            // New process group so `&`-backgrounded grandchildren die with the
+            // shell when we signal -pid. POSIX only — on Windows `detached`
+            // opens a separate console and detaches stdio, losing piped output.
+            detached: process.platform !== "win32",
         });
+        this.procs.set(id, proc);
 
         void (async () => {
             const stdoutStream = proc.stdout as ReadableStream<Uint8Array>;
@@ -73,49 +108,52 @@ class BackgroundTaskManager {
             const stderrReader = stderrStream.getReader();
             const decoder = new TextDecoder();
 
+            // Append straight onto the task as bytes arrive. Buffering locally
+            // and assigning once at exit would leave task.stdout empty for the
+            // whole run, making a running task's partial output unreadable.
             const readLoop = async (
                 reader: { read(): Promise<{ done: boolean; value?: Uint8Array }> },
-                buf: { value: string },
+                append: (text: string) => void,
             ): Promise<void> => {
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-                    buf.value += decoder.decode(value, { stream: true });
-                    buf.value = truncate(buf.value);
+                    append(decoder.decode(value, { stream: true }));
                 }
             };
 
-            const stdoutBuf = { value: "" };
-            const stderrBuf = { value: "" };
-
             await Promise.all([
-                readLoop(stdoutReader, stdoutBuf),
-                readLoop(stderrReader, stderrBuf),
+                readLoop(stdoutReader, (text) => {
+                    task.stdout = truncate(task.stdout + text);
+                }),
+                readLoop(stderrReader, (text) => {
+                    task.stderr = truncate(task.stderr + text);
+                }),
             ]);
 
             const exitCode = await proc.exited;
-            task.stdout = stdoutBuf.value;
-            task.stderr = stderrBuf.value;
+            this.clearTimer(id);
+            this.procs.delete(id);
+            // A killed or timed-out task has already reached its terminal state.
+            // The process exiting afterwards must not resurrect it as completed.
+            if (task.status !== "running") return;
             task.exitCode = exitCode;
             task.status = exitCode === 0 ? "completed" : "failed";
         })();
 
         if (timeoutMs > 0) {
-            setTimeout(() => {
-                if (task.status === "running") {
-                    try {
-                        proc.kill();
-                    } catch {
-                        /* already dead */
-                    }
-                    task.status = "failed";
-                    task.exitCode = null;
-                    task.stdout += "\n[background task timed out]";
-                    task.stderr += `\ncommand timed out after ${timeoutMs}ms`;
-                    task.stdout = truncate(task.stdout);
-                    task.stderr = truncate(task.stderr);
-                }
+            const timer = setTimeout(() => {
+                this.timers.delete(id);
+                if (task.status !== "running") return;
+                killGroupHard(proc);
+                task.status = "failed";
+                task.exitCode = null;
+                task.timedOut = true;
+                task.stdout = truncate(`${task.stdout}\n[background task timed out]`);
+                task.stderr = truncate(`${task.stderr}\ncommand timed out after ${timeoutMs}ms`);
             }, timeoutMs);
+            timer.unref?.();
+            this.timers.set(id, timer);
         }
 
         return id;
@@ -130,7 +168,26 @@ class BackgroundTaskManager {
         if (!task || task.status !== "running") return false;
         task.status = "killed";
         task.exitCode = null;
+        this.stopProcess(id);
         return true;
+    }
+
+    // Signal the real process group and drop the handle. Without this, "killed"
+    // was a status flag only: the command kept running with the user's
+    // privileges, kept appending output, and outlived the session.
+    private stopProcess(id: string): void {
+        this.clearTimer(id);
+        const proc = this.procs.get(id);
+        if (!proc) return;
+        this.procs.delete(id);
+        killGroupHard(proc);
+    }
+
+    private clearTimer(id: string): void {
+        const timer = this.timers.get(id);
+        if (timer === undefined) return;
+        clearTimeout(timer);
+        this.timers.delete(id);
     }
 
     drainCompleted(): BackgroundTask[] {
@@ -147,6 +204,15 @@ class BackgroundTaskManager {
     hasRunning(): boolean {
         for (const task of this.tasks.values()) {
             if (task.status === "running") return true;
+        }
+        return false;
+    }
+
+    // Non-mutating counterpart to drainCompleted, so a waiter can detect a
+    // finished task without consuming it.
+    hasUndelivered(): boolean {
+        for (const task of this.tasks.values()) {
+            if (!task.delivered && task.status !== "running") return true;
         }
         return false;
     }
@@ -189,9 +255,12 @@ class BackgroundTaskManager {
         for (const task of this.tasks.values()) {
             if (task.status === "running") {
                 task.status = "killed";
+                this.stopProcess(task.id);
             }
         }
+        for (const id of [...this.timers.keys()]) this.clearTimer(id);
         this.tasks.clear();
+        this.procs.clear();
     }
 }
 
