@@ -19,10 +19,22 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     const durationMs = Date.now() - task.startedAt;
 
     if (task.status === "running") {
+        // Nothing captured yet means this peek was a completion check, not a
+        // read of partial output — refuse it rather than confirming the habit.
+        if (task.stdout.length === 0 && task.stderr.length === 0) {
+            return {
+                ok: false,
+                error:
+                    `${task.id} is still running and has produced no output yet, so there is nothing to read. ` +
+                    `Its full output is delivered to you automatically in a <system-reminder> when it finishes, even if you have ended your turn and gone idle. ` +
+                    `END YOUR TURN and wait to be woken rather than checking again.`,
+            };
+        }
         return {
             ok: true,
             value:
-                `[still running, ${durationMs}ms elapsed]\n${task.stdout}` +
+                `[${task.id} still running, ${durationMs}ms elapsed — partial output below. ` +
+                `The full result arrives automatically when it finishes; do not call BashOutput again just to see whether it is done.]\n${task.stdout}` +
                 (task.stderr ? `\n<stderr>\n${task.stderr}\n</stderr>` : ""),
         };
     }
@@ -36,9 +48,10 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 export const BashOutputTool: Tool = {
     name: "BashOutput",
     description:
-        "Poll a background bash task for its current output and status. " +
-        "Returns the stdout/stderr captured so far (still running) or the final result (completed/failed/killed). " +
-        "Use this to check on a task you started with Bash's `run_in_background: true`.",
+        "Read a background bash task's partial output while it runs. Use it ONLY when you need that partial output to decide " +
+        "something you cannot defer (e.g. early build logs) — NOT to check whether the task is done, which is never something " +
+        "you need to do: the full output is delivered to you automatically in a system-reminder when the task finishes, even " +
+        "while you are idle. Calling it on a task that has produced no output yet returns an error.",
     annotations: { readOnlyHint: true },
     schema: {
         type: "object",

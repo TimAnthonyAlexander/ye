@@ -75,10 +75,20 @@ const execute = async (
         };
         const mgr = getBackgroundSubagentManager(ctx.sessionId);
         const id = mgr.start(spec, spawnCtx);
+        // This string is the last instruction the model reads before deciding
+        // what to do next, so it must state the wait — an earlier version said
+        // "use TaskOutput to check status" and the model dutifully polled every
+        // second instead of ending its turn.
         return {
             ok: true,
             value: {
-                summary: `Background subagent started: ${id}\nKind: ${kind}\nPrompt: ${prompt}\nUse TaskOutput to check status, KillAgent to stop it.`,
+                summary:
+                    `Background subagent started: ${id}\nKind: ${kind}\nPrompt: ${prompt}\n` +
+                    `${id} is now running on its own. There is nothing to check and nothing to wait for in this turn: ` +
+                    `its summary is delivered to you automatically in a <system-reminder> the moment it finishes, even if you have ended your turn and gone idle. ` +
+                    `If you have no other work to do right now, END YOUR TURN — you will be woken. ` +
+                    `Do NOT call TaskOutput on ${id}; while it runs TaskOutput returns an error and no information. ` +
+                    `KillAgent stops it if you no longer want its result.`,
                 transcriptPath: "",
                 turnCount: 0,
             },
@@ -140,8 +150,10 @@ export const TaskTool: Tool = {
         "its final assistant message is returned to you. Use a subagent when the task " +
         "would otherwise pollute your context with many tool calls. " +
         "By DEFAULT the subagent runs in the BACKGROUND: Task returns immediately with a " +
-        "task ID and you are notified via a system-reminder when it finishes (even while " +
-        "you are idle), so fire one or several and let them run. Pass run_in_background: false " +
+        "task ID and its summary is delivered to you automatically in a system-reminder when it " +
+        "finishes, even while you are idle. So fire one or several, then either do unrelated work " +
+        "or end your turn — ending your turn is how you wait, and a running subagent cannot be " +
+        "inspected (TaskOutput errors until it finishes). Pass run_in_background: false " +
         "ONLY when you need the subagent's result before your next action — it then blocks " +
         "and streams progress until done.",
     annotations: { readOnlyHint: false },
