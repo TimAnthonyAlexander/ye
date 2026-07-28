@@ -73,6 +73,10 @@ export interface SessionState {
     parentSessionId?: string;
     allowedTools?: readonly string[];
     systemPromptOverride?: string;
+    // Git status injection: hash of the last injected status output. When the new
+    // output hashes to the same value, a short "nothing changed" note is injected
+    // instead of repeating the full status. undefined = not yet injected.
+    lastGitStatusHash?: string;
 }
 
 export const newTurnState = (): TurnState => ({

@@ -1,6 +1,7 @@
 import type {
     CompactConfig,
     Config,
+    GitStatusConfig,
     HookEntry,
     HooksConfig,
     MatcherGroup,
@@ -470,6 +471,28 @@ const validateSkillsConfig = (value: unknown): SkillsConfig => {
     return out;
 };
 
+const validateGitStatusConfig = (value: unknown): GitStatusConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError("gitStatus must be an object");
+    }
+    if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
+        throw new ConfigValidationError("gitStatus.enabled must be a boolean");
+    }
+    const enabled = value.enabled === undefined ? true : (value.enabled as boolean);
+    let maxLines = 30;
+    if (value.maxLines !== undefined) {
+        if (
+            typeof value.maxLines !== "number" ||
+            !Number.isInteger(value.maxLines) ||
+            value.maxLines <= 0
+        ) {
+            throw new ConfigValidationError("gitStatus.maxLines must be a positive integer");
+        }
+        maxLines = value.maxLines;
+    }
+    return { enabled, maxLines };
+};
+
 export const validateConfig = (raw: unknown): Config => {
     if (!isObject(raw)) {
         throw new ConfigValidationError("root must be an object");
@@ -499,6 +522,9 @@ export const validateConfig = (raw: unknown): Config => {
         ...(raw.recovery !== undefined ? { recovery: validateRecoveryConfig(raw.recovery) } : {}),
         ...(raw.skills !== undefined ? { skills: validateSkillsConfig(raw.skills) } : {}),
         ...(raw.hooks !== undefined ? { hooks: validateHooksConfig(raw.hooks) } : {}),
+        ...(raw.gitStatus !== undefined
+            ? { gitStatus: validateGitStatusConfig(raw.gitStatus) }
+            : {}),
     };
 };
 

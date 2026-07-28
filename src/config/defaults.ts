@@ -58,6 +58,10 @@ export const DEFAULT_CONFIG: Config = {
         rateLimitBackoffBaseMs: 1_000,
         rateLimitBackoffMaxMs: 60_000,
     },
+    gitStatus: {
+        enabled: true,
+        maxLines: 30,
+    },
 };
 
 export const FALLBACK_CONTEXT_WINDOW = 128_000;

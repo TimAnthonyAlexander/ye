@@ -129,6 +129,11 @@ export interface WebToolsConfig {
 // a future opt-in that walks ~/.claude/skills/ alongside ~/.ye/skills/ — the key
 // is shipped now (validated, default false) so adding the walker later does not
 // require a config-shape migration.
+export interface GitStatusConfig {
+    readonly enabled: boolean;
+    readonly maxLines: number;
+}
+
 export interface SkillsConfig {
     readonly enableClaudeInterop?: boolean;
 }
@@ -163,6 +168,7 @@ export interface Config {
     readonly permissions?: PermissionsConfig;
     readonly webTools?: WebToolsConfig;
     readonly recovery?: RecoveryConfig;
+    readonly gitStatus?: GitStatusConfig;
     readonly skills?: SkillsConfig;
     readonly hooks?: HooksConfig;
 }

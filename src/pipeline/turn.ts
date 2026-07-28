@@ -9,6 +9,7 @@ import { getBackgroundSubagentManager } from "../subagents/background.ts";
 import { assemble } from "./assemble.ts";
 import { type CollectedToolCall } from "./dispatch.ts";
 import { transcriptable, type Event, type StopReason } from "./events.ts";
+import { injectGitStatus } from "./gitStatus.ts";
 import { runModelCallWithRecovery } from "./recovery.ts";
 import { capturePinnedUpstream, resolveProviderOptions } from "./routing.ts";
 import { runShapers } from "./shapers/index.ts";
@@ -140,6 +141,10 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
             content: `<system-reminder>\n${body}\n${runningNote}\n</system-reminder>`,
         });
     }
+
+    // Inject git status as a system-reminder user message before assembly.
+    // Skipped when the working tree is unchanged from last turn.
+    await injectGitStatus(state, config);
 
     const activeModel = state.activeModel ?? config.defaultModel.model;
 
