@@ -45,10 +45,35 @@ export const emptyUsageTotals = (): UsageTotals => ({
     byModel: {},
 });
 
+export interface CallKindTotals {
+    readonly calls: number;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly cacheReadTokens: number;
+    readonly cacheCreationTokens: number;
+    readonly costUsd: number;
+}
+
+export interface SessionUsage {
+    readonly totals: CallKindTotals;
+    readonly byCallKind: Readonly<Record<string, CallKindTotals>>;
+}
+
+const emptyCallKindTotals = (): CallKindTotals => ({
+    calls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    costUsd: 0,
+});
+
 const isNotFoundError = (err: unknown): boolean =>
     err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT";
 
 interface RawRecord {
+    sessionId?: unknown;
+    callKind?: unknown;
     inputTokens?: unknown;
     outputTokens?: unknown;
     cacheReadTokens?: unknown;
@@ -85,6 +110,45 @@ export const appendUsageRecord = async (
     };
     await mkdir(dirname(USAGE_FILE), { recursive: true });
     await appendFile(USAGE_FILE, `${JSON.stringify(entry)}\n`);
+};
+
+// Same file, same records as loadUsageTotals — narrowed to one session and
+// split by callKind so /cost can show where a session's spend went.
+export const loadSessionUsage = async (sessionId: string): Promise<SessionUsage> => {
+    let raw: string;
+    try {
+        raw = await readFile(USAGE_FILE, "utf8");
+    } catch (err) {
+        if (isNotFoundError(err)) return { totals: emptyCallKindTotals(), byCallKind: {} };
+        throw err;
+    }
+
+    let totals = emptyCallKindTotals();
+    const byCallKind: Record<string, CallKindTotals> = {};
+
+    for (const line of raw.split("\n")) {
+        if (line.length === 0) continue;
+        let parsed: RawRecord;
+        try {
+            parsed = JSON.parse(line) as RawRecord;
+        } catch {
+            continue;
+        }
+        if (parsed.sessionId !== sessionId) continue;
+        const kind = typeof parsed.callKind === "string" ? parsed.callKind : "turn";
+        const add = (cur: CallKindTotals): CallKindTotals => ({
+            calls: cur.calls + 1,
+            inputTokens: cur.inputTokens + num(parsed.inputTokens),
+            outputTokens: cur.outputTokens + num(parsed.outputTokens),
+            cacheReadTokens: cur.cacheReadTokens + num(parsed.cacheReadTokens),
+            cacheCreationTokens: cur.cacheCreationTokens + num(parsed.cacheCreationTokens),
+            costUsd: cur.costUsd + num(parsed.costUsd),
+        });
+        totals = add(totals);
+        byCallKind[kind] = add(byCallKind[kind] ?? emptyCallKindTotals());
+    }
+
+    return { totals, byCallKind };
 };
 
 export const loadUsageTotals = async (): Promise<UsageTotals> => {

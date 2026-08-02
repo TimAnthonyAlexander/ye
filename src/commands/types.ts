@@ -1,4 +1,6 @@
-import type { PermissionMode } from "../config/index.ts";
+import type { Config, PermissionMode, PermissionRule } from "../config/index.ts";
+import type { ManualCompactResult } from "../pipeline/shapers/manualCompact.ts";
+import type { Message } from "../providers/index.ts";
 
 export type SlashCommandResult =
     | { readonly kind: "ok" }
@@ -24,9 +26,12 @@ export interface SlashCommandContext {
     readonly cwd: string;
     readonly projectRoot: string;
     readonly projectId: string;
+    readonly sessionId: string;
     readonly mode: PermissionMode;
     readonly providerId: string;
     readonly model: string;
+    readonly config: Config;
+    readonly contextWindow: number;
     setMode(next: PermissionMode): void;
     setProvider(next: string): Promise<void>;
     setModel(next: string): Promise<void>;
@@ -55,6 +60,18 @@ export interface SlashCommandContext {
     // Open the interactive picker. Resolves with the chosen option's `id`,
     // or `null` if the user dismissed (Esc).
     pick(payload: PickerPayload): Promise<string | null>;
+    // Live conversation history and the permission rules granted during this
+    // session (config rules live on `config`).
+    getHistory(): readonly Message[];
+    getSessionRules(): readonly PermissionRule[];
+    getBackgroundTaskCount(): number;
+    // Summarize older history on demand. `focus` steers what the summary keeps;
+    // empty string means no steer.
+    compact(focus: string): Promise<ManualCompactResult>;
+    // Ask a question the conversation never learns about: streams an answer to
+    // the chat, then discards both sides. Nothing reaches history or the
+    // session file.
+    askAside(question: string): Promise<void>;
 }
 
 export interface SlashCommand {

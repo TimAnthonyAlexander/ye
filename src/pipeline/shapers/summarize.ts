@@ -9,6 +9,9 @@ export type SummaryPromptStyle = "auto-compact" | "collapse";
 export interface SummarizeOptions {
     readonly preserveRecent: number;
     readonly promptStyle: SummaryPromptStyle;
+    // Manual /compact steer. Appended to the summarizer prompt so the user can
+    // bias what survives compaction.
+    readonly focus?: string;
 }
 
 export interface SummarizeOutcome {
@@ -25,8 +28,11 @@ const PROMPT_COLLAPSE =
     "files, functions, and decisions made. The recent conversation is preserved " +
     "verbatim and follows; this summary replaces only the older portion.";
 
-const promptFor = (style: SummaryPromptStyle): string =>
-    style === "collapse" ? PROMPT_COLLAPSE : PROMPT_AUTO_COMPACT;
+const promptFor = (style: SummaryPromptStyle, focus: string | undefined): string => {
+    const base = style === "collapse" ? PROMPT_COLLAPSE : PROMPT_AUTO_COMPACT;
+    if (!focus || focus.trim().length === 0) return base;
+    return `${base} Keep everything relevant to this in full detail: ${focus.trim()}`;
+};
 
 const hasToolCalls = (m: Message): boolean =>
     m.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length > 0;
@@ -62,12 +68,13 @@ const summarize = async (
     config: Config,
     toCompact: readonly Message[],
     style: SummaryPromptStyle,
+    focus: string | undefined,
     sessionId: string,
     projectId: string,
 ): Promise<string> => {
     const summarizationMessages: Message[] = [
         ...toCompact,
-        { role: "user", content: promptFor(style) },
+        { role: "user", content: promptFor(style, focus) },
     ];
     let summary = "";
     const model = config.defaultModel.model;
@@ -137,6 +144,7 @@ export const runSummarizeAndReplace = async (
         config,
         olderHistory,
         opts.promptStyle,
+        opts.focus,
         state.sessionId,
         state.projectId,
     );

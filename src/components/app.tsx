@@ -7,11 +7,15 @@ import pkg from "../../package.json" with { type: "json" };
 import {
     completeCommand,
     dispatch,
+    loadMarkdownCommands,
     parseSlash,
     setExtraCommands,
+    setMarkdownCommands,
     type PickerPayload,
     type SlashCommandContext,
 } from "../commands/index.ts";
+import { runAside } from "../commands/aside.ts";
+import { runManualCompact } from "../pipeline/shapers/manualCompact.ts";
 import {
     buildSkillToolDescription,
     loadSkillRegistry,
@@ -861,6 +865,74 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         });
     };
 
+    const askAside = async (question: string): Promise<void> => {
+        const state = stateRef.current;
+        const provider = providerRef.current;
+        if (!state || !provider) throw new Error("session not ready");
+
+        const ctrl = new AbortController();
+        abortRef.current = ctrl;
+        streamingRef.current = true;
+        setStreaming(true);
+        setStreamingText("");
+
+        let text = "";
+        let flush: ReturnType<typeof setTimeout> | null = null;
+        const scheduleFlush = (): void => {
+            if (flush !== null) return;
+            flush = setTimeout(() => {
+                flush = null;
+                setStreamingText(text);
+            }, 16);
+        };
+
+        try {
+            const answer = await runAside({
+                state,
+                provider,
+                config: cfgRef.current,
+                model: state.activeModel ?? cfgRef.current.defaultModel.model,
+                question,
+                signal: ctrl.signal,
+                onDelta: (delta) => {
+                    text += delta;
+                    scheduleFlush();
+                },
+            });
+            if (answer.length > 0) {
+                setItems((prev) => [
+                    ...prev,
+                    { kind: "message", id: newChatItemId(), role: "assistant", content: answer },
+                    {
+                        kind: "system",
+                        id: newChatItemId(),
+                        content: "(off the record — not added to conversation history)",
+                    },
+                ]);
+            }
+        } catch (e) {
+            if (!ctrl.signal.aborted) throw e;
+        } finally {
+            if (flush !== null) clearTimeout(flush);
+            streamingRef.current = false;
+            abortRef.current = null;
+            setStreaming(false);
+            setStreamingText("");
+        }
+
+        // Queued sends only drain at the end of a stream, and an aside holds the
+        // same streaming flag — without this they would sit there forever.
+        const next = queueRef.current.shift();
+        syncQueueDisplay();
+        if (next === undefined) return;
+        if (next.kind === "user") {
+            appendUserToChat(next.text, next.attachments);
+            await sendNow(next.expanded);
+            return;
+        }
+        await sendNow(next.prompt);
+    };
+
     const runSlash = async (text: string): Promise<void> => {
         const parsed = parseSlash(text);
         if (!parsed) return;
@@ -877,9 +949,12 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             cwd: process.cwd(),
             projectRoot: state.projectRoot,
             projectId: state.projectId,
+            sessionId: state.sessionId,
             mode: state.mode,
             providerId,
             model,
+            config: cfgRef.current,
+            contextWindow: state.contextWindow,
             setMode: (next) => {
                 state.mode = next;
                 state.denialTrail = null;
@@ -938,6 +1013,31 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 return true;
             },
             pick,
+            getHistory: () => stateRef.current?.history ?? [],
+            getSessionRules: () => stateRef.current?.sessionRules ?? [],
+            getBackgroundTaskCount: () => {
+                const s = stateRef.current;
+                if (!s) return 0;
+                return (
+                    getBackgroundManager(s.sessionId).runningCount() +
+                    getBackgroundSubagentManager(s.sessionId).runningCount()
+                );
+            },
+            compact: async (focus: string) => {
+                const s = stateRef.current;
+                const p = providerRef.current;
+                if (!s || !p) throw new Error("session not ready");
+                const result = await runManualCompact({
+                    state: s,
+                    provider: p,
+                    config: cfgRef.current,
+                    model: s.activeModel ?? cfgRef.current.defaultModel.model,
+                    focus,
+                });
+                setUsedTokens(estimateTokens(s.history));
+                return result;
+            },
+            askAside,
         };
         const result = await dispatch(parsed, ctx);
         if (result.kind === "error") {
@@ -1036,6 +1136,11 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                         setExtraCommands(registry.slashBound.map(skillToSlashCommand));
                     })
                     .catch(() => {});
+                loadMarkdownCommands({ projectRoot: state.projectRoot })
+                    .then((cmds) => {
+                        if (!cancelled) setMarkdownCommands(cmds);
+                    })
+                    .catch(() => {});
 
                 if (resumeOnStart) {
                     try {
@@ -1072,7 +1177,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
 
     useInput((input, key) => {
         if (key.ctrl && input === "c") {
-            // Ctrl+C: clear input → abort stream → no-op. Use /exit to quit.
+            // Ctrl+C: cancel reverse-search → clear input → abort stream → no-op.
+            // Use /exit to quit. Search is checked first because it empties the
+            // buffer while active, so currentInput is "" and Ctrl+C would
+            // otherwise fall through and abort a live stream.
+            if (chatInputRef.current?.isSearching()) {
+                chatInputRef.current.cancelSearch();
+                return;
+            }
             if (currentInput.length > 0) {
                 chatInputRef.current?.clear();
                 return;

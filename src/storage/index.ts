@@ -28,7 +28,10 @@ export {
 export { appendHistory, loadHistory } from "./history.ts";
 export {
     appendUsageRecord,
+    loadSessionUsage,
     loadUsageTotals,
+    type CallKindTotals,
+    type SessionUsage,
     type UsageCallKind,
     type UsageRecord,
     type UsageTotals,

@@ -1,15 +1,24 @@
+import { AgentsCommand } from "./agents.ts";
+import { BtwCommand } from "./btw.ts";
 import { ClearCommand } from "./clear.ts";
+import { CompactCommand } from "./compact.ts";
 import { ContextCommand } from "./context.ts";
 import { CopyCommand } from "./copy.ts";
+import { CostCommand } from "./cost.ts";
+import { DoctorCommand } from "./doctor.ts";
 import { ExitCommand } from "./exit.ts";
+import { ExportCommand } from "./export.ts";
 import { buildHelpCommand } from "./help.ts";
 import { InitCommand } from "./init.ts";
+import { MemoryCommand } from "./memory.ts";
 import { ModeCommand } from "./mode.ts";
 import { ModelCommand } from "./model.ts";
+import { PermissionsCommand } from "./permissions.ts";
 import { ProviderCommand } from "./provider.ts";
 import { ResumeCommand } from "./resume.ts";
 import { RewindCommand } from "./rewind.ts";
 import { RoutingCommand } from "./routing.ts";
+import { StatusCommand } from "./status.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
 
 export type {
@@ -19,8 +28,12 @@ export type {
     SlashCommandContext,
     SlashCommandResult,
 } from "./types.ts";
+export { loadMarkdownCommands } from "./markdown.ts";
 
-const SLASH_PATTERN = /^\/([a-zA-Z][a-zA-Z0-9_-]*)(?:\s+([\s\S]*))?$/;
+// Trailing `:` segments carry markdown commands living in subdirectories
+// (.ye/commands/git/sync.md → /git:sync). Each segment still has to look like a
+// plain command name, so "/usr/bin" and "/foo:" stay non-commands.
+const SLASH_PATTERN = /^\/([a-zA-Z][a-zA-Z0-9_-]*(?::[a-zA-Z0-9_-]+)*)(?:\s+([\s\S]*))?$/;
 
 export interface ParsedSlash {
     readonly name: string;
@@ -34,13 +47,19 @@ export const parseSlash = (input: string): ParsedSlash | null => {
     return { name: match[1].toLowerCase(), args: match[2] ?? "" };
 };
 
-let extraCommands: readonly SlashCommand[] = [];
+let markdownCommands: readonly SlashCommand[] = [];
+let skillCommands: readonly SlashCommand[] = [];
 
-// Register dynamic slash commands (e.g. skill-bound). Built-in commands always
-// win on name conflict — a same-named extra is silently dropped from the slash
-// surface, though the skill itself remains model-invocable via the Skill tool.
+// Precedence, highest first: built-in > project markdown > user markdown >
+// skill. A dropped name is only dropped from the slash surface — a shadowed
+// skill stays model-invocable via the Skill tool.
 export const setExtraCommands = (cmds: readonly SlashCommand[]): void => {
-    extraCommands = cmds;
+    skillCommands = cmds;
+};
+
+// Project-over-user is already resolved by the loader, so this list is flat.
+export const setMarkdownCommands = (cmds: readonly SlashCommand[]): void => {
+    markdownCommands = cmds;
 };
 
 const buildBuiltins = (): readonly SlashCommand[] => {
@@ -49,7 +68,16 @@ const buildBuiltins = (): readonly SlashCommand[] => {
         helpCommand,
         ClearCommand,
         ContextCommand,
+        CompactCommand,
         CopyCommand,
+        CostCommand,
+        StatusCommand,
+        BtwCommand,
+        ExportCommand,
+        MemoryCommand,
+        PermissionsCommand,
+        AgentsCommand,
+        DoctorCommand,
         ModeCommand,
         ProviderCommand,
         ModelCommand,
@@ -74,9 +102,11 @@ const buildRegistry = (): ReadonlyMap<string, SlashCommand> => {
         map.set(cmd.name.toLowerCase(), cmd);
         for (const alias of cmd.aliases ?? []) map.set(alias.toLowerCase(), cmd);
     }
-    for (const cmd of extraCommands) {
+    const claimed = new Set(reservedNames);
+    for (const cmd of [...markdownCommands, ...skillCommands]) {
         const key = cmd.name.toLowerCase();
-        if (reservedNames.has(key)) continue;
+        if (claimed.has(key)) continue;
+        claimed.add(key);
         map.set(key, cmd);
     }
     return map;
