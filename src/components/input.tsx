@@ -1,6 +1,7 @@
 import { Box, Text, useInput, useStdin, useStdout, type Key } from "ink";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { findActiveMention } from "../mentions/index.ts";
+import { visibleSuggestion } from "../suggest/index.ts";
 import { KITTY_KEYBOARD_ENABLE, editInEditor } from "../ui/editor.ts";
 import { cycleMatch, highlightMatch, previewEntry, searchHistory } from "../ui/historySearch.ts";
 
@@ -56,6 +57,13 @@ interface ChatInputProps {
     // the queue and into the input for editing. Returns its text, or null when
     // there is nothing queued — in which case ↑ falls through to history.
     readonly onUnqueue?: () => string | null;
+
+    // Predicted next prompt, rendered as dim ghost text in an otherwise empty,
+    // idle input. Tab / → accept it into the buffer without submitting; Esc or
+    // any text-producing key dismisses it.
+    readonly suggestion?: string | null;
+    readonly onSuggestionAccept?: () => void;
+    readonly onSuggestionDismiss?: () => void;
 }
 
 export interface ChatInputHandle {
@@ -79,6 +87,8 @@ interface SearchState {
 //   - Ctrl+C: owned by App (clear input → abort stream → no-op).
 //   - Ctrl+G: compose the buffer in $VISUAL/$EDITOR.
 //   - Ctrl+R: reverse search over cross-session prompt history.
+//   - Tab / →: accept the ghost suggestion, but only after the mention picker
+//     and command completion have had their turn.
 // Shift+Enter for newline depends on the terminal sending a distinguishable
 // sequence (key.shift) — works in iTerm2/kitty with the right config; on
 // terminals that fold Shift+Enter into plain Enter, Alt/Option+Enter (key.meta)
@@ -96,6 +106,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         onMentionDismiss,
         historyDisabled,
         onUnqueue,
+        suggestion,
+        onSuggestionAccept,
+        onSuggestionDismiss,
     },
     ref,
 ) {
@@ -249,6 +262,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         applySearch({ ...active, query: active.query + toQueryText(input), index: 0 });
     };
 
+    const takeSuggestion = (text: string): void => {
+        exitHistoryNav();
+        apply(text, text.length);
+        onSuggestionAccept?.();
+    };
+
     useInput((input, key) => {
         if (disabled) return;
 
@@ -257,6 +276,15 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             handleSearchKey(input, key, searching);
             return;
         }
+
+        // `searching`/`disabled` are already ruled out by the early returns above.
+        const ghost = visibleSuggestion({
+            suggestion: suggestion ?? null,
+            buffer: valueRef.current,
+            mentionOpen: mentionOpen === true,
+            searching: false,
+            disabled: false,
+        });
 
         // Paste path. Any input chunk longer than a single character is, for
         // our purposes, a paste — humans type one character per event in raw
@@ -273,6 +301,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         // semantics are identical to single-char insertion.
         if (input.length > 1) {
             const text = normalizePaste(input);
+            if (ghost !== null) onSuggestionDismiss?.();
             exitHistoryNav();
             const v = valueRef.current;
             const c = cursorRef.current;
@@ -285,8 +314,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             if (mentionOpen && acceptMention()) return;
             if (getCompletion) {
                 const completed = getCompletion(valueRef.current);
-                if (completed !== null) apply(completed, completed.length);
+                if (completed !== null) {
+                    apply(completed, completed.length);
+                    return;
+                }
             }
+            if (ghost !== null) takeSuggestion(ghost);
             return;
         }
 
@@ -394,6 +427,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             return;
         }
         if (key.rightArrow) {
+            if (ghost !== null) {
+                takeSuggestion(ghost);
+                return;
+            }
             const c = cursorRef.current;
             const v = valueRef.current;
             apply(v, Math.min(v.length, c + 1));
@@ -446,6 +483,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         }
         if (key.escape) {
             if (mentionOpen) onMentionDismiss?.();
+            if (ghost !== null) onSuggestionDismiss?.();
             return;
         }
         if (key.ctrl || key.pageUp || key.pageDown) {
@@ -453,6 +491,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         }
 
         if (input.length === 1) {
+            if (ghost !== null) onSuggestionDismiss?.();
             exitHistoryNav();
             const v = valueRef.current;
             const c = cursorRef.current;
@@ -510,6 +549,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     // text) the moment the buffer starts with "!" so command mode is obvious.
     const bang = !disabled && value.trimStart().startsWith("!");
     const accent = disabled ? "gray" : bang ? "yellow" : "cyan";
+    const ghostText = visibleSuggestion({
+        suggestion: suggestion ?? null,
+        buffer: value,
+        mentionOpen: mentionOpen === true,
+        searching: false,
+        disabled,
+    });
 
     return (
         <Box
@@ -523,11 +569,22 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 <Text color={accent}>{"> "}</Text>
             </Box>
             <Box flexGrow={1} flexDirection="column">
-                {renderWithCursor(value, cursor, disabled, inner, bang ? "yellow" : undefined)}
+                {ghostText !== null
+                    ? renderGhost(ghostText)
+                    : renderWithCursor(value, cursor, disabled, inner, bang ? "yellow" : undefined)}
             </Box>
         </Box>
     );
 });
+
+// Cursor block first, ghost text dimmed after it: the buffer really is empty,
+// and dim-after-cursor is what separates a prediction from typed input.
+const renderGhost = (text: string) => (
+    <Text wrap="truncate">
+        <Text inverse> </Text>
+        <Text dimColor>{`${text}  ·  tab`}</Text>
+    </Text>
+);
 
 const renderSearch = (query: string, match: string | undefined, index: number, total: number) => {
     const label = match === undefined ? "(failed reverse-i-search)" : "(reverse-i-search)";

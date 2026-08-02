@@ -3,7 +3,14 @@ import { dirname } from "node:path";
 import { computeCostUsd } from "../providers/pricing.ts";
 import { USAGE_FILE } from "./paths.ts";
 
-export type UsageCallKind = "turn" | "summarize" | "title" | "memory" | "webSearch" | "webFetch";
+export type UsageCallKind =
+    | "turn"
+    | "summarize"
+    | "title"
+    | "memory"
+    | "webSearch"
+    | "webFetch"
+    | "suggestion";
 
 export interface UsageRecord {
     readonly ts: string;

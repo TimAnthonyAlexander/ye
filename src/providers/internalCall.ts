@@ -2,10 +2,11 @@ import type { Config } from "../config/index.ts";
 import { getProvider } from "./index.ts";
 import type { Provider } from "./types.ts";
 
-// Model calls the user never reads: shaper summaries, session titles, memory
-// selection, WebFetch page summaries. They are short, mechanical, and
-// structured, so they run on `config.cheapModel` when one is configured.
-export type InternalCallKind = "summarize" | "title" | "memory" | "webFetch";
+// Model calls the user never reads as a turn: shaper summaries, session
+// titles, memory selection, WebFetch page summaries, next-prompt suggestions.
+// They are short, mechanical, and structured, so they run on
+// `config.cheapModel` when one is configured.
+export type InternalCallKind = "summarize" | "title" | "memory" | "webFetch" | "suggestion";
 
 export interface InternalCallTarget {
     readonly provider: Provider;

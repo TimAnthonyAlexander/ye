@@ -87,6 +87,15 @@ import {
     type SessionSummary,
     writeTerminalTitle,
 } from "../storage/index.ts";
+import {
+    generateSuggestion,
+    lastRoleText,
+    NO_SUGGESTION,
+    reduceSuggestion,
+    shouldGenerateSuggestion,
+    type SuggestionEvent,
+    type SuggestionState,
+} from "../suggest/index.ts";
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
 import { refreshUpdateStatus, type UpdateStatus } from "../update/check.ts";
@@ -318,6 +327,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     // anything in scrollback already committed in collapsed form.
     const [groupsExpanded, setGroupsExpanded] = useState(false);
     const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+    const [suggestion, setSuggestion] = useState<SuggestionState>(NO_SUGGESTION);
+    const suggestionRef = useRef<SuggestionState>(NO_SUGGESTION);
+    const dispatchSuggestion = (event: SuggestionEvent): void => {
+        const next = reduceSuggestion(suggestionRef.current, event);
+        if (next === suggestionRef.current) return;
+        suggestionRef.current = next;
+        setSuggestion(next);
+    };
 
     const stateRef = useRef<SessionState | null>(null);
     const sessionRef = useRef<SessionHandle | null>(null);
@@ -672,6 +689,39 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 titleGeneratedRef.current = false;
             }
         })();
+    };
+
+    // Fire-and-forget prediction of the user's next prompt, shown as ghost text
+    // in the empty input. Routed through resolveInternalCall so it runs on
+    // config.cheapModel when one is set. Every failure is silent — a suggestion
+    // that doesn't arrive is simply a suggestion the user never sees.
+    const triggerSuggestion = (chainFailed: boolean): void => {
+        const state = stateRef.current;
+        const provider = providerRef.current;
+        if (!state || !provider) return;
+        const lastUserPrompt = lastRoleText(state.history, "user");
+        const gate = shouldGenerateSuggestion({
+            enabled: cfgRef.current.suggestions?.enabled === true,
+            chainFailed,
+            streaming: streamingRef.current,
+            showing: suggestionRef.current.text !== null,
+            lastUserPrompt,
+        });
+        if (!gate) return;
+        void generateSuggestion({
+            config: cfgRef.current,
+            activeProvider: provider,
+            activeModel: state.activeModel ?? cfgRef.current.defaultModel.model,
+            lastUserPrompt,
+            lastAssistantText: lastRoleText(state.history, "assistant"),
+            sessionId: state.sessionId,
+            projectId: state.projectId,
+        })
+            .then((text) => {
+                if (text === null || streamingRef.current) return;
+                dispatchSuggestion({ type: "show", text });
+            })
+            .catch(() => {});
     };
 
     // Resume an existing session: replay its JSONL into history, swap the
@@ -1292,6 +1342,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     });
 
     const sendNow = async (text: string): Promise<void> => {
+        dispatchSuggestion({ type: "send" });
         if (chainStartRef.current === null) {
             chainStartRef.current = Date.now();
             chainFailedRef.current = false;
@@ -1621,6 +1672,8 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             }
         }
 
+        triggerSuggestion(failed);
+
         // Proactive background wakeup: if any bash task or subagent is still
         // running, wait for whichever finishes FIRST and auto-trigger a new turn
         // so the model sees the notification without the user having to send a
@@ -1650,6 +1703,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             return;
         }
         setError(null);
+        dispatchSuggestion({ type: "send" });
         recordHistory(text);
 
         // Abort any pending background-task wakeup — user input takes priority.
@@ -1931,6 +1985,9 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                                 onMentionDismiss={handleMentionDismiss}
                                 historyDisabled={showHome || tabBarFocused}
                                 onUnqueue={popQueuedForEdit}
+                                suggestion={suggestion.text}
+                                onSuggestionAccept={() => dispatchSuggestion({ type: "accept" })}
+                                onSuggestionDismiss={() => dispatchSuggestion({ type: "dismiss" })}
                             />
                         </>
                     )}
