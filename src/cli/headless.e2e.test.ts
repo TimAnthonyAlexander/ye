@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CURRENT_VERSION } from "../update/version.ts";
 
 const CLI = fileURLToPath(new URL("../cli.tsx", import.meta.url));
 
@@ -113,6 +114,23 @@ const SUMMARY_KEYS = [
     "usage",
     "durationMs",
 ];
+
+describe("piped stdout is not truncated by process.exit", () => {
+    test("--help reaches its final line through a pipe", async () => {
+        const res = await run(["--help"]);
+        expect(res.code).toBe(0);
+        expect(res.stdout).toContain("-h, --help");
+        expect(res.stdout).toContain("-v, --version");
+        expect(res.stdout.trimEnd().endsWith("as events happen.")).toBe(true);
+        expect(res.stdout.length).toBeGreaterThan(600);
+    });
+
+    test("--version prints only the bare version", async () => {
+        const res = await run(["--version"]);
+        expect(res.code).toBe(0);
+        expect(res.stdout).toBe(`${CURRENT_VERSION}\n`);
+    });
+});
 
 describe("headless output formats", () => {
     test(

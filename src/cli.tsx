@@ -5,6 +5,7 @@ import { App } from "./components/app.tsx";
 import { HELP_TEXT, parseFlags } from "./cli/flags.ts";
 import { errorSummary, writeSummary, type OutputFormat } from "./cli/output.ts";
 import { readStdinPrompt } from "./cli/stdin.ts";
+import { writeErr, writeOut } from "./cli/write.ts";
 import { ConfigValidationError, loadConfig, type LoadResult } from "./config/index.ts";
 import { runHeadless } from "./pipeline/headless.ts";
 import { resolveBudgetCap } from "./pipeline/stop.ts";
@@ -16,17 +17,17 @@ const runUpdateCommand = async (): Promise<void> => {
     try {
         const result = await runSelfUpdate();
         if (!result.changed) {
-            process.stdout.write(`ye ${result.from} is already the latest version.\n`);
+            writeOut(`ye ${result.from} is already the latest version.\n`);
         } else {
-            process.stdout.write(`ye ${result.from} → ${result.to} updated.\n`);
+            writeOut(`ye ${result.from} → ${result.to} updated.\n`);
             if (process.platform === "win32") {
-                process.stdout.write("Restart your shell to pick up the new binary.\n");
+                writeOut("Restart your shell to pick up the new binary.\n");
             }
         }
         process.exit(0);
     } catch (err) {
         if (err instanceof UpdateError) {
-            process.stderr.write(`update failed: ${err.message}\n`);
+            writeErr(`update failed: ${err.message}\n`);
             process.exit(1);
         }
         throw err;
@@ -42,7 +43,7 @@ const abort = async (
     message: string,
     stderrText: string = message,
 ): Promise<never> => {
-    process.stderr.write(`${stderrText}\n`);
+    writeErr(`${stderrText}\n`);
     await writeSummary(format, errorSummary(message, { durationMs: Date.now() - startedAt }));
     process.exit(1);
 };
@@ -58,18 +59,18 @@ const readPipedPrompt = async (format: OutputFormat): Promise<string> => {
 const main = async (): Promise<void> => {
     const parsed = parseFlags(process.argv.slice(2));
     if (!parsed.ok) {
-        process.stderr.write(`${parsed.error}\n`);
+        writeErr(`${parsed.error}\n`);
         process.exit(1);
     }
     const flags = parsed.flags;
     const format = flags.outputFormat;
     try {
         if (flags.help) {
-            process.stdout.write(HELP_TEXT);
+            writeOut(HELP_TEXT);
             process.exit(0);
         }
         if (flags.version) {
-            process.stdout.write(`${CURRENT_VERSION}\n`);
+            writeOut(`${CURRENT_VERSION}\n`);
             process.exit(0);
         }
         if (flags.update) {
