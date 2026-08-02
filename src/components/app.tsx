@@ -503,6 +503,20 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         );
     };
 
+    // ↑ on an empty input pulls the newest queued message back out for editing.
+    // Only the raw typed text is restored — mentions are re-expanded (and their
+    // attachments rebuilt) when it's submitted again.
+    const popQueuedForEdit = (): string | null => {
+        for (let i = queueRef.current.length - 1; i >= 0; i--) {
+            const entry = queueRef.current[i]!;
+            if (entry.kind !== "user") continue;
+            queueRef.current.splice(i, 1);
+            syncQueueDisplay();
+            return entry.text;
+        }
+        return null;
+    };
+
     const appendUserToChat = (text: string, attachments: readonly ExpandedAttachment[]): void => {
         const userItem: ChatItem = {
             kind: "message",
@@ -1697,6 +1711,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                                     {q.text}
                                 </Text>
                             ))}
+                            <Text dimColor>↑ to edit</Text>
                         </Box>
                     )}
                     {pendingPrompt ? (
@@ -1737,6 +1752,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                                 onMentionAccept={handleMentionAccept}
                                 onMentionDismiss={handleMentionDismiss}
                                 historyDisabled={showHome || tabBarFocused}
+                                onUnqueue={popQueuedForEdit}
                             />
                         </>
                     )}

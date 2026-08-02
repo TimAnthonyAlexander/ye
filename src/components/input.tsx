@@ -47,6 +47,11 @@ interface ChatInputProps {
     // can claim them. Mention picker takes precedence — its arrow handling
     // remains active even when historyDisabled is set.
     readonly historyDisabled?: boolean;
+
+    // ↑ on an empty buffer pulls the most recently queued message back out of
+    // the queue and into the input for editing. Returns its text, or null when
+    // there is nothing queued — in which case ↑ falls through to history.
+    readonly onUnqueue?: () => string | null;
 }
 
 export interface ChatInputHandle {
@@ -74,6 +79,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         onMentionAccept,
         onMentionDismiss,
         historyDisabled,
+        onUnqueue,
     },
     ref,
 ) {
@@ -281,6 +287,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 return;
             }
             if (historyDisabled) return;
+            // Editing a queued message wins over history recall, but only on an
+            // empty buffer so ↑ can never clobber a draft the user is typing.
+            if (onUnqueue && valueRef.current.length === 0) {
+                const queued = onUnqueue();
+                if (queued !== null) {
+                    exitHistoryNav();
+                    apply(queued, queued.length);
+                    return;
+                }
+            }
             if (!history || history.length === 0) return;
             // Don't hijack up-arrow inside a multi-line draft unless we're
             // already navigating history.
