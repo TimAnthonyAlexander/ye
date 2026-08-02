@@ -1,11 +1,15 @@
-import { Box, Text, useInput, useStdout } from "ink";
+import { Box, Text, useInput, useStdin, useStdout, type Key } from "ink";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { findActiveMention } from "../mentions/index.ts";
+import { KITTY_KEYBOARD_ENABLE, editInEditor } from "../ui/editor.ts";
+import { cycleMatch, highlightMatch, previewEntry, searchHistory } from "../ui/historySearch.ts";
 
 // Convert any line-ending shape to \n. Bracketed-paste content from terminals
 // can carry \r\n (CRLF) or lone \r (legacy Mac, some clipboards) — both must
 // land in the buffer as plain \n so cursor math and rendering line up.
 export const normalizePaste = (s: string): string => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+const toQueryText = (s: string): string => normalizePaste(s).replace(/\n/g, " ");
 
 // Word navigation helpers for Ctrl+Arrow and Ctrl/Meta+Backspace.
 // Word separators: newline, space, tab.
@@ -56,6 +60,16 @@ interface ChatInputProps {
 
 export interface ChatInputHandle {
     clear(): void;
+    isSearching(): boolean;
+    cancelSearch(): void;
+}
+
+interface SearchState {
+    readonly query: string;
+    readonly index: number;
+    // Buffer to restore when the search is cancelled.
+    readonly saved: string;
+    readonly savedCursor: number;
 }
 
 // Keys we deliberately handle vs. defer:
@@ -63,6 +77,8 @@ export interface ChatInputHandle {
 //   - Tab (no shift): tab-completion via getCompletion when provided, OR
 //     accept the active mention when the picker is open.
 //   - Ctrl+C: owned by App (clear input → abort stream → no-op).
+//   - Ctrl+G: compose the buffer in $VISUAL/$EDITOR.
+//   - Ctrl+R: reverse search over cross-session prompt history.
 // Shift+Enter for newline depends on the terminal sending a distinguishable
 // sequence (key.shift) — works in iTerm2/kitty with the right config; on
 // terminals that fold Shift+Enter into plain Enter, Alt/Option+Enter (key.meta)
@@ -105,6 +121,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         setCursor(nextCursor);
     };
 
+    // Reverse search. While active the buffer is emptied and the original is
+    // parked in `saved` — App keys its own Ctrl+C off the reported input value,
+    // so leaving the draft in place would let App clear it out from under us.
+    const [search, setSearch] = useState<SearchState | null>(null);
+    const searchRef = useRef<SearchState | null>(null);
+    const applySearch = (next: SearchState | null): void => {
+        searchRef.current = next;
+        setSearch(next);
+    };
+
     useEffect(() => {
         onValueChange?.(value, cursor);
     }, [value, cursor, onValueChange]);
@@ -116,6 +142,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 apply("", 0);
                 setHistoryIndex(null);
                 setLiveBuffer("");
+                applySearch(null);
+            },
+            isSearching: () => searchRef.current !== null,
+            cancelSearch: () => {
+                const active = searchRef.current;
+                if (active) cancelSearch(active);
             },
         }),
         [],
@@ -155,8 +187,76 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         return true;
     };
 
+    const { stdin, setRawMode, isRawModeSupported } = useStdin();
+
+    // Hand the terminal to the editor and take it back afterwards. The spawn is
+    // synchronous on purpose: it blocks Ink's event loop, so Ink can neither
+    // steal the keystrokes meant for the editor nor paint a frame over it.
+    const openEditor = (): void => {
+        const tty = stdin.isTTY === true;
+        if (isRawModeSupported) setRawMode(false);
+        if (tty) stdin.setRawMode(false);
+        try {
+            const edited = editInEditor(valueRef.current);
+            if (edited === null) return;
+            exitHistoryNav();
+            apply(edited, edited.length);
+        } finally {
+            if (tty) stdin.setRawMode(true);
+            if (isRawModeSupported) setRawMode(true);
+            if (process.stdout.isTTY) process.stdout.write(KITTY_KEYBOARD_ENABLE);
+        }
+    };
+
+    const cancelSearch = (active: SearchState): void => {
+        applySearch(null);
+        apply(active.saved, active.savedCursor);
+    };
+
+    // Ctrl+C is deliberately absent here: App owns it and calls cancelSearch()
+    // through the ref. Handling it in both places would cancel the search AND
+    // abort a live stream from the one keypress.
+    const handleSearchKey = (input: string, key: Key, active: SearchState): void => {
+        if (key.escape) {
+            cancelSearch(active);
+            return;
+        }
+        // Paste, for the same reason the main handler checks length first: a
+        // chunk can carry key.return and would otherwise accept the match.
+        if (input.length > 1) {
+            applySearch({ ...active, query: active.query + toQueryText(input), index: 0 });
+            return;
+        }
+        const matches = searchHistory(history ?? [], active.query);
+        if (key.ctrl && input === "r") {
+            applySearch({ ...active, index: cycleMatch(matches.length, active.index) });
+            return;
+        }
+        if (key.return) {
+            const picked = matches[active.index];
+            applySearch(null);
+            if (picked === undefined) apply(active.saved, active.savedCursor);
+            else apply(picked, picked.length);
+            return;
+        }
+        if (key.backspace || key.delete) {
+            applySearch({ ...active, query: active.query.slice(0, -1), index: 0 });
+            return;
+        }
+        if (key.ctrl || key.meta || key.tab || key.pageUp || key.pageDown) return;
+        if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) return;
+        if (input.length === 0) return;
+        applySearch({ ...active, query: active.query + toQueryText(input), index: 0 });
+    };
+
     useInput((input, key) => {
         if (disabled) return;
+
+        const searching = searchRef.current;
+        if (searching) {
+            handleSearchKey(input, key, searching);
+            return;
+        }
 
         // Paste path. Any input chunk longer than a single character is, for
         // our purposes, a paste — humans type one character per event in raw
@@ -205,6 +305,25 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             apply("", 0);
             setHistoryIndex(null);
             setLiveBuffer("");
+            return;
+        }
+
+        if (key.ctrl && input === "g") {
+            if (mentionOpen) return;
+            openEditor();
+            return;
+        }
+
+        if (key.ctrl && input === "r") {
+            if (mentionOpen) return;
+            exitHistoryNav();
+            applySearch({
+                query: "",
+                index: 0,
+                saved: valueRef.current,
+                savedCursor: cursorRef.current,
+            });
+            apply("", 0);
             return;
         }
 
@@ -355,6 +474,31 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             stdout.off("resize", onResize);
         };
     }, [stdout]);
+    if (search) {
+        const matches = searchHistory(history ?? [], search.query);
+        return (
+            <Box
+                borderStyle="single"
+                borderColor="magenta"
+                borderLeft={false}
+                borderRight={false}
+                width="100%"
+            >
+                <Box>
+                    <Text color="magenta">{"> "}</Text>
+                </Box>
+                <Box flexGrow={1} flexDirection="column">
+                    {renderSearch(
+                        search.query,
+                        matches[search.index],
+                        search.index,
+                        matches.length,
+                    )}
+                </Box>
+            </Box>
+        );
+    }
+
     // Inner content width = terminal cols − prefix "> " (2 cols) − 1 col held
     // back for the block cursor, which renders one char PAST the row text when
     // it sits at end-of-row. Without that slack a full row emits cols+1 chars,
@@ -384,6 +528,31 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         </Box>
     );
 });
+
+const renderSearch = (query: string, match: string | undefined, index: number, total: number) => {
+    const label = match === undefined ? "(failed reverse-i-search)" : "(reverse-i-search)";
+    const parts = match === undefined ? null : highlightMatch(previewEntry(match), query);
+    return (
+        <>
+            <Text wrap="truncate">
+                <Text dimColor>{`${label}\`${query}': `}</Text>
+                {parts && (
+                    <Text>
+                        {parts.before}
+                        <Text color="magenta" bold>
+                            {parts.hit}
+                        </Text>
+                        {parts.after}
+                    </Text>
+                )}
+            </Text>
+            <Text dimColor>
+                {total > 1 ? `${index + 1}/${total} · ` : ""}
+                Ctrl+R next · Enter accept · Esc cancel
+            </Text>
+        </>
+    );
+};
 
 // Cap on visible *visual* rows inside the input. Ink 5 falls back to
 // clearTerminal-based redraws when the live region exceeds the terminal
