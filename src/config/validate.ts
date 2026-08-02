@@ -1,9 +1,13 @@
 import type {
+    BudgetConfig,
     CompactConfig,
     Config,
+    FormatConfig,
     GitStatusConfig,
     HookEntry,
     HooksConfig,
+    LspConfig,
+    LspServerConfig,
     MatcherGroup,
     MaxTurnsConfig,
     ModelSetting,
@@ -13,8 +17,11 @@ import type {
     ProviderConfig,
     ProviderSort,
     RecoveryConfig,
+    RecoveryFallbackModel,
     RoutingStrategy,
     SkillsConfig,
+    SuggestionsConfig,
+    VerifyConfig,
     WebSearchFallback,
     WebToolsConfig,
 } from "./types.ts";
@@ -34,6 +41,59 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isString = (value: unknown): value is string => typeof value === "string";
+
+const validatePositiveInt = (path: string, value: unknown): number => {
+    if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+        throw new ConfigValidationError(`${path} must be a positive integer`);
+    }
+    return value;
+};
+
+const validatePositiveNumber = (path: string, value: unknown): number => {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+        throw new ConfigValidationError(`${path} must be a positive number`);
+    }
+    return value;
+};
+
+const validateUnitFraction = (path: string, value: unknown): number => {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1) {
+        throw new ConfigValidationError(`${path} must be a number in (0, 1]`);
+    }
+    return value;
+};
+
+const validateBoolean = (path: string, value: unknown): boolean => {
+    if (typeof value !== "boolean") {
+        throw new ConfigValidationError(`${path} must be a boolean`);
+    }
+    return value;
+};
+
+const validateNonEmptyString = (path: string, value: unknown): string => {
+    if (!isString(value) || value.trim().length === 0) {
+        throw new ConfigValidationError(`${path} must be a non-empty string`);
+    }
+    return value;
+};
+
+const validateRecord = <T>(
+    path: string,
+    value: unknown,
+    validateEntry: (entryPath: string, entryValue: unknown) => T,
+): Readonly<Record<string, T>> => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError(`${path} must be an object`);
+    }
+    const out: Record<string, T> = {};
+    for (const [key, entry] of Object.entries(value)) {
+        if (key.length === 0) {
+            throw new ConfigValidationError(`${path} keys must be non-empty`);
+        }
+        out[key] = validateEntry(`${path}.${key}`, entry);
+    }
+    return out;
+};
 
 const validateProviderConfig = (key: string, value: unknown): ProviderConfig => {
     if (!isObject(value)) {
@@ -139,33 +199,75 @@ const validateCompactConfig = (value: unknown): CompactConfig => {
     if (value.threshold <= 0 || value.threshold > 1) {
         throw new ConfigValidationError("compact.threshold must be in (0, 1]");
     }
-    let defaultMaxTokens: number | undefined;
+    const out: {
+        threshold: number;
+        defaultMaxTokens?: number;
+        minReplyTokens?: number;
+        snipThreshold?: number;
+        snipFloor?: number;
+        snipProtectedTail?: number;
+        snipMaxPerTurn?: number;
+        microcompactThreshold?: number;
+        microcompactHotTail?: number;
+        microcompactMinBytes?: number;
+        collapseThreshold?: number;
+        collapsePreserveRecent?: number;
+    } = { threshold: value.threshold };
     if (value.defaultMaxTokens !== undefined) {
-        if (
-            typeof value.defaultMaxTokens !== "number" ||
-            !Number.isInteger(value.defaultMaxTokens) ||
-            value.defaultMaxTokens <= 0
-        ) {
-            throw new ConfigValidationError("compact.defaultMaxTokens must be a positive integer");
-        }
-        defaultMaxTokens = value.defaultMaxTokens;
+        out.defaultMaxTokens = validatePositiveInt(
+            "compact.defaultMaxTokens",
+            value.defaultMaxTokens,
+        );
     }
-    let minReplyTokens: number | undefined;
     if (value.minReplyTokens !== undefined) {
-        if (
-            typeof value.minReplyTokens !== "number" ||
-            !Number.isInteger(value.minReplyTokens) ||
-            value.minReplyTokens <= 0
-        ) {
-            throw new ConfigValidationError("compact.minReplyTokens must be a positive integer");
-        }
-        minReplyTokens = value.minReplyTokens;
+        out.minReplyTokens = validatePositiveInt("compact.minReplyTokens", value.minReplyTokens);
     }
-    return {
-        threshold: value.threshold,
-        ...(defaultMaxTokens !== undefined ? { defaultMaxTokens } : {}),
-        ...(minReplyTokens !== undefined ? { minReplyTokens } : {}),
-    };
+    if (value.snipThreshold !== undefined) {
+        out.snipThreshold = validateUnitFraction("compact.snipThreshold", value.snipThreshold);
+    }
+    if (value.snipFloor !== undefined) {
+        out.snipFloor = validateUnitFraction("compact.snipFloor", value.snipFloor);
+    }
+    if (value.snipProtectedTail !== undefined) {
+        out.snipProtectedTail = validatePositiveInt(
+            "compact.snipProtectedTail",
+            value.snipProtectedTail,
+        );
+    }
+    if (value.snipMaxPerTurn !== undefined) {
+        out.snipMaxPerTurn = validatePositiveInt("compact.snipMaxPerTurn", value.snipMaxPerTurn);
+    }
+    if (value.microcompactThreshold !== undefined) {
+        out.microcompactThreshold = validateUnitFraction(
+            "compact.microcompactThreshold",
+            value.microcompactThreshold,
+        );
+    }
+    if (value.microcompactHotTail !== undefined) {
+        out.microcompactHotTail = validatePositiveInt(
+            "compact.microcompactHotTail",
+            value.microcompactHotTail,
+        );
+    }
+    if (value.microcompactMinBytes !== undefined) {
+        out.microcompactMinBytes = validatePositiveInt(
+            "compact.microcompactMinBytes",
+            value.microcompactMinBytes,
+        );
+    }
+    if (value.collapseThreshold !== undefined) {
+        out.collapseThreshold = validateUnitFraction(
+            "compact.collapseThreshold",
+            value.collapseThreshold,
+        );
+    }
+    if (value.collapsePreserveRecent !== undefined) {
+        out.collapsePreserveRecent = validatePositiveInt(
+            "compact.collapsePreserveRecent",
+            value.collapsePreserveRecent,
+        );
+    }
+    return out;
 };
 
 const validateMaxTurnsConfig = (value: unknown): MaxTurnsConfig => {
@@ -231,7 +333,19 @@ const validatePermissionsConfig = (value: unknown): PermissionsConfig => {
                       "permissions.heuristicGating must be boolean (default true)",
                   );
               })();
-    return { defaultMode: value.defaultMode as PermissionMode, rules, heuristicGating };
+    let persistSessionRules: boolean | undefined;
+    if (value.persistSessionRules !== undefined) {
+        persistSessionRules = validateBoolean(
+            "permissions.persistSessionRules",
+            value.persistSessionRules,
+        );
+    }
+    return {
+        defaultMode: value.defaultMode as PermissionMode,
+        rules,
+        heuristicGating,
+        ...(persistSessionRules !== undefined ? { persistSessionRules } : {}),
+    };
 };
 
 const SEARCH_FALLBACKS: readonly WebSearchFallback[] = ["duckduckgo", "off"];
@@ -239,13 +353,6 @@ const SEARCH_FALLBACKS: readonly WebSearchFallback[] = ["duckduckgo", "off"];
 const validateStringArray = (path: string, value: unknown): readonly string[] => {
     if (!Array.isArray(value) || !value.every(isString)) {
         throw new ConfigValidationError(`${path} must be string[]`);
-    }
-    return value;
-};
-
-const validatePositiveInt = (path: string, value: unknown): number => {
-    if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-        throw new ConfigValidationError(`${path} must be a positive integer`);
     }
     return value;
 };
@@ -299,6 +406,19 @@ const validateWebToolsConfig = (value: unknown): WebToolsConfig => {
         out.searchFallback = value.searchFallback as WebSearchFallback;
     }
     return out;
+};
+
+const validateModelRef = (path: string, value: unknown): RecoveryFallbackModel => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError(`${path} must be an object`);
+    }
+    if (!isString(value.provider)) {
+        throw new ConfigValidationError(`${path}.provider must be a string`);
+    }
+    if (!isString(value.model)) {
+        throw new ConfigValidationError(`${path}.model must be a string`);
+    }
+    return { provider: value.provider, model: value.model };
 };
 
 const validateRecoveryConfig = (value: unknown): RecoveryConfig => {
@@ -355,19 +475,7 @@ const validateRecoveryConfig = (value: unknown): RecoveryConfig => {
         );
     }
     if (value.fallbackModel !== undefined) {
-        if (!isObject(value.fallbackModel)) {
-            throw new ConfigValidationError("recovery.fallbackModel must be an object");
-        }
-        if (!isString(value.fallbackModel.provider)) {
-            throw new ConfigValidationError("recovery.fallbackModel.provider must be a string");
-        }
-        if (!isString(value.fallbackModel.model)) {
-            throw new ConfigValidationError("recovery.fallbackModel.model must be a string");
-        }
-        out.fallbackModel = {
-            provider: value.fallbackModel.provider,
-            model: value.fallbackModel.model,
-        };
+        out.fallbackModel = validateModelRef("recovery.fallbackModel", value.fallbackModel);
     }
     return out;
 };
@@ -493,6 +601,101 @@ const validateGitStatusConfig = (value: unknown): GitStatusConfig => {
     return { enabled, maxLines };
 };
 
+const validateFormatConfig = (value: unknown): FormatConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError("format must be an object");
+    }
+    const out: { enabled?: boolean; formatters?: Readonly<Record<string, string>> } = {};
+    if (value.enabled !== undefined) {
+        out.enabled = validateBoolean("format.enabled", value.enabled);
+    }
+    if (value.formatters !== undefined) {
+        out.formatters = validateRecord(
+            "format.formatters",
+            value.formatters,
+            validateNonEmptyString,
+        );
+    }
+    return out;
+};
+
+const validateVerifyConfig = (value: unknown): VerifyConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError("verify must be an object");
+    }
+    const out: {
+        enabled?: boolean;
+        lint?: string;
+        test?: string;
+        typecheck?: string;
+        timeoutMs?: number;
+    } = {};
+    if (value.enabled !== undefined) {
+        out.enabled = validateBoolean("verify.enabled", value.enabled);
+    }
+    if (value.lint !== undefined) {
+        out.lint = validateNonEmptyString("verify.lint", value.lint);
+    }
+    if (value.test !== undefined) {
+        out.test = validateNonEmptyString("verify.test", value.test);
+    }
+    if (value.typecheck !== undefined) {
+        out.typecheck = validateNonEmptyString("verify.typecheck", value.typecheck);
+    }
+    if (value.timeoutMs !== undefined) {
+        out.timeoutMs = validatePositiveInt("verify.timeoutMs", value.timeoutMs);
+    }
+    return out;
+};
+
+const validateBudgetConfig = (value: unknown): BudgetConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError("budget must be an object");
+    }
+    const out: { maxUsd?: number } = {};
+    if (value.maxUsd !== undefined) {
+        out.maxUsd = validatePositiveNumber("budget.maxUsd", value.maxUsd);
+    }
+    return out;
+};
+
+const validateSuggestionsConfig = (value: unknown): SuggestionsConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError("suggestions must be an object");
+    }
+    const out: { enabled?: boolean } = {};
+    if (value.enabled !== undefined) {
+        out.enabled = validateBoolean("suggestions.enabled", value.enabled);
+    }
+    return out;
+};
+
+const validateLspServerConfig = (path: string, value: unknown): LspServerConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError(`${path} must be an object`);
+    }
+    const command = validateNonEmptyString(`${path}.command`, value.command);
+    let args: readonly string[] | undefined;
+    if (value.args !== undefined) {
+        args = validateStringArray(`${path}.args`, value.args);
+    }
+    return { command, ...(args !== undefined ? { args } : {}) };
+};
+
+const validateLspConfig = (value: unknown): LspConfig => {
+    if (!isObject(value)) {
+        throw new ConfigValidationError("lsp must be an object");
+    }
+    const out: { enabled?: boolean; servers?: Readonly<Record<string, LspServerConfig>> } = {};
+    if (value.enabled !== undefined) {
+        out.enabled = validateBoolean("lsp.enabled", value.enabled);
+    }
+    if (value.servers !== undefined) {
+        out.servers = validateRecord("lsp.servers", value.servers, validateLspServerConfig);
+    }
+    return out;
+};
+
 export const validateConfig = (raw: unknown): Config => {
     if (!isObject(raw)) {
         throw new ConfigValidationError("root must be an object");
@@ -520,11 +723,21 @@ export const validateConfig = (raw: unknown): Config => {
             : {}),
         ...(raw.webTools !== undefined ? { webTools: validateWebToolsConfig(raw.webTools) } : {}),
         ...(raw.recovery !== undefined ? { recovery: validateRecoveryConfig(raw.recovery) } : {}),
+        ...(raw.cheapModel !== undefined
+            ? { cheapModel: validateModelRef("cheapModel", raw.cheapModel) }
+            : {}),
         ...(raw.skills !== undefined ? { skills: validateSkillsConfig(raw.skills) } : {}),
         ...(raw.hooks !== undefined ? { hooks: validateHooksConfig(raw.hooks) } : {}),
         ...(raw.gitStatus !== undefined
             ? { gitStatus: validateGitStatusConfig(raw.gitStatus) }
             : {}),
+        ...(raw.format !== undefined ? { format: validateFormatConfig(raw.format) } : {}),
+        ...(raw.verify !== undefined ? { verify: validateVerifyConfig(raw.verify) } : {}),
+        ...(raw.budget !== undefined ? { budget: validateBudgetConfig(raw.budget) } : {}),
+        ...(raw.suggestions !== undefined
+            ? { suggestions: validateSuggestionsConfig(raw.suggestions) }
+            : {}),
+        ...(raw.lsp !== undefined ? { lsp: validateLspConfig(raw.lsp) } : {}),
     };
 };
 

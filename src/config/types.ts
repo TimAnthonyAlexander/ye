@@ -110,6 +110,9 @@ export interface PermissionsConfig {
     // commands even under AUTO mode — "rm -rf /", "git push --force", etc.
     // are elevated to prompt. Disable to turn off all heuristic intervention.
     readonly heuristicGating?: boolean;
+    // When true, "allow for the rest of this session" decisions are written
+    // back to the config as rules instead of living only in session memory.
+    readonly persistSessionRules?: boolean;
 }
 
 export type WebSearchFallback = "duckduckgo" | "off";
@@ -136,6 +139,40 @@ export interface GitStatusConfig {
 
 export interface SkillsConfig {
     readonly enableClaudeInterop?: boolean;
+}
+
+export interface FormatConfig {
+    readonly enabled?: boolean;
+    // Keyed by file-extension glob ("*.ts"); the value is a shell command
+    // template where $FILE is substituted with the path being formatted.
+    readonly formatters?: Readonly<Record<string, string>>;
+}
+
+export interface VerifyConfig {
+    readonly enabled?: boolean;
+    readonly lint?: string;
+    readonly test?: string;
+    readonly typecheck?: string;
+    readonly timeoutMs?: number;
+}
+
+export interface BudgetConfig {
+    readonly maxUsd?: number;
+}
+
+export interface SuggestionsConfig {
+    readonly enabled?: boolean;
+}
+
+export interface LspServerConfig {
+    readonly command: string;
+    readonly args?: readonly string[];
+}
+
+export interface LspConfig {
+    readonly enabled?: boolean;
+    // Keyed by language id, e.g. "typescript".
+    readonly servers?: Readonly<Record<string, LspServerConfig>>;
 }
 
 export interface HookEntry {
@@ -168,7 +205,14 @@ export interface Config {
     readonly permissions?: PermissionsConfig;
     readonly webTools?: WebToolsConfig;
     readonly recovery?: RecoveryConfig;
+    // Cheaper model for auxiliary calls. Same shape as recovery.fallbackModel.
+    readonly cheapModel?: RecoveryFallbackModel;
     readonly gitStatus?: GitStatusConfig;
     readonly skills?: SkillsConfig;
     readonly hooks?: HooksConfig;
+    readonly format?: FormatConfig;
+    readonly verify?: VerifyConfig;
+    readonly budget?: BudgetConfig;
+    readonly suggestions?: SuggestionsConfig;
+    readonly lsp?: LspConfig;
 }
