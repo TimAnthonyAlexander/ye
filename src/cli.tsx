@@ -2,63 +2,12 @@
 import "./patch-stdin.ts";
 import { render } from "ink";
 import { App } from "./components/app.tsx";
+import { HELP_TEXT, parseFlags } from "./cli/flags.ts";
 import { ConfigValidationError, loadConfig } from "./config/index.ts";
 import { runHeadless } from "./pipeline/headless.ts";
 import { refreshUpdateStatus } from "./update/check.ts";
 import { cleanupWindowsOldBinary, runSelfUpdate, UpdateError } from "./update/install.ts";
-
-interface CliFlags {
-    readonly resume: boolean;
-    readonly resumeSessionId: string | null;
-    readonly update: boolean;
-    readonly prompt: string | null;
-    readonly mode: string | null;
-}
-
-const parseFlags = (argv: readonly string[]): CliFlags => {
-    let resume = false;
-    let resumeSessionId: string | null = null;
-    let update = false;
-    let prompt: string | null = null;
-    let mode: string | null = null;
-    for (let i = 0; i < argv.length; i++) {
-        const a = argv[i];
-        if (a === "--resume") {
-            resume = true;
-            const next = argv[i + 1];
-            if (next && !next.startsWith("--")) {
-                resumeSessionId = next;
-                i += 1;
-            }
-        } else if (a === "--update" || a === "--upgrade") {
-            update = true;
-        } else if (a === "-p" || a === "--prompt") {
-            const next = argv[i + 1];
-            if (!next) {
-                process.stderr.write("ye: -p/--prompt requires a value\n");
-                process.exit(1);
-            }
-            prompt = next;
-            i += 1;
-        } else if (a === "--mode") {
-            const next = argv[i + 1];
-            if (!next) {
-                process.stderr.write("ye: --mode requires AUTO, NORMAL, or PLAN\n");
-                process.exit(1);
-            }
-            const upper = next.toUpperCase();
-            if (upper !== "AUTO" && upper !== "NORMAL" && upper !== "PLAN") {
-                process.stderr.write(
-                    `ye: invalid mode "${next}" — must be AUTO, NORMAL, or PLAN\n`,
-                );
-                process.exit(1);
-            }
-            mode = upper;
-            i += 1;
-        }
-    }
-    return { resume, resumeSessionId, update, prompt, mode };
-};
+import { CURRENT_VERSION } from "./update/version.ts";
 
 const runUpdateCommand = async (): Promise<void> => {
     try {
@@ -83,7 +32,20 @@ const runUpdateCommand = async (): Promise<void> => {
 
 const main = async (): Promise<void> => {
     try {
-        const flags = parseFlags(process.argv.slice(2));
+        const parsed = parseFlags(process.argv.slice(2));
+        if (!parsed.ok) {
+            process.stderr.write(`${parsed.error}\n`);
+            process.exit(1);
+        }
+        const flags = parsed.flags;
+        if (flags.help) {
+            process.stdout.write(HELP_TEXT);
+            process.exit(0);
+        }
+        if (flags.version) {
+            process.stdout.write(`${CURRENT_VERSION}\n`);
+            process.exit(0);
+        }
         if (flags.update) {
             await runUpdateCommand();
             return;

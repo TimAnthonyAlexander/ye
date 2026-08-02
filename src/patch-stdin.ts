@@ -171,4 +171,9 @@ process.stdin.read = function (size?: number) {
 // Push Kitty keyboard protocol to the terminal so we get unambiguous
 // key+modifier sequences. Most modern terminals support this: Kitty,
 // iTerm2 3.5+, WezTerm, Ghostty, foot; Terminal.app ignores it.
-process.stdout.write("\x1b[>1u");
+// Skipped when stdout is not a TTY: this module is imported at the top of
+// cli.tsx, so an unguarded write prefixes piped --help/--version/-p output
+// with the raw escape.
+if (process.stdout.isTTY) {
+    process.stdout.write("\x1b[>1u");
+}
