@@ -1,4 +1,4 @@
-import type { Message, Provider } from "../../providers/index.ts";
+import { type Message, type Provider, resolveInternalCall } from "../../providers/index.ts";
 import type { Config } from "../../config/index.ts";
 import { appendUsageRecord } from "../../storage/index.ts";
 import { estimateTokens } from "./tokens.ts";
@@ -77,15 +77,21 @@ const summarize = async (
         { role: "user", content: promptFor(style, focus) },
     ];
     let summary = "";
-    const model = config.defaultModel.model;
-    for await (const evt of provider.stream({
-        model,
-        messages: summarizationMessages,
-        providerOptions: {
+    const target = resolveInternalCall({
+        config,
+        kind: "summarize",
+        activeProvider: provider,
+        activeModel: config.defaultModel.model,
+        activeProviderOptions: {
             providerOrder: config.defaultModel.providerOrder,
             allowFallbacks: config.defaultModel.allowFallbacks,
             providerSort: config.defaultModel.providerSort,
         },
+    });
+    for await (const evt of target.provider.stream({
+        model: target.model,
+        messages: summarizationMessages,
+        providerOptions: target.providerOptions,
     })) {
         if (evt.type === "text.delta") summary += evt.text;
         if (evt.type === "usage") {
@@ -93,8 +99,8 @@ const summarize = async (
                 await appendUsageRecord({
                     sessionId,
                     projectId,
-                    provider: provider.id,
-                    model,
+                    provider: target.provider.id,
+                    model: target.model,
                     inputTokens: evt.usage.inputTokens,
                     outputTokens: evt.usage.outputTokens,
                     ...(evt.usage.cacheReadTokens !== undefined

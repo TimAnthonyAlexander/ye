@@ -33,8 +33,21 @@ import {
     matchFiles,
     type MentionOption,
 } from "../mentions/index.ts";
-import { type Config, type LoadResult, type PermissionMode, saveConfig } from "../config/index.ts";
-import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
+import {
+    type Config,
+    type LoadResult,
+    type PermissionMode,
+    persistPermissionRule,
+    saveConfig,
+    withPermissionRule,
+} from "../config/index.ts";
+import {
+    deriveAlwaysRule,
+    type PermissionPromptPayload,
+    type PromptResponse,
+    restoredSessionRules,
+    sessionRulesPersisted,
+} from "../permissions/index.ts";
 import { createSessionState, queryLoop, type SessionState } from "../pipeline/index.ts";
 import { resetShapingFlags } from "../pipeline/state.ts";
 import {
@@ -64,11 +77,12 @@ import {
     loadUsageTotals,
     openExistingSession,
     openSession,
+    recordSessionRule,
     recordSessionTitle,
     replaySessionFile,
     resetTerminalTitle,
+    resolveTitleCall,
     rewindToTurn,
-    titleModelFor,
     type SessionHandle,
     type SessionSummary,
     writeTerminalTitle,
@@ -488,6 +502,45 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         setItems((prev) => [...prev, { kind: "system", id: newChatItemId(), content: text }]);
     };
 
+    // "allow_always" never reaches the pipeline: it is a UI-level shorthand for
+    // "allow this call, and write a narrow rule to the config". The current call
+    // goes through as allow_once so the session never gains a grant wider than
+    // the rule the user just read on screen.
+    const applyPromptDecision = (
+        payload: PermissionPromptPayload,
+        decision: PromptResponse,
+    ): PromptResponse => {
+        if (decision === "allow_always") {
+            const derived = deriveAlwaysRule(payload.toolCall);
+            if (derived.kind === "none") {
+                addSystemMessage(
+                    `Allowed for this session only — no narrow always-rule could be derived (${derived.reason}).`,
+                );
+                return "allow_session";
+            }
+            stateRef.current?.sessionRules.push(derived.rule);
+            cfgRef.current = withPermissionRule(cfgRef.current, derived.rule);
+            void persistPermissionRule(derived.rule)
+                .then(() => addSystemMessage(`Always allowing ${derived.text}.`))
+                .catch((e: unknown) =>
+                    addSystemMessage(
+                        `Could not save ${derived.text}: ${e instanceof Error ? e.message : String(e)}`,
+                    ),
+                );
+            return "allow_once";
+        }
+        if (decision === "allow_session" && sessionRulesPersisted(cfgRef.current)) {
+            const session = sessionRef.current;
+            if (session) {
+                void recordSessionRule(session, {
+                    effect: "allow",
+                    tool: payload.toolCall.name,
+                }).catch(() => {});
+            }
+        }
+        return decision;
+    };
+
     const refreshHome = (projectId: string): void => {
         setHomeTip(pickTip(projectHasNotes(process.cwd())));
         listProjectSessions(projectId)
@@ -595,14 +648,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         const session = sessionRef.current;
         const state = stateRef.current;
         if (!provider || !session || !state) return;
-        const model = titleModelFor(provider.id);
-        if (!model) return;
+        const target = resolveTitleCall(cfgRef.current, provider);
+        if (!target) return;
         titleGeneratedRef.current = true;
         void (async () => {
             try {
                 const title = await generateSessionTitle({
-                    provider,
-                    model,
+                    provider: target.provider,
+                    model: target.model,
                     userPrompt,
                     sessionId: state.sessionId,
                     projectId: state.projectId,
@@ -639,7 +692,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         if (oldSession) await oldSession.close().catch(() => {});
 
         state.history = [...(replayed.history as Message[])];
-        state.sessionRules = [];
+        state.sessionRules = restoredSessionRules(cfgRef.current, replayed.sessionRules);
         state.denialTrail = null;
         state.compactedThisTurn = false;
         resetShapingFlags(state);
@@ -740,6 +793,9 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         // re-replay the JSONL (which now has the rewind marker we just wrote)
         // and rebuild items from scratch.
         const after = await replaySessionFile(session.path);
+        // Grants made under a rewound prompt are gone from the re-replay, so the
+        // in-memory set is rebuilt from it rather than kept.
+        state.sessionRules = restoredSessionRules(cfgRef.current, after.sessionRules);
         const newItems = buildItemsFromReplay(after);
         // Clear before queueing state updates — see loadSession for why.
         process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
@@ -1443,7 +1499,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                             setPendingPrompt({
                                 payload: evt.payload,
                                 respond: (decision) => {
-                                    evt.respond(decision);
+                                    evt.respond(applyPromptDecision(evt.payload, decision));
                                     setPendingPrompt(null);
                                     resolve();
                                 },
@@ -1474,6 +1530,16 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                         if (evt.error || evt.stopReason === "user_cancel") {
                             if (evt.error) setError(evt.error.message);
                             chainFailedRef.current = true;
+                        }
+                        if (evt.message) {
+                            setItems((prev) => [
+                                ...prev,
+                                {
+                                    kind: "system",
+                                    id: newChatItemId(),
+                                    content: evt.message ?? "",
+                                },
+                            ]);
                         }
                         void loadUsageTotals()
                             .then((totals) => {

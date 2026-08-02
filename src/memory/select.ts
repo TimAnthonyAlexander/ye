@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { Config } from "../config/index.ts";
-import type { Provider } from "../providers/index.ts";
+import { type Provider, resolveInternalCall } from "../providers/index.ts";
 import { appendUsageRecord } from "../storage/index.ts";
 import { GLOBAL_MEMORY_FILE, getProjectMemoryDir } from "../storage/paths.ts";
 import { parseMemoryIndex, type MemoryEntry } from "./memoryIndex.ts";
@@ -135,14 +135,21 @@ export const ensureSelectedMemory = async (
 ): Promise<readonly MemoryFile[]> => {
     const indices = await readAllMemoryIndices(input.projectId);
     if (indices.length === 0) return [];
-    return selectMemoryFiles({
-        provider: input.provider,
-        model: input.config.defaultModel.model,
-        providerOptions: {
+    const target = resolveInternalCall({
+        config: input.config,
+        kind: "memory",
+        activeProvider: input.provider,
+        activeModel: input.config.defaultModel.model,
+        activeProviderOptions: {
             providerOrder: input.config.defaultModel.providerOrder,
             allowFallbacks: input.config.defaultModel.allowFallbacks,
             providerSort: input.config.defaultModel.providerSort,
         },
+    });
+    return selectMemoryFiles({
+        provider: target.provider,
+        model: target.model,
+        providerOptions: target.providerOptions,
         query: input.query,
         indices,
         sessionId: input.sessionId,

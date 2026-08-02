@@ -41,6 +41,7 @@ export {
     openExistingSession,
     openSession,
     openSidechainSession,
+    recordSessionRule,
     type SessionEvent,
     type SessionHandle,
 } from "./session.ts";
@@ -56,6 +57,7 @@ export {
     generateSessionTitle,
     recordSessionTitle,
     resetTerminalTitle,
+    resolveTitleCall,
     sanitizeTitle,
     titleModelFor,
     writeTerminalTitle,

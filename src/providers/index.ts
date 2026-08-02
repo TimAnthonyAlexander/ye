@@ -35,6 +35,13 @@ export {
     type ModelInfo,
 } from "./models.ts";
 export {
+    type InternalCallKind,
+    type InternalCallTarget,
+    resolveInternalCall,
+    type ResolveInternalCallInput,
+    tryResolveCheapModel,
+} from "./internalCall.ts";
+export {
     type KeyPromptPayload,
     resolveApiKey,
     setProviderApiKey,

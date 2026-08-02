@@ -1,4 +1,5 @@
-import type { Message, Provider } from "../../providers/index.ts";
+import type { Config } from "../../config/index.ts";
+import { type Message, type Provider, resolveInternalCall } from "../../providers/index.ts";
 import { appendUsageRecord } from "../../storage/index.ts";
 
 const RULES = [
@@ -12,6 +13,9 @@ const RULES = [
 export interface SummarizeArgs {
     readonly provider: Provider;
     readonly model: string;
+    // Opt-in routing to config.cheapModel. Without it the caller's provider and
+    // model are used verbatim.
+    readonly config?: Config;
     readonly url: string;
     readonly question: string;
     readonly content: string;
@@ -37,12 +41,21 @@ const buildPrompt = (a: SummarizeArgs): string =>
 
 export const summarizePage = async (args: SummarizeArgs): Promise<string> => {
     const messages: Message[] = [{ role: "user", content: buildPrompt(args) }];
+    const target = args.config
+        ? resolveInternalCall({
+              config: args.config,
+              kind: "webFetch",
+              activeProvider: args.provider,
+              activeModel: args.model,
+          })
+        : { provider: args.provider, model: args.model, providerOptions: {} };
     let out = "";
-    for await (const evt of args.provider.stream({
-        model: args.model,
+    for await (const evt of target.provider.stream({
+        model: target.model,
         messages,
         signal: args.signal,
         maxTokens: 1024,
+        providerOptions: target.providerOptions,
     })) {
         if (evt.type === "text.delta") out += evt.text;
         else if (evt.type === "usage") {
@@ -50,8 +63,8 @@ export const summarizePage = async (args: SummarizeArgs): Promise<string> => {
                 await appendUsageRecord({
                     sessionId: args.sessionId,
                     projectId: args.projectId,
-                    provider: args.provider.id,
-                    model: args.model,
+                    provider: target.provider.id,
+                    model: target.model,
                     inputTokens: evt.usage.inputTokens,
                     outputTokens: evt.usage.outputTokens,
                     ...(evt.usage.cacheReadTokens !== undefined

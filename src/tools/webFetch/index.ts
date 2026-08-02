@@ -84,6 +84,7 @@ const runLocalFetch = async (
     const summary = await summarizePage({
         provider: ctx.provider,
         model: summarizerModel,
+        config: ctx.config,
         url,
         question: prompt,
         content,

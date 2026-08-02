@@ -1,3 +1,5 @@
+import type { Config } from "../config/index.ts";
+import { tryResolveCheapModel } from "../providers/internalCall.ts";
 import type { Provider } from "../providers/types.ts";
 import type { SessionHandle } from "./session.ts";
 import { appendUsageRecord } from "./usage.ts";
@@ -53,6 +55,24 @@ export const titleModelFor = (providerId: string): string | null => {
         default:
             return null;
     }
+};
+
+export interface TitleCallTarget {
+    readonly provider: Provider;
+    readonly model: string;
+}
+
+// config.cheapModel first; otherwise the hardcoded per-provider pick. Null
+// means no title-capable model — the caller skips generation and the session
+// falls back to its first-message preview.
+export const resolveTitleCall = (
+    config: Config,
+    activeProvider: Provider,
+): TitleCallTarget | null => {
+    const cheap = tryResolveCheapModel(config, activeProvider);
+    if (cheap) return { provider: cheap.provider, model: cheap.model };
+    const model = titleModelFor(activeProvider.id);
+    return model === null ? null : { provider: activeProvider, model };
 };
 
 export interface GenerateTitleInput {
