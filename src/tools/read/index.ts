@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { collectNestedNotes } from "../../memory/index.ts";
 import { prettyPath } from "../../ui/path.ts";
 import { hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
@@ -11,6 +12,23 @@ interface ReadArgs {
 }
 
 const DEFAULT_LIMIT = 2000;
+
+// Nested notes are injected at most once per session, so the set outlives any
+// single turn — turnState resets every turn and cannot hold this.
+const injectedNotes = new Set<string>();
+
+const nestedNotesReminder = async (path: string, ctx: ToolContext): Promise<string> => {
+    const notes = await collectNestedNotes(path, ctx.cwd);
+    const fresh = notes.filter(
+        (n) => n.path !== path && !injectedNotes.has(`${ctx.sessionId}\u0000${n.path}`),
+    );
+    if (fresh.length === 0) return "";
+
+    for (const n of fresh) injectedNotes.add(`${ctx.sessionId}\u0000${n.path}`);
+
+    const blocks = fresh.map((n) => `----- ${n.path} -----\n\n${n.content}`).join("\n\n");
+    return `\n<system-reminder>\nNested project notes that apply to this file's directory and everything below it:\n\n${blocks}\n</system-reminder>`;
+};
 
 const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
     const v = validateArgs<ReadArgs>(rawArgs, ReadTool.schema);
@@ -38,7 +56,8 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     const firstShown = sliced.length > 0 ? offset + 1 : 0;
     const lastShown = sliced.length > 0 ? offset + sliced.length : 0;
     const header = `<read path="${path}" lines="${allLines.length}" range="${firstShown}-${lastShown}">`;
-    return { ok: true, value: `${header}\n${numbered}` };
+    const notes = await nestedNotesReminder(path, ctx);
+    return { ok: true, value: `${header}\n${numbered}${notes}` };
 };
 
 export const ReadTool: Tool = {

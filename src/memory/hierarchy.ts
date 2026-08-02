@@ -1,22 +1,11 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { MANAGED_NOTES_FILE, USER_NOTES_FILE } from "../storage/paths.ts";
-import { LOCAL_NOTES_NAME, getProjectNotesFile } from "./notesFile.ts";
+import { LOCAL_NOTES_NAME, getProjectNotesFile, readNotesWithImports } from "./notesFile.ts";
 
 interface Level {
     readonly label: string;
     readonly content: string;
 }
-
-const readIfPresent = async (path: string): Promise<string | null> => {
-    if (!existsSync(path)) return null;
-    try {
-        const content = await Bun.file(path).text();
-        return content.trim().length > 0 ? content : null;
-    } catch {
-        return null;
-    }
-};
 
 // Concatenates the 4 levels of project notes (managed, user, project, local)
 // in canonical order. Missing or empty levels are silently skipped.
@@ -24,22 +13,24 @@ const readIfPresent = async (path: string): Promise<string | null> => {
 export const readNotesHierarchy = async (projectRoot: string): Promise<string> => {
     const levels: Level[] = [];
 
-    const managed = await readIfPresent(MANAGED_NOTES_FILE);
+    const managed = await readNotesWithImports(MANAGED_NOTES_FILE);
     if (managed) levels.push({ label: "managed", content: managed });
 
-    const user = await readIfPresent(USER_NOTES_FILE);
+    const user = await readNotesWithImports(USER_NOTES_FILE);
     if (user) levels.push({ label: "user", content: user });
 
     const project = getProjectNotesFile(projectRoot);
     if (project.existed) {
-        const projectContent = await readIfPresent(project.path);
+        const projectContent = await readNotesWithImports(project.path);
         if (projectContent) {
-            const fileName = project.format === "claude" ? "CLAUDE.md" : "YE.md";
-            levels.push({ label: `project (${fileName})`, content: projectContent });
+            levels.push({
+                label: `project (${basename(project.path)})`,
+                content: projectContent,
+            });
         }
     }
 
-    const local = await readIfPresent(join(projectRoot, LOCAL_NOTES_NAME));
+    const local = await readNotesWithImports(join(projectRoot, LOCAL_NOTES_NAME));
     if (local) levels.push({ label: "local", content: local });
 
     if (levels.length === 0) return "";

@@ -1,6 +1,9 @@
 export {
     LOCAL_NOTES_NAME,
+    collectNestedNotes,
     getProjectNotesFile,
+    readNotesWithImports,
+    type NestedNotes,
     type NotesFormat,
     type ProjectNotesFile,
 } from "./notesFile.ts";
