@@ -1,4 +1,5 @@
-import type { VerifyConfig } from "../config/types.ts";
+import { resolveVerify } from "../config/detect.ts";
+import type { Config, VerifyConfig } from "../config/types.ts";
 import { killGroupHard } from "../tools/bash/kill.ts";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -67,6 +68,11 @@ const configuredSteps = (verify: VerifyConfig): readonly (readonly [VerifyStep, 
         const command = verify[step];
         return command !== undefined && command.trim().length > 0 ? [[step, command] as const] : [];
     });
+
+// What the chain actually runs: explicit config over anything detected from the
+// project root, per field.
+export const effectiveVerify = (config: Config, projectRoot: string): VerifyConfig =>
+    resolveVerify(config, projectRoot).value;
 
 export const shouldVerify = (verify: VerifyConfig | undefined, sessionId: string): boolean => {
     if (verify?.enabled !== true) return false;

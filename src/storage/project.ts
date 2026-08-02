@@ -66,6 +66,11 @@ const writeMeta = async (projectId: string, root: string): Promise<void> => {
 
 let cached: ProjectId | null = null;
 
+// The same walk getProjectId() does, without the async meta write — for
+// callers that need the root before (or without) a session.
+export const resolveProjectRoot = (cwd: string = process.cwd()): string =>
+    cached?.root ?? findProjectRoot(cwd);
+
 export const getProjectId = async (cwd: string = process.cwd()): Promise<ProjectId> => {
     if (cached) return cached;
     const root = findProjectRoot(cwd);

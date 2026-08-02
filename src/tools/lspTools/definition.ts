@@ -32,7 +32,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     const path = absolutePath(v.value.path, ctx.cwd);
     if (!(await Bun.file(path).exists())) return { ok: false, error: `file not found: ${path}` };
 
-    const lookup = resolveServerForFile(ctx.config, path);
+    const lookup = resolveServerForFile(ctx.config, path, ctx.cwd);
     const connected = await connectForFile(ctx, lookup);
     if (!connected.ok) return connected;
     const { client, target } = connected.value;

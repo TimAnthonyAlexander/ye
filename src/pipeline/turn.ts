@@ -26,6 +26,7 @@ import {
 import { loadSessionUsage } from "../storage/usage.ts";
 import {
     clearVerifyChain,
+    effectiveVerify,
     formatVerifyReminder,
     recordToolWrite,
     runVerification,
@@ -362,11 +363,10 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     // Main chain only — parentSessionId marks a subagent run, and every
     // explore/general subagent ending its chain would otherwise fire the whole
     // lint+test suite, several times per parent turn.
-    const verify = config.verify;
+    const verify = effectiveVerify(config, state.projectRoot);
     if (
         stopReason === "end_turn" &&
         state.parentSessionId === undefined &&
-        verify !== undefined &&
         shouldVerify(verify, state.sessionId)
     ) {
         const outcome = await runVerification({

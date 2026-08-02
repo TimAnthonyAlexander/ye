@@ -25,12 +25,12 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     const query = v.value.query.trim();
     if (query.length === 0) return { ok: false, error: "arg query must not be empty" };
 
-    if (!isLspEnabled(ctx.config)) {
+    if (!isLspEnabled(ctx.config, ctx.cwd)) {
         return { ok: false, error: unavailableMessage({ ok: false, reason: "disabled" }) };
     }
 
     const results = await Promise.all(
-        configuredTargets(ctx.config).map(async (target) => {
+        configuredTargets(ctx.config, ctx.cwd).map(async (target) => {
             try {
                 const client = await getClient(target, ctx.cwd);
                 return { symbols: await workspaceSymbols(client, query), failure: undefined };

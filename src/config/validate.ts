@@ -738,6 +738,9 @@ export const validateConfig = (raw: unknown): Config => {
             ? { suggestions: validateSuggestionsConfig(raw.suggestions) }
             : {}),
         ...(raw.lsp !== undefined ? { lsp: validateLspConfig(raw.lsp) } : {}),
+        ...(raw.autoDetect !== undefined
+            ? { autoDetect: validateBoolean("autoDetect", raw.autoDetect) }
+            : {}),
     };
 };
 

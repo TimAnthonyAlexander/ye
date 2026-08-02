@@ -1,4 +1,5 @@
-import type { Config, LspServerConfig } from "../config/types.ts";
+import { resolveLsp } from "../config/detect.ts";
+import type { Config, LspConfig, LspServerConfig } from "../config/types.ts";
 import { LspClient } from "./client.ts";
 import { extensionOf, languageForPath } from "./languages.ts";
 
@@ -20,24 +21,33 @@ export type ServerLookup =
           readonly configKeys: readonly string[];
       };
 
-export const isLspEnabled = (config: Config): boolean =>
-    config.lsp?.enabled === true && Object.keys(config.lsp.servers ?? {}).length > 0;
+// Without a project root only explicit config counts — detection is keyed on
+// the root, and guessing one here would run a different project's servers.
+const effectiveLsp = (config: Config, root: string | undefined): LspConfig | undefined =>
+    root === undefined ? config.lsp : resolveLsp(config, root).value;
 
-export const configuredTargets = (config: Config): readonly LanguageServerTarget[] =>
-    Object.entries(config.lsp?.servers ?? {}).map(([configKey, server]) => ({
+const enabledWithServers = (lsp: LspConfig | undefined): boolean =>
+    lsp?.enabled === true && Object.keys(lsp.servers ?? {}).length > 0;
+
+export const isLspEnabled = (config: Config, root?: string): boolean =>
+    enabledWithServers(effectiveLsp(config, root));
+
+export const configuredTargets = (config: Config, root?: string): readonly LanguageServerTarget[] =>
+    Object.entries(effectiveLsp(config, root)?.servers ?? {}).map(([configKey, server]) => ({
         configKey,
         languageId: configKey,
         server,
     }));
 
-export const resolveServerForFile = (config: Config, path: string): ServerLookup => {
-    if (!isLspEnabled(config)) return { ok: false, reason: "disabled" };
+export const resolveServerForFile = (config: Config, path: string, root?: string): ServerLookup => {
+    const lsp = effectiveLsp(config, root);
+    if (!enabledWithServers(lsp)) return { ok: false, reason: "disabled" };
 
     const mapping = languageForPath(path);
     if (mapping === undefined)
         return { ok: false, reason: "unmapped", extension: extensionOf(path) };
 
-    const servers = config.lsp?.servers ?? {};
+    const servers = lsp?.servers ?? {};
     for (const configKey of mapping.configKeys) {
         const server = servers[configKey];
         if (server !== undefined) {

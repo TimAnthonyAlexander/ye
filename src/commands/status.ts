@@ -1,7 +1,8 @@
+import { effectiveSettings } from "../config/detect.ts";
 import { estimateTokens } from "../pipeline/shapers/tokens.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
 
-const row = (label: string, value: string): string => `  ${label.padEnd(12)}${value}`;
+const row = (label: string, value: string): string => `  ${label.padEnd(17)}${value}`;
 
 export const StatusCommand: SlashCommand = {
     name: "status",
@@ -20,6 +21,9 @@ export const StatusCommand: SlashCommand = {
                 row("cwd", ctx.cwd),
                 row("context", `${used} / ${ctx.contextWindow} tokens (${pct}%)`),
                 row("background", bg === 0 ? "none" : `${bg} running`),
+                ...effectiveSettings(ctx.config, ctx.projectRoot).map((entry) =>
+                    row(entry.key, entry.origin ? `${entry.value} (${entry.origin})` : entry.value),
+                ),
             ].join("\n"),
         );
         return { kind: "ok" };

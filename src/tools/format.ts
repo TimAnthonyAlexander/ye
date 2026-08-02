@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { resolveFormat } from "../config/detect.ts";
 import { killGroupHard } from "./bash/kill.ts";
 import { hashContent } from "./fs.ts";
 import type { ToolContext } from "./types.ts";
@@ -86,8 +87,8 @@ export const runFormatter = async (
     written: string,
     ctx: ToolContext,
 ): Promise<FormatOutcome> => {
-    const cfg = ctx.config.format;
-    if (cfg?.enabled !== true || cfg.formatters === undefined) return NOTHING;
+    const cfg = resolveFormat(ctx.config, ctx.cwd).value;
+    if (cfg.enabled !== true || cfg.formatters === undefined) return NOTHING;
     const template = selectTemplate(cfg.formatters, path);
     if (template === null) return NOTHING;
 

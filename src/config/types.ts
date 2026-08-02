@@ -215,4 +215,7 @@ export interface Config {
     readonly budget?: BudgetConfig;
     readonly suggestions?: SuggestionsConfig;
     readonly lsp?: LspConfig;
+    // Kill switch for runtime detection of verify / format / lsp settings
+    // (src/config/detect.ts). Default true. Nothing detected is ever persisted.
+    readonly autoDetect?: boolean;
 }

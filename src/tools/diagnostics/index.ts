@@ -1,3 +1,4 @@
+import { resolveVerify } from "../../config/detect.ts";
 import { killGroupHard } from "../bash/kill.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
@@ -33,8 +34,13 @@ const shellCommand = (command: string): readonly string[] =>
 
 const attr = (value: string): string => value.replaceAll('"', "&quot;");
 
+const DETECTION_SOURCES: Readonly<Record<Check, string>> = {
+    typecheck: "a `typecheck` script in package.json, tsconfig.json, Cargo.toml, go.mod",
+    lint: "a `lint` script in package.json, an eslint config, biome.json",
+};
+
 const notConfigured = (check: Check): string =>
-    `No \`${check}\` command is configured, so there is nothing to run. ` +
+    `No \`${check}\` command is configured and auto-detection found none for this project (it looks for ${DETECTION_SOURCES[check]}), so there is nothing to run. ` +
     `Set \`verify.${check}\` in ~/.ye/config.json — for example \`{"verify": {"${check}": "${EXAMPLE_COMMAND[check]}"}}\` — and call Diagnostics again. ` +
     `Until then, run the project's own ${check} command with Bash. ` +
     `This is a missing setting, not a failure of your work: nothing you did caused it and re-calling Diagnostics will return the same message.`;
@@ -55,10 +61,10 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
         return { ok: false, error: "arg paths must be an array of non-empty strings" };
     }
 
-    const verify = ctx.config.verify;
-    const command = verify?.[check];
+    const verify = resolveVerify(ctx.config, ctx.cwd).value;
+    const command = verify[check];
     if (command === undefined) return { ok: false, error: notConfigured(check) };
-    const timeoutMs = verify?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const timeoutMs = verify.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
     const startedAt = performance.now();
     const proc = Bun.spawn({
