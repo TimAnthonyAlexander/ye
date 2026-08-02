@@ -1698,13 +1698,13 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             {(subagentView === null || subagentView === "main") && (
                 <>
                     {error !== null && (
-                        <Box paddingX={1} marginBottom={1}>
+                        <Box marginBottom={1}>
                             <Text color="red">error: {error}</Text>
                         </Box>
                     )}
                     <TodoPanel todos={todos} />
                     {queuedDisplay.length > 0 && (
-                        <Box paddingX={1} flexDirection="column" marginBottom={1}>
+                        <Box flexDirection="column" marginBottom={1}>
                             {queuedDisplay.map((q) => (
                                 <Text key={q.id} color="cyan">
                                     <Text dimColor>↳ queued </Text>
@@ -1758,7 +1758,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     )}
                 </>
             )}
-            <Box paddingX={1}>
+            <Box>
                 <Text dimColor>{prettyCwd()}</Text>
             </Box>
             <StatusBar

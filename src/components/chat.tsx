@@ -273,12 +273,12 @@ export const Chat = ({
         <>
             <Static items={committedUnits as RenderUnit[]}>
                 {(unit) => (
-                    <Box key={unit.key} paddingX={1}>
+                    <Box key={unit.key}>
                         <RenderUnitView unit={unit} expanded={false} interactive={false} />
                     </Box>
                 )}
             </Static>
-            <Box flexDirection="column" paddingX={1}>
+            <Box flexDirection="column">
                 {dynamicUnits.map((unit) => (
                     <RenderUnitView
                         key={unit.key}

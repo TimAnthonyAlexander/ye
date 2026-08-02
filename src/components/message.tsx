@@ -41,13 +41,13 @@ const wrapForBubble = (content: string, inner: number): readonly BubbleLine[] =>
 const UserBubble = ({ content }: { content: string }) => {
     const { stdout } = useStdout();
     const cols = stdout?.columns ?? 80;
-    // Outer chat paddingX=1 on each side + bubble paddingX=1 on each side = 4 cols.
-    const inner = Math.max(1, cols - 4);
+    // No outer padding — content spans full terminal width.
+    const inner = Math.max(1, cols);
     const firstCap = Math.max(1, inner - 2);
     const lines = wrapForBubble(content, inner);
 
     return (
-        <Box marginBottom={1} flexDirection="column" paddingX={1} width="100%">
+        <Box marginBottom={1} flexDirection="column" width="100%">
             {lines.map((line, i) => (
                 <Text key={i} backgroundColor="#3a3a3a">
                     {line.isFirst ? <Text color="gray">{"> "}</Text> : null}

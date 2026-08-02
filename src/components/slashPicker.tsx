@@ -15,7 +15,7 @@ export const SlashPicker = ({ input }: SlashPickerProps) => {
     const hiddenCount = matches.length - visible.length;
 
     return (
-        <Box flexDirection="column" paddingX={1} marginBottom={1}>
+        <Box flexDirection="column" marginBottom={1}>
             {visible.map((cmd) => (
                 <Box key={cmd.name}>
                     <Text color="cyan">/{cmd.name}</Text>

@@ -355,10 +355,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             stdout.off("resize", onResize);
         };
     }, [stdout]);
-    // Inner content width = terminal cols − borders/padding/prefix. The outer
-    // Box uses paddingX=1 (2 cols), the prefix Box renders ">" + marginRight=1
-    // (2 cols). Floor at 8 to keep the math sane on absurdly narrow terminals.
-    const inner = Math.max(8, columns - 4);
+    // Inner content width = terminal cols − prefix "> " (2 cols) − 1 col held
+    // back for the block cursor, which renders one char PAST the row text when
+    // it sits at end-of-row. Without that slack a full row emits cols+1 chars,
+    // the terminal soft-wraps it, and Ink's erase (which counts unwrapped rows)
+    // comes up short — leaving a stale copy of the top border on every redraw.
+    // Floor at 8 to keep the math sane on absurdly narrow terminals.
+    const inner = Math.max(8, columns - 3);
     // `!<command>` runs in the shell — accent the whole input (border, marker,
     // text) the moment the buffer starts with "!" so command mode is obvious.
     const bang = !disabled && value.trimStart().startsWith("!");
@@ -370,11 +373,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             borderColor={accent}
             borderLeft={false}
             borderRight={false}
-            paddingX={1}
             width="100%"
         >
-            <Box marginRight={1}>
-                <Text color={accent}>{">"}</Text>
+            <Box>
+                <Text color={accent}>{"> "}</Text>
             </Box>
             <Box flexGrow={1} flexDirection="column">
                 {renderWithCursor(value, cursor, disabled, inner, bang ? "yellow" : undefined)}

@@ -73,7 +73,7 @@ export const StatusBar = ({
         tokenUsage !== undefined && (tokenUsage.input > 0 || tokenUsage.output > 0);
     return (
         <Box flexDirection="column">
-            <Box justifyContent="space-between" paddingX={1}>
+            <Box justifyContent="space-between">
                 <Box>
                     <Text color={usageColor(pct)}>{formatPct(pct)}</Text>
                     {showSession && (
@@ -127,7 +127,7 @@ export const StatusBar = ({
                     </Text>
                 </Box>
             </Box>
-            <Box paddingX={1}>
+            <Box>
                 <Text bold color={modeColor(mode)}>
                     {mode}
                 </Text>

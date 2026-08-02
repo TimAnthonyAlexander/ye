@@ -18,7 +18,10 @@ const runGitStatus = async (cwd: string, maxLines: number): Promise<string | nul
         if (text.trim().length === 0) return "";
         const lines = text.trim().split("\n");
         if (lines.length > maxLines) {
-            return lines.slice(0, maxLines).join("\n") + `\n... (${lines.length - maxLines} more lines truncated)`;
+            return (
+                lines.slice(0, maxLines).join("\n") +
+                `\n... (${lines.length - maxLines} more lines truncated)`
+            );
         }
         return lines.join("\n");
     } catch {
@@ -26,10 +29,7 @@ const runGitStatus = async (cwd: string, maxLines: number): Promise<string | nul
     }
 };
 
-export const injectGitStatus = async (
-    state: SessionState,
-    config: Config,
-): Promise<void> => {
+export const injectGitStatus = async (state: SessionState, config: Config): Promise<void> => {
     const enabled = config.gitStatus?.enabled ?? true;
     if (!enabled) return;
     const maxLines = config.gitStatus?.maxLines ?? 30;
@@ -40,7 +40,8 @@ export const injectGitStatus = async (
     if (output.length === 0) {
         state.history.push({
             role: "user",
-            content: "<system-reminder>working tree clean (no uncommitted changes)</system-reminder>",
+            content:
+                "<system-reminder>working tree clean (no uncommitted changes)</system-reminder>",
         });
         state.lastGitStatusHash = "";
         return;

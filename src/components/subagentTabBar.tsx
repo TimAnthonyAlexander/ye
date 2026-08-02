@@ -79,7 +79,7 @@ export const SubagentTabBar = ({
     });
 
     return (
-        <Box paddingX={1} flexDirection="row">
+        <Box flexDirection="row">
             {focused && <Text dimColor>↑↓ nav · enter select · esc main{"  "}</Text>}
             {tabs.map((tab) => {
                 const selected = tab === selectedTab;

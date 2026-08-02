@@ -17,7 +17,7 @@ export const MentionPicker = ({ matches, activeIndex }: MentionPickerProps) => {
         visible.length === 0 ? 0 : Math.min(Math.max(activeIndex, 0), visible.length - 1);
 
     return (
-        <Box flexDirection="column" paddingX={1} marginBottom={1}>
+        <Box flexDirection="column" marginBottom={1}>
             {visible.map((opt, i) => {
                 const isActive = i === safeActive;
                 const prefix = isActive ? "▸ " : "  ";
