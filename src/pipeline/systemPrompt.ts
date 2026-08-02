@@ -339,6 +339,23 @@ Notes:
 - Result list capped at 200 paths; if truncated, refine the pattern.
 - Read-only.
 
+## Diagnostics
+
+Runs the project's configured typecheck or lint command and reports the diagnostics it produced. This is the cheap way to get real compiler/linter feedback on your changes instead of guessing at correctness.
+
+Schema:
+- \`check\` (string, optional) — \`"typecheck"\` (default) or \`"lint"\`
+- \`paths\` (string[], optional) — absolute or project-relative paths to report on
+
+Notes:
+- The commands come from the user's config: \`verify.typecheck\` and \`verify.lint\` in \`~/.ye/config.json\`. If the requested check has no command configured, you get a message naming the key to set — that is a missing setting, not a failure of your work, and re-calling returns the same message.
+- \`paths\` filters the REPORTED LINES; it does not scope the command. The whole configured check always runs (a typechecker needs the full program for cross-file inference), then lines mentioning those paths are kept. Omit \`paths\` to see everything — which includes pre-existing problems in files you never touched.
+- **An empty result means no diagnostics.** The check is clean; there is nothing to fix and nothing to re-run.
+- **Diagnostics appearing after an edit do NOT mean the edit failed.** The edit already applied. Read the diagnostics, fix what they actually say, and never re-apply the same edit because output appeared.
+- The result is a header (\`<diagnostics check="…" exit_code="N" duration_ms="M" command="…">\`), the output, then \`</diagnostics>\`. Output is capped at 32KB keeping the TAIL, since the error summary comes last.
+- Timeout comes from \`verify.timeoutMs\` (default 120000ms). A timeout says nothing about whether the code is correct.
+- Diagnostics is read-only: auto-allows in NORMAL, allowed in AUTO, blocked in PLAN (it is not on the PLAN allowlist).
+
 ## TodoWrite
 
 Replaces the current session's todo list. The todos render as a persistent panel above the input box.
@@ -776,6 +793,9 @@ Ripgrep regex. \`output_mode\`: \`"content"\` (default), \`"files_with_matches"\
 
 ## Glob { pattern, path? }
 Match files by glob (e.g. \`"**/*.ts"\`). Returns up to 200 absolute paths sorted by mtime descending. Read-only.
+
+## Diagnostics { paths?, check? }
+Runs the project's configured check (\`verify.typecheck\` / \`verify.lint\` in config) and reports its output. \`check\`: \`"typecheck"\` (default) or \`"lint"\`. An unconfigured check returns a message naming the config key — a missing setting, not a failure of your work. \`paths\` filters the reported LINES, not the command: the whole check always runs, so omitting \`paths\` can surface pre-existing problems in files you never touched. **Empty result = no diagnostics, nothing to fix.** **Diagnostics after an edit do NOT mean the edit failed** — it already applied; fix what they say, never re-apply the same edit. Read-only.
 
 ## TodoWrite { todos: [{ id, content, status }] }
 Status: \`"pending" | "in_progress" | "completed"\`. Exactly ONE \`in_progress\` at a time — a list with two or more \`in_progress\` errors; complete the current task before promoting the next. Mark \`completed\` as soon as work is done — don't batch. Empty array clears the panel. Prompted in NORMAL.

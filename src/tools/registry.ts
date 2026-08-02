@@ -1,6 +1,7 @@
 import { AskUserQuestionTool } from "./askUserQuestion/index.ts";
 import { BashTool } from "./bash/index.ts";
 import { BashOutputTool } from "./bashOutput/index.ts";
+import { DiagnosticsTool } from "./diagnostics/index.ts";
 import { EditTool } from "./edit/index.ts";
 import { EnterPlanModeTool } from "./enterPlanMode/index.ts";
 import { ExitPlanModeTool } from "./exitPlanMode/index.ts";
@@ -27,6 +28,7 @@ const TOOLS: readonly Tool[] = [
     BashOutputTool,
     GrepTool,
     GlobTool,
+    DiagnosticsTool,
     TodoWriteTool,
     ExitPlanModeTool,
     EnterPlanModeTool,
