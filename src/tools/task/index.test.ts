@@ -56,6 +56,7 @@ const makeCtx = (withSubagentContext = true): ToolContext => ({
                   contextWindow: 100_000,
                   provider: stubProvider,
                   config: stubConfig,
+                  parentHistory: [{ role: "user", content: "parent turn" }],
               },
           }
         : {}),
@@ -119,6 +120,57 @@ describe("Task", () => {
             const summary = await runBackground();
             expect(summary).toContain("Do NOT call TaskOutput");
         });
+    });
+
+    test("an unknown kind lists the valid ones instead of crashing", async () => {
+        const res = await TaskTool.execute({ kind: "wizard", prompt: "do it" }, makeCtx());
+        expect(res.ok).toBe(false);
+        if (res.ok) throw new Error("expected failure");
+        expect(res.error).toContain("unknown subagent kind: wizard");
+        expect(res.error).toContain("explore");
+        expect(res.error).toContain("fork");
+    });
+
+    test("fork reports a readable error when there is no conversation to inherit", async () => {
+        const base = makeCtx();
+        const ctx: ToolContext = {
+            ...base,
+            subagentContext: { ...base.subagentContext!, parentHistory: [] },
+        };
+        const res = await TaskTool.execute({ kind: "fork", prompt: "write the changelog" }, ctx);
+        expect(res.ok).toBe(false);
+        if (res.ok) throw new Error("expected failure");
+        expect(res.error).toContain("no conversation to inherit");
+    });
+
+    test("fork seeds from the parent's live history, not the transcript", async () => {
+        const base = makeCtx();
+        const parentHistory = [
+            { role: "user" as const, content: "only in memory" },
+            { role: "assistant" as const, content: "acknowledged" },
+        ];
+        const ctx: ToolContext = {
+            ...base,
+            subagentContext: { ...base.subagentContext!, parentHistory },
+        };
+        const res = await TaskTool.execute(
+            { kind: "fork", prompt: "continue", run_in_background: true },
+            ctx,
+        );
+        expect(res.ok).toBe(true);
+    });
+
+    test("the schema enum follows the agent catalogue", () => {
+        const schema = TaskTool.schema as {
+            properties: { kind: { enum: readonly string[] } };
+        };
+        expect(schema.properties.kind.enum).toContain("fork");
+        expect(schema.properties.kind.enum).toContain("verification");
+    });
+
+    test("the description lists the available agents", () => {
+        expect(TaskTool.description).toContain("<available_agents>");
+        expect(TaskTool.description).toContain("- fork [builtin]");
     });
 
     test("description does not tell the model to poll for status", () => {

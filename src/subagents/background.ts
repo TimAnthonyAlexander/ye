@@ -1,12 +1,6 @@
-import type { SpawnContext } from "./index.ts";
+import { resolveAgent } from "./catalogue.ts";
+import { subagentBudgetFor, type SpawnContext } from "./index.ts";
 import { runInProcess } from "./isolate/inProcess.ts";
-import { EXPLORE_TOOLS, exploreSystemPrompt, exploreTurnBudget } from "./kinds/explore.ts";
-import { GENERAL_TOOLS, generalSystemPrompt, generalTurnBudget } from "./kinds/general.ts";
-import {
-    VERIFICATION_TOOLS,
-    verificationSystemPrompt,
-    verificationTurnBudget,
-} from "./kinds/verification.ts";
 import type { SubagentKind, SubagentResult, SubagentSpec } from "./types.ts";
 import type { Event } from "../pipeline/events.ts";
 
@@ -85,34 +79,7 @@ class BackgroundSubagentManager {
         this.tasks.set(id, task);
         this.ensureSweep();
 
-        const subagentBudget = ctx.config.maxTurns?.subagent ?? 25;
-        let systemPrompt: string;
-        let allowedTools: readonly string[];
-        let maxTurns: number;
-        switch (spec.kind) {
-            case "explore": {
-                const budget = Math.min(
-                    exploreTurnBudget(spec.options?.thoroughness),
-                    subagentBudget,
-                );
-                systemPrompt = exploreSystemPrompt(ctx.parentProjectRoot);
-                allowedTools = EXPLORE_TOOLS;
-                maxTurns = budget;
-                break;
-            }
-            case "general": {
-                systemPrompt = generalSystemPrompt(ctx.parentProjectRoot);
-                allowedTools = GENERAL_TOOLS;
-                maxTurns = Math.min(generalTurnBudget, subagentBudget);
-                break;
-            }
-            case "verification": {
-                systemPrompt = verificationSystemPrompt(ctx.parentProjectRoot);
-                allowedTools = VERIFICATION_TOOLS;
-                maxTurns = Math.min(verificationTurnBudget, subagentBudget);
-                break;
-            }
-        }
+        const resolved = resolveAgent(spec, ctx.parentProjectRoot, subagentBudgetFor(ctx.config));
 
         const abort = new AbortController();
         task.abortController = abort;
@@ -189,13 +156,15 @@ class BackgroundSubagentManager {
             parentProjectRoot: ctx.parentProjectRoot,
             parentSessionId: ctx.parentSessionId,
             contextWindow: ctx.contextWindow,
-            prompt: spec.prompt,
-            systemPrompt,
-            allowedTools,
-            maxTurns,
+            prompt: resolved.userPrompt,
+            systemPrompt: resolved.systemPrompt,
+            allowedTools: resolved.allowedTools,
+            maxTurns: resolved.maxTurns,
+            seedHistory: resolved.seedHistory,
             config: ctx.config,
             provider: ctx.provider,
             signal: abort.signal,
+            ...(resolved.model !== undefined ? { model: resolved.model } : {}),
             onChildEvent,
         })
             .then((result: SubagentResult) => {

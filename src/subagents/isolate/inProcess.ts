@@ -7,7 +7,7 @@ import {
     queryLoop,
     type SessionState,
 } from "../../pipeline/index.ts";
-import type { Provider } from "../../providers/index.ts";
+import type { Message, Provider } from "../../providers/index.ts";
 import { openSidechainSession } from "../../storage/index.ts";
 import { SubagentError, type SubagentResult } from "../types.ts";
 
@@ -20,6 +20,10 @@ export interface InProcessRun {
     readonly systemPrompt: string;
     readonly allowedTools: readonly string[];
     readonly maxTurns: number;
+    // Starting history for kinds that inherit context (fork). Already deep-copied
+    // by the resolver, so the subagent's shapers can mutate it freely.
+    readonly seedHistory?: readonly Message[];
+    readonly model?: string;
     readonly config: Config;
     readonly provider: Provider;
     readonly signal: AbortSignal;
@@ -35,7 +39,7 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
         projectRoot: input.parentProjectRoot,
         mode: "AUTO",
         contextWindow: input.contextWindow,
-        history: [],
+        history: [...(input.seedHistory ?? [])],
         sessionRules: [],
         denialTrail: null,
         compactedThisTurn: false,
@@ -47,8 +51,13 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
         parentSessionId: input.parentSessionId,
         allowedTools: input.allowedTools,
         systemPromptOverride: input.systemPrompt,
+        ...(input.model !== undefined ? { activeModel: input.model } : {}),
     };
 
+    // Everything below this index is the subagent's own output. Without it, a
+    // seeded fork that produces no text would return one of the parent's own
+    // assistant messages as its summary.
+    const seedLength = subState.history.length;
     let turnCount = 0;
     let errorMessage: string | undefined;
 
@@ -86,7 +95,13 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
         new AbortController().signal,
     );
 
-    const finalAssistant = [...subState.history]
+    // A shaper may have replaced history wholesale, leaving it shorter than the
+    // seed — then everything that survived is already the subagent's own tail.
+    const own =
+        subState.history.length >= seedLength
+            ? subState.history.slice(seedLength)
+            : subState.history;
+    const finalAssistant = [...own]
         .reverse()
         .find(
             (m) => m.role === "assistant" && typeof m.content === "string" && m.content.length > 0,

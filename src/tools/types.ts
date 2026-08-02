@@ -1,5 +1,5 @@
 import type { Config } from "../config/index.ts";
-import type { Provider, ToolDefinition } from "../providers/index.ts";
+import type { Message, Provider, ToolDefinition } from "../providers/index.ts";
 
 export type ToolResult<T = unknown> =
     | { readonly ok: true; readonly value: T }
@@ -34,6 +34,10 @@ export interface SubagentToolContext {
     readonly contextWindow: number;
     readonly provider: Provider;
     readonly config: Config;
+    // The parent's live in-memory history, for kind="fork". Replaying the
+    // transcript from disk instead would miss the current turn and any shaping
+    // already applied this session.
+    readonly parentHistory: readonly Message[];
 }
 
 export interface ToolContext {

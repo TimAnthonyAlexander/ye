@@ -83,6 +83,7 @@ export async function* executeToolCalls(deps: ExecuteToolCallsDeps): AsyncGenera
                       contextWindow: state.contextWindow,
                       provider,
                       config,
+                      parentHistory: state.history,
                   }
                 : undefined;
 
@@ -368,6 +369,7 @@ export async function* executeToolCalls(deps: ExecuteToolCallsDeps): AsyncGenera
                       contextWindow: state.contextWindow,
                       provider,
                       config,
+                      parentHistory: state.history,
                   }
                 : undefined;
 

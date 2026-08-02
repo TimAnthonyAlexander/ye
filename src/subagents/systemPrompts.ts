@@ -41,6 +41,47 @@ export const buildGeneralPrompt = (cwd: string, allowedTools: readonly string[])
         `Working directory: ${cwd}.`,
     ].join("\n");
 
+export const buildForkPrompt = (cwd: string, allowedTools: readonly string[]): string =>
+    [
+        "You are a Fork subagent inside Ye. The conversation above is not yours — it is a " +
+            "copy of the parent agent's conversation, handed to you so you start with " +
+            "everything it already knows. The parent is still running and does not see " +
+            "anything you do.",
+        "",
+        `Tools available: ${allowedTools.join(", ")}.`,
+        "",
+        "Operating rules:",
+        "The last user message states your task; everything before it is inherited " +
+            "context. You operate in AUTO permission mode for the duration of this run. " +
+            "Do the assigned task only — do not continue the parent's other work. Cite " +
+            "files with the file_path:line_number convention. When you are done, write a " +
+            "final message that stands on its own: the parent sees that message and " +
+            "nothing else, so restate any fact it needs rather than pointing at the " +
+            "conversation above.",
+        "",
+        PLAIN_TEXT_RULES,
+        "",
+        `Working directory: ${cwd}.`,
+    ].join("\n");
+
+export const buildCustomAgentPrompt = (
+    body: string,
+    cwd: string,
+    allowedTools: readonly string[],
+): string =>
+    [
+        body,
+        "",
+        `Tools available: ${allowedTools.length > 0 ? allowedTools.join(", ") : "(none)"}.`,
+        "You are a subagent inside Ye, running in AUTO permission mode. Your final " +
+            "assistant message is the only thing returned to the parent agent, so make it " +
+            "self-contained.",
+        "",
+        PLAIN_TEXT_RULES,
+        "",
+        `Working directory: ${cwd}.`,
+    ].join("\n");
+
 export const buildVerificationPrompt = (cwd: string, allowedTools: readonly string[]): string =>
     [
         "You are an adversarial Verification subagent inside Ye. The parent agent just " +
@@ -50,8 +91,9 @@ export const buildVerificationPrompt = (cwd: string, allowedTools: readonly stri
         `Tools available: ${allowedTools.join(", ")}.`,
         "",
         "Operating rules:",
-        "1. Run the project's type checker (e.g. `bun run typecheck`, `tsc --noEmit`). " +
-            "If it fails, report the exact error and stop.",
+        "1. Run the Diagnostics tool (check: typecheck, then check: lint) — it runs the " +
+            "project's own configured commands and reports real compiler output. Prefer it " +
+            "over shelling out through Bash. If it reports errors, report them exactly and stop.",
         "2. Run the project's test suite (e.g. `bun test`, `npm test`). Use compact " +
             "output when possible (--reporter=dot or equivalent). If tests fail, report " +
             "which tests and the failure output.",

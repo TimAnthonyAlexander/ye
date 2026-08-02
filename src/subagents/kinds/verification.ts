@@ -1,6 +1,12 @@
 import { buildVerificationPrompt } from "../systemPrompts.ts";
 
-export const VERIFICATION_TOOLS: readonly string[] = ["Read", "Glob", "Grep", "Bash"];
+export const VERIFICATION_TOOLS: readonly string[] = [
+    "Read",
+    "Glob",
+    "Grep",
+    "Bash",
+    "Diagnostics",
+];
 
 export const verificationTurnBudget = 12;
 

@@ -1,29 +1,34 @@
 import type { Config } from "../config/index.ts";
 import type { Event } from "../pipeline/events.ts";
 import type { Provider } from "../providers/index.ts";
-import { EXPLORE_TOOLS, exploreSystemPrompt, exploreTurnBudget } from "./kinds/explore.ts";
-import { GENERAL_TOOLS, generalSystemPrompt, generalTurnBudget } from "./kinds/general.ts";
-import {
-    VERIFICATION_TOOLS,
-    verificationSystemPrompt,
-    verificationTurnBudget,
-} from "./kinds/verification.ts";
+import { resolveAgent } from "./catalogue.ts";
 import { runInProcess } from "./isolate/inProcess.ts";
-import {
-    SubagentError,
-    type SubagentKind,
-    type SubagentResult,
-    type SubagentSpec,
-} from "./types.ts";
+import { SubagentError, type SubagentResult, type SubagentSpec } from "./types.ts";
 
 export type {
+    AgentSource,
+    BuiltinKind,
     ExploreOptions,
     ExploreThoroughness,
     SubagentKind,
     SubagentResult,
     SubagentSpec,
 } from "./types.ts";
-export { SubagentError } from "./types.ts";
+export { BUILTIN_KINDS, SubagentError } from "./types.ts";
+export {
+    CUSTOM_AGENT_TOOL_CEILING,
+    buildAgentCatalogue,
+    getAgentCatalogue,
+    isKnownKind,
+    listAgents,
+    resetAgentCatalogue,
+    resolveAgent,
+    unknownKindError,
+    type AgentCatalogue,
+    type AgentEntry,
+    type ResolvedAgent,
+} from "./catalogue.ts";
+export { copyForkHistory } from "./forkSeed.ts";
 
 export interface SpawnContext {
     readonly parentProjectId: string;
@@ -39,61 +44,28 @@ export interface SpawnContext {
     readonly onChildEvent?: (evt: Event) => void;
 }
 
-interface KindResolution {
-    readonly systemPrompt: string;
-    readonly allowedTools: readonly string[];
-    readonly maxTurns: number;
-}
-
-const resolveKind = (spec: SubagentSpec, cwd: string, subagentBudget: number): KindResolution => {
-    switch (spec.kind) {
-        case "explore": {
-            const budget = Math.min(exploreTurnBudget(spec.options?.thoroughness), subagentBudget);
-            return {
-                systemPrompt: exploreSystemPrompt(cwd),
-                allowedTools: EXPLORE_TOOLS,
-                maxTurns: budget,
-            };
-        }
-        case "general": {
-            return {
-                systemPrompt: generalSystemPrompt(cwd),
-                allowedTools: GENERAL_TOOLS,
-                maxTurns: Math.min(generalTurnBudget, subagentBudget),
-            };
-        }
-        case "verification": {
-            return {
-                systemPrompt: verificationSystemPrompt(cwd),
-                allowedTools: VERIFICATION_TOOLS,
-                maxTurns: Math.min(verificationTurnBudget, subagentBudget),
-            };
-        }
-    }
-};
+export const subagentBudgetFor = (config: Config): number => config.maxTurns?.subagent ?? 25;
 
 export const spawn = async (spec: SubagentSpec, ctx: SpawnContext): Promise<SubagentResult> => {
     if (typeof spec.prompt !== "string" || spec.prompt.trim().length === 0) {
         throw new SubagentError("subagent prompt must be a non-empty string");
     }
-    const subagentBudget = ctx.config.maxTurns?.subagent ?? 25;
-    const resolved = resolveKind(spec, ctx.parentProjectRoot, subagentBudget);
+    const resolved = resolveAgent(spec, ctx.parentProjectRoot, subagentBudgetFor(ctx.config));
 
     return await runInProcess({
         parentProjectId: ctx.parentProjectId,
         parentProjectRoot: ctx.parentProjectRoot,
         parentSessionId: ctx.parentSessionId,
         contextWindow: ctx.contextWindow,
-        prompt: spec.prompt,
+        prompt: resolved.userPrompt,
         systemPrompt: resolved.systemPrompt,
         allowedTools: resolved.allowedTools,
         maxTurns: resolved.maxTurns,
+        seedHistory: resolved.seedHistory,
         config: ctx.config,
         provider: ctx.provider,
         signal: ctx.signal,
+        ...(resolved.model !== undefined ? { model: resolved.model } : {}),
         ...(ctx.onChildEvent ? { onChildEvent: ctx.onChildEvent } : {}),
     });
 };
-
-export const isSubagentKind = (value: unknown): value is SubagentKind =>
-    value === "explore" || value === "general" || value === "verification";
