@@ -9,6 +9,8 @@ import { GlobTool } from "./glob/index.ts";
 import { GrepTool } from "./grep/index.ts";
 import { KillAgentTool } from "./killAgent/index.ts";
 import { KillShellTool } from "./killShell/index.ts";
+import { lspToolsAvailable } from "../lsp/availability.ts";
+import { DefinitionTool, ReferencesTool, SymbolSearchTool } from "./lspTools/index.ts";
 import { ReadTool } from "./read/index.ts";
 import { SaveMemoryTool } from "./saveMemory/index.ts";
 import { SkillTool } from "./skill/index.ts";
@@ -20,6 +22,8 @@ import { WebFetchTool } from "./webFetch/index.ts";
 import { WebSearchTool } from "./webSearch/index.ts";
 import { WriteTool } from "./write/index.ts";
 
+const LSP_TOOLS: readonly Tool[] = [DefinitionTool, ReferencesTool, SymbolSearchTool];
+
 const TOOLS: readonly Tool[] = [
     ReadTool,
     EditTool,
@@ -28,6 +32,7 @@ const TOOLS: readonly Tool[] = [
     BashOutputTool,
     GrepTool,
     GlobTool,
+    ...LSP_TOOLS,
     DiagnosticsTool,
     TodoWriteTool,
     ExitPlanModeTool,
@@ -45,12 +50,18 @@ const TOOLS: readonly Tool[] = [
 
 const TOOLS_BY_NAME: ReadonlyMap<string, Tool> = new Map(TOOLS.map((t) => [t.name, t]));
 
+const LSP_TOOL_NAMES: ReadonlySet<string> = new Set(LSP_TOOLS.map((t) => t.name));
+
+const TOOLS_WITHOUT_LSP: readonly Tool[] = TOOLS.filter((t) => !LSP_TOOL_NAMES.has(t.name));
+
 export const getTool = (name: string): Tool | undefined => TOOLS_BY_NAME.get(name);
 
-export const listTools = (): readonly Tool[] => TOOLS;
+// The navigation tools are only useful with a configured language server; with
+// none, they are dropped so the model never spends a turn calling them.
+export const listTools = (): readonly Tool[] => (lspToolsAvailable() ? TOOLS : TOOLS_WITHOUT_LSP);
 
 export const unknownToolError = (name: string): string => {
-    const names = TOOLS.map((t) => t.name);
+    const names = listTools().map((t) => t.name);
     const ciMatch = names.find((n) => n.toLowerCase() === name.toLowerCase());
     const suggestion = ciMatch && ciMatch !== name ? ` Did you mean "${ciMatch}"?` : "";
     return `unknown tool: ${name}.${suggestion} Available tools: ${names.join(", ")}.`;

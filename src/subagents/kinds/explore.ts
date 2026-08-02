@@ -1,7 +1,14 @@
 import type { ExploreThoroughness } from "../types.ts";
 import { buildExplorePrompt } from "../systemPrompts.ts";
 
-export const EXPLORE_TOOLS: readonly string[] = ["Read", "Glob", "Grep"];
+export const EXPLORE_TOOLS: readonly string[] = [
+    "Read",
+    "Glob",
+    "Grep",
+    "Definition",
+    "References",
+    "SymbolSearch",
+];
 
 export const exploreTurnBudget = (thoroughness: ExploreThoroughness | undefined): number => {
     switch (thoroughness) {

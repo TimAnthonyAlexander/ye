@@ -339,6 +339,25 @@ Notes:
 - Result list capped at 200 paths; if truncated, refine the pattern.
 - Read-only.
 
+## Definition, References, SymbolSearch
+
+Language-server navigation. These answer the question Grep cannot: which symbol IS this? They resolve identity through the compiler's own view of the project, so they never confuse two same-named things, and they never miss a use that is spelled differently (aliased import, re-export).
+
+They appear in your tool list ONLY when the user has configured a language server (\`lsp.enabled\` plus \`lsp.servers.<language>\` in \`~/.ye/config.json\`). If you do not see them, that setup does not exist — use Grep and do not ask for them.
+
+Schema:
+- \`Definition\` — \`path\` (string, required), \`line\` (integer, required), \`column\` (integer, required)
+- \`References\` — the same, plus \`includeDeclaration\` (boolean, optional, default true)
+- \`SymbolSearch\` — \`query\` (string, required)
+
+Notes:
+- **\`line\` and \`column\` are 1-based**, exactly as Read and Grep print them, and must point AT the symbol you are asking about — the start of its name, not the start of the line.
+- Definition returns the defining location(s) as \`file:line:column\`; an empty result means the position is not on a symbol, or the symbol is defined outside the workspace.
+- References returns every use, sorted, capped at 500 entries and 32KB. Run it before a rename or a signature change.
+- SymbolSearch matches declared symbols by name across the workspace and returns \`Kind Name — file:line:column\`. Use it when you know a name but not a file; use Grep for arbitrary text.
+- The first call for a language starts the server, which can take a few seconds on a large project; later calls reuse it. A query that cannot be answered returns a message saying why (server missing, language unconfigured, server crashed) and points at Grep. That is never a failure of your work.
+- All three are read-only.
+
 ## Diagnostics
 
 Runs the project's configured typecheck or lint command and reports the diagnostics it produced. This is the cheap way to get real compiler/linter feedback on your changes instead of guessing at correctness.
@@ -793,6 +812,9 @@ Ripgrep regex. \`output_mode\`: \`"content"\` (default), \`"files_with_matches"\
 
 ## Glob { pattern, path? }
 Match files by glob (e.g. \`"**/*.ts"\`). Returns up to 200 absolute paths sorted by mtime descending. Read-only.
+
+## Definition { path, line, column } / References { path, line, column, includeDeclaration? } / SymbolSearch { query }
+Language-server navigation: real symbol resolution, not name matching. \`line\` and \`column\` are **1-based** (as Read and Grep print them) and must point at the symbol itself. Definition returns the defining \`file:line:column\`; References returns every use (sorted, capped at 500); SymbolSearch finds declared symbols by name across the workspace. These exist only when the user configured \`lsp.servers\` — if they are not in your tool list, use Grep instead. Read-only.
 
 ## Diagnostics { paths?, check? }
 Runs the project's configured check (\`verify.typecheck\` / \`verify.lint\` in config) and reports its output. \`check\`: \`"typecheck"\` (default) or \`"lint"\`. An unconfigured check returns a message naming the config key — a missing setting, not a failure of your work. \`paths\` filters the reported LINES, not the command: the whole check always runs, so omitting \`paths\` can surface pre-existing problems in files you never touched. **Empty result = no diagnostics, nothing to fix.** **Diagnostics after an edit do NOT mean the edit failed** — it already applied; fix what they say, never re-apply the same edit. Read-only.

@@ -16,6 +16,12 @@ export const PLAN_ALLOWED: readonly string[] = [
     "WebSearch",
     "ExitPlanMode",
     "Skill",
+    // LSP navigation queries the language server and never executes a shell
+    // command, so it is safe while planning. Diagnostics is deliberately absent:
+    // it runs an arbitrary user-configured command, a different risk class.
+    "Definition",
+    "References",
+    "SymbolSearch",
 ];
 
 interface ModeContext {
