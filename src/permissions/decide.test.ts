@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import type { PermissionMode, PermissionRule } from "../config/index.ts";
 import { decide, type DecideContext } from "./index.ts";
 import { PLAN_MODE_BLOCKED, USER_DENIED } from "./messages.ts";
@@ -637,5 +639,338 @@ describe("decide() — heuristic gate (Bash risk patterns)", () => {
             }),
         );
         expect(d.kind).toBe("prompt");
+    });
+});
+
+describe("decide() — path glob patterns", () => {
+    const abs = (p: string): string => resolve(process.cwd(), p);
+
+    test("P1 exact path rule matches only that file", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Edit", pattern: "Edit(src/index.ts)" },
+        ];
+        const hit = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Edit", { path: abs("src/index.ts") }), rules }),
+        );
+        const miss = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Edit", { path: abs("src/other.ts") }), rules }),
+        );
+        expect(hit.kind).toBe("allow");
+        expect(miss.kind).toBe("prompt");
+    });
+
+    test("P2 `src/**` matches a deep file and nothing outside src", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Edit", pattern: "Edit(src/**)" },
+        ];
+        const deep = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Edit", { path: abs("src/a/b/c.ts") }), rules }),
+        );
+        const outside = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Edit", { path: "/etc/passwd" }), rules }),
+        );
+        expect(deep.kind).toBe("allow");
+        expect(outside.kind).toBe("prompt");
+    });
+
+    test("P3 `*` does not cross a segment boundary", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Write", pattern: "Write(src/*)" },
+        ];
+        const flat = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Write", { path: abs("src/a.ts") }), rules }),
+        );
+        const nested = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Write", { path: abs("src/a/b.ts") }), rules }),
+        );
+        expect(flat.kind).toBe("allow");
+        expect(nested.kind).toBe("prompt");
+    });
+
+    test("P4 tilde in a rule expands to $HOME", () => {
+        const rules: PermissionRule[] = [
+            { effect: "deny", tool: "Read", pattern: "Read(~/.ssh/**)" },
+        ];
+        const secret = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Read", { path: join(homedir(), ".ssh", "id_rsa") }),
+                rules,
+                isReadOnly: true,
+            }),
+        );
+        const ordinary = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Read", { path: abs("src/index.ts") }),
+                rules,
+                isReadOnly: true,
+            }),
+        );
+        expect(secret.kind).toBe("deny");
+        if (secret.kind === "deny") expect(secret.message).toBe(USER_DENIED);
+        expect(ordinary.kind).toBe("allow");
+    });
+
+    test("P5 the subject is the `path` arg regardless of key order", () => {
+        const rules: PermissionRule[] = [{ effect: "deny", tool: "Edit", pattern: "Edit(src/**)" }];
+        const d = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Edit", {
+                    old_string: "/etc/passwd",
+                    new_string: "x",
+                    path: abs("src/a.ts"),
+                }),
+                rules,
+            }),
+        );
+        expect(d.kind).toBe("deny");
+    });
+
+    test("P6 Grep matches on `path`, not on the search `pattern`", () => {
+        const rules: PermissionRule[] = [
+            { effect: "deny", tool: "Grep", pattern: "Grep(/etc/**)" },
+        ];
+        const outside = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Grep", { pattern: "/etc/passwd", path: abs("src") }),
+                rules,
+                isReadOnly: true,
+            }),
+        );
+        const inside = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Grep", { pattern: "root", path: "/etc/nginx" }),
+                rules,
+                isReadOnly: true,
+            }),
+        );
+        expect(outside.kind).toBe("allow");
+        expect(inside.kind).toBe("deny");
+    });
+
+    test("P7 blanket path-tool rule still matches any args", () => {
+        const rules: PermissionRule[] = [{ effect: "deny", tool: "Edit", pattern: "Edit" }];
+        const d = decide(
+            ctx({ mode: "AUTO", toolCall: call("Edit", { path: "/anywhere/at/all" }), rules }),
+        );
+        expect(d.kind).toBe("deny");
+    });
+
+    test("P8 deny beats allow when both patterns match", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Edit", pattern: "Edit(src/**)" },
+            { effect: "deny", tool: "Edit", pattern: "Edit(src/secrets/**)" },
+        ];
+        const d = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Edit", { path: abs("src/secrets/keys.ts") }),
+                rules,
+            }),
+        );
+        expect(d.kind).toBe("deny");
+    });
+});
+
+describe("decide() — Bash command patterns and the chaining guard", () => {
+    test("P9 exact command allow", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Bash", pattern: "Bash(git status)" },
+        ];
+        const hit = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Bash", { command: "git status" }), rules }),
+        );
+        const miss = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Bash", { command: "git push" }), rules }),
+        );
+        expect(hit.kind).toBe("allow");
+        expect(miss.kind).toBe("prompt");
+    });
+
+    test("P10 wildcard command allow", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Bash", pattern: "Bash(npm run *)" },
+        ];
+        const hit = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Bash", { command: "npm run build" }), rules }),
+        );
+        const miss = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Bash", { command: "npm publish" }), rules }),
+        );
+        expect(hit.kind).toBe("allow");
+        expect(miss.kind).toBe("prompt");
+    });
+
+    test("P11 'git status && rm -rf /' is NOT allowed by Bash(git status)", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Bash", pattern: "Bash(git status)" },
+        ];
+        const normal = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Bash", { command: "git status && rm -rf /" }),
+                rules,
+            }),
+        );
+        const auto = decide(
+            ctx({
+                mode: "AUTO",
+                toolCall: call("Bash", { command: "git status && rm -rf /" }),
+                rules,
+            }),
+        );
+        expect(normal.kind).toBe("prompt");
+        expect(auto.kind).toBe("prompt");
+        if (auto.kind === "prompt") expect(auto.promptReason?.id).toBe("rm-recursive");
+    });
+
+    test("P12 every chaining operator breaks a partial allow", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Bash", pattern: "Bash(git status)" },
+        ];
+        for (const command of [
+            "git status; rm -rf /",
+            "git status || rm -rf /",
+            "git status | rm -rf /",
+            "git status & rm -rf /",
+            "git status\nrm -rf /",
+            "rm -rf / && git status",
+        ]) {
+            const d = decide(ctx({ mode: "NORMAL", toolCall: call("Bash", { command }), rules }));
+            expect(d.kind).toBe("prompt");
+        }
+    });
+
+    test("P13 an allow still fires when EVERY segment matches", () => {
+        const rules: PermissionRule[] = [{ effect: "allow", tool: "Bash", pattern: "Bash(git *)" }];
+        const d = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Bash", { command: "git status && git diff --stat" }),
+                rules,
+            }),
+        );
+        expect(d.kind).toBe("allow");
+    });
+
+    test("P14 a deny fires on any segment, even buried in a chain", () => {
+        const rules: PermissionRule[] = [
+            { effect: "deny", tool: "Bash", pattern: "Bash(rm *)" },
+            { effect: "allow", tool: "Bash" },
+        ];
+        const d = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Bash", { command: "echo hi | rm -rf /" }),
+                rules,
+            }),
+        );
+        expect(d.kind).toBe("deny");
+    });
+
+    test("P15 quoted separators do not split the command", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Bash", pattern: "Bash(echo *)" },
+        ];
+        const d = decide(
+            ctx({ mode: "NORMAL", toolCall: call("Bash", { command: 'echo "a && b"' }), rules }),
+        );
+        expect(d.kind).toBe("allow");
+    });
+
+    test("P16 command substitution blocks an allow that did not ask for it", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Bash", pattern: "Bash(npm run *)" },
+        ];
+        const d = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Bash", { command: "npm run $(rm -rf /)" }),
+                rules,
+            }),
+        );
+        expect(d.kind).toBe("prompt");
+    });
+});
+
+describe("decide() — non-path, non-command subjects", () => {
+    test("P17 WebFetch matches on `url`", () => {
+        const rules: PermissionRule[] = [
+            { effect: "deny", tool: "WebFetch", pattern: "WebFetch(http://*)" },
+        ];
+        const insecure = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("WebFetch", { url: "http://x.dev", prompt: "p" }),
+                rules,
+                isReadOnly: true,
+            }),
+        );
+        const secure = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("WebFetch", { url: "https://x.dev", prompt: "p" }),
+                rules,
+                isReadOnly: true,
+            }),
+        );
+        expect(insecure.kind).toBe("deny");
+        expect(secure.kind).toBe("allow");
+    });
+
+    test("P18 Task matches on `kind`", () => {
+        const rules: PermissionRule[] = [
+            { effect: "allow", tool: "Task", pattern: "Task(explore)" },
+        ];
+        const explore = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Task", { kind: "explore", prompt: "find x" }),
+                rules,
+            }),
+        );
+        const general = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("Task", { kind: "general", prompt: "do x" }),
+                rules,
+            }),
+        );
+        expect(explore.kind).toBe("allow");
+        expect(general.kind).toBe("prompt");
+    });
+
+    test("P19 unmapped tool keeps the legacy first-string-arg behaviour", () => {
+        const rules: PermissionRule[] = [
+            { effect: "deny", tool: "SaveMemory", pattern: "SaveMemory(secret:*)" },
+        ];
+        const hit = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("SaveMemory", {
+                    title: "secret token",
+                    hook: "h",
+                    content: "c",
+                }),
+                rules,
+            }),
+        );
+        const miss = decide(
+            ctx({
+                mode: "NORMAL",
+                toolCall: call("SaveMemory", {
+                    title: "ordinary note",
+                    hook: "h",
+                    content: "c",
+                }),
+                rules,
+            }),
+        );
+        expect(hit.kind).toBe("deny");
+        expect(miss.kind).toBe("prompt");
     });
 });
