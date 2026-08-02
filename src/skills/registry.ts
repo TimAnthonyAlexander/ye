@@ -39,7 +39,7 @@ export const loadSkillRegistry = async (input: LoadRegistryInput): Promise<Skill
         a.manifest.name.localeCompare(b.manifest.name),
     );
     const modelInvocable = sorted.filter((s) => s.manifest.disableModelInvocation !== true);
-    const slashBound = sorted;
+    const slashBound = sorted.filter((s) => s.manifest.userInvocable !== false);
 
     return { all, modelInvocable, slashBound };
 };

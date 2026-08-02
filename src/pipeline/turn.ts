@@ -4,6 +4,8 @@ import { decide } from "../permissions/index.ts";
 import type { Message, Provider, ReasoningDetail, ToolCallRequest } from "../providers/index.ts";
 import type { SessionHandle } from "../storage/index.ts";
 import { assembleToolPool, getTool, type ToolResult, type TurnState } from "../tools/index.ts";
+import { narrowAllowedTools } from "../tools/pool.ts";
+import { clearSkillScope, getSkillScope } from "../skills/scope.ts";
 import { getBackgroundManager, formatBackgroundNotice } from "../tools/bash/background.ts";
 import { getBackgroundSubagentManager } from "../subagents/background.ts";
 import { assemble } from "./assemble.ts";
@@ -146,7 +148,10 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     // Skipped when the working tree is unchanged from last turn.
     await injectGitStatus(state, config);
 
-    const activeModel = state.activeModel ?? config.defaultModel.model;
+    // A skill invoked on an earlier turn of this chain narrows the tool pool and
+    // may pin a model until the chain ends.
+    const skillScope = getSkillScope(state.sessionId);
+    const activeModel = skillScope?.model ?? state.activeModel ?? config.defaultModel.model;
 
     // Step 3: assemble. Step 4: shapers (Budget Reduction → ... → Auto-Compact),
     // which may clamp the reply budget and/or rewrite state.history. Shapers
@@ -180,12 +185,14 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     const webSearchAvailable =
         provider.capabilities.serverSideWebSearch ||
         (config.webTools?.searchFallback ?? "duckduckgo") !== "off";
+    const allowedTools = narrowAllowedTools(state.allowedTools, skillScope?.allowedTools);
     const tools = assembleToolPool({
         mode: state.mode,
         rules: [...(config.permissions?.rules ?? []), ...state.sessionRules],
         webSearchAvailable,
         headless: state.headless,
-        ...(state.allowedTools ? { allowedTools: state.allowedTools } : {}),
+        ...(allowedTools ? { allowedTools } : {}),
+        ...(skillScope?.disallowedTools ? { disallowedTools: skillScope.disallowedTools } : {}),
     });
     const recoveryGen = runModelCallWithRecovery({
         state,
@@ -228,12 +235,14 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
                 };
                 yield errorEvent;
                 await session.appendEvent(transcriptable(errorEvent));
+                clearSkillScope(state.sessionId);
                 return "error";
             }
             if (out.result.stopReason === "abort") {
                 const cancelEvent: Event = { type: "turn.end", stopReason: "user_cancel" };
                 yield cancelEvent;
                 await session.appendEvent(transcriptable(cancelEvent));
+                clearSkillScope(state.sessionId);
                 return "user_cancel";
             }
             break;
@@ -294,6 +303,8 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         state.history.push({ role: "user", content: PLAN_START_REMINDER });
         stopReason = "continue";
     }
+
+    if (stopReason !== "continue") clearSkillScope(state.sessionId);
 
     const turnEnd: Event = { type: "turn.end", stopReason };
     yield turnEnd;

@@ -10,6 +10,11 @@ export interface SkillManifest {
     readonly name: string;
     readonly description: string;
     readonly disableModelInvocation?: boolean;
+    readonly userInvocable?: boolean;
+    readonly allowedTools?: readonly string[];
+    readonly disallowedTools?: readonly string[];
+    readonly model?: string;
+    readonly argumentHint?: string;
 }
 
 export interface Skill {

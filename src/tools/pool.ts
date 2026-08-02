@@ -11,6 +11,10 @@ export interface PoolContext {
     // Used by subagents to narrow their tool surface (and as the recursion guard:
     // since Task is never in a subagent's allowedTools, recursion is structural).
     readonly allowedTools?: readonly string[];
+    // Subtractive counterpart of allowedTools: removes names from whatever the
+    // pool would otherwise be. Applied after the allowlist so it can only ever
+    // shrink the result.
+    readonly disallowedTools?: readonly string[];
     // WebSearch is only useful when the active provider has server-side search
     // OR a fallback (DuckDuckGo) is configured. The pool drops it otherwise so
     // the model never tries to call an unavailable tool.
@@ -20,16 +24,32 @@ export interface PoolContext {
     readonly headless?: boolean;
 }
 
+// Combine two allowlists into one. Every caller-supplied allowlist is a
+// narrowing claim, never a grant, so overlapping lists intersect — a skill can
+// never hand back a tool the surrounding scope (subagent, mode) already took away.
+export const narrowAllowedTools = (
+    a: readonly string[] | undefined,
+    b: readonly string[] | undefined,
+): readonly string[] | undefined => {
+    if (a === undefined) return b;
+    if (b === undefined) return a;
+    return a.filter((name) => b.includes(name));
+};
+
 // Single seam where the tool list shown to the model is assembled.
-// Order: base → allowedTools narrowing → mode-filter (PLAN allowlist) →
-// blanket-deny pre-filter → dedup.
+// Order: base → allowedTools narrowing → disallowedTools subtraction →
+// mode-filter (PLAN allowlist) → blanket-deny pre-filter → dedup.
 // MCP integration would slot in between blanket-deny and dedup (Phase 7+).
 export const assembleToolPool = (ctx: PoolContext): readonly ToolDefinition[] => {
     const base: readonly Tool[] = listTools();
 
-    const allowed = ctx.allowedTools
+    const narrowed = ctx.allowedTools
         ? base.filter((t) => ctx.allowedTools!.includes(t.name))
         : base;
+
+    const allowed = ctx.disallowedTools
+        ? narrowed.filter((t) => !ctx.disallowedTools!.includes(t.name))
+        : narrowed;
 
     // PLAN narrows to the allowlist; NORMAL/AUTO drop ExitPlanMode (it's PLAN-only —
     // calling it from NORMAL/AUTO can't be a no-op because the prompt fires on any

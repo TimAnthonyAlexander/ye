@@ -10,6 +10,9 @@ const buildHiddenPrompt = (skillName: string, rawArgs: string): string =>
 export const skillToSlashCommand = (skill: Skill): SlashCommand => ({
     name: skill.manifest.name,
     description: skill.manifest.description,
+    usage: `/${skill.manifest.name}${
+        skill.manifest.argumentHint !== undefined ? ` ${skill.manifest.argumentHint}` : ""
+    }`,
     execute: (rawArgs: string, ctx: SlashCommandContext): SlashCommandResult => {
         ctx.sendHiddenPrompt(buildHiddenPrompt(skill.manifest.name, rawArgs));
         return { kind: "ok" };

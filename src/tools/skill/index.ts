@@ -1,7 +1,9 @@
 import { substituteArgs } from "../../skills/argv.ts";
 import { formatSupportingFiles } from "../../skills/manifest.ts";
+import { resolveSkillModel } from "../../skills/model.ts";
+import { buildSkillScope, setSkillScope } from "../../skills/scope.ts";
 import type { Skill, SkillRegistry } from "../../skills/types.ts";
-import type { Tool, ToolResult } from "../types.ts";
+import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
 
 interface SkillArgs {
@@ -38,7 +40,22 @@ const formatBody = (skill: Skill, body: string): string => {
     return sections.join("\n\n");
 };
 
-const execute = async (rawArgs: unknown): Promise<ToolResult<SkillResult>> => {
+const applyScope = (skill: Skill, ctx: ToolContext): string | null => {
+    const requested = skill.manifest.model;
+    const resolution =
+        requested === undefined
+            ? null
+            : resolveSkillModel({
+                  skillName: skill.manifest.name,
+                  requested,
+                  providerId: ctx.provider.id,
+                  activeModel: ctx.activeModel,
+              });
+    setSkillScope(ctx.sessionId, buildSkillScope(skill, resolution?.model ?? null));
+    return resolution?.notice ?? null;
+};
+
+const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<SkillResult>> => {
     const v = validateArgs<SkillArgs>(rawArgs, SkillTool.schema);
     if (!v.ok) return v;
     const { command, args } = v.value;
@@ -57,10 +74,15 @@ const execute = async (rawArgs: unknown): Promise<ToolResult<SkillResult>> => {
         };
     }
 
+    const notice = applyScope(skill, ctx);
     const substituted = substituteArgs(skill.body, args ?? "");
+    const body = formatBody(skill, substituted);
     return {
         ok: true,
-        value: { skillName: skill.manifest.name, body: formatBody(skill, substituted) },
+        value: {
+            skillName: skill.manifest.name,
+            body: notice !== null ? `${notice}\n\n${body}` : body,
+        },
     };
 };
 

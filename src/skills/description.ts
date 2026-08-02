@@ -9,7 +9,8 @@ const STATIC_BLURB =
     "  - command: the skill's name (must be one listed below)\n" +
     "  - args: optional argument string. The skill body may interpolate $0..$N (shell-quoted) and " +
     "$ARGUMENTS (raw).\n\n" +
-    "Each entry below is `<name>: <description> [<install-path>]`. The install path is the skill's " +
+    "Each entry below is `<name>: <description> [<install-path>]`, and skills that expect a " +
+    "particular argument shape state it as `args: <hint>`. The install path is the skill's " +
     "directory on disk — you can Read files inside it (e.g. SKILL.md, references/, scripts/) without " +
     "needing to Glob or guess. Builtins are tagged `<embedded>` and have no on-disk path.\n";
 
@@ -20,8 +21,10 @@ export const buildSkillToolDescription = (registry: SkillRegistry): string => {
     if (registry.modelInvocable.length === 0) {
         return `${STATIC_BLURB}\n<available_skills>\n(no skills installed)\n</available_skills>`;
     }
-    const lines = registry.modelInvocable.map(
-        (s) => `- ${s.manifest.name}: ${s.manifest.description} [${formatLocation(s)}]`,
-    );
+    const lines = registry.modelInvocable.map((s) => {
+        const hint =
+            s.manifest.argumentHint !== undefined ? ` (args: ${s.manifest.argumentHint})` : "";
+        return `- ${s.manifest.name}: ${s.manifest.description}${hint} [${formatLocation(s)}]`;
+    });
     return `${STATIC_BLURB}\n<available_skills>\n${lines.join("\n")}\n</available_skills>`;
 };
