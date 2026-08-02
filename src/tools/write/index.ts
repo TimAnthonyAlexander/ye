@@ -1,6 +1,7 @@
 import { isAbsolute } from "node:path";
 import { checkpointFile } from "../../storage/index.ts";
 import { prettyPath } from "../../ui/path.ts";
+import { runFormatter } from "../format.ts";
 import { atomicWrite, hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
@@ -10,10 +11,12 @@ interface WriteArgs {
     readonly content: string;
 }
 
-const execute = async (
-    rawArgs: unknown,
-    ctx: ToolContext,
-): Promise<ToolResult<{ bytes: number }>> => {
+interface WriteValue {
+    readonly bytes: number;
+    readonly note?: string;
+}
+
+const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<WriteValue>> => {
     const v = validateArgs<WriteArgs>(rawArgs, WriteTool.schema);
     if (!v.ok) return v;
     const { path, content } = v.value;
@@ -51,7 +54,10 @@ const execute = async (
     await atomicWrite(path, content, { preserveMode: fileExists });
     // Once written, this counts as read for subsequent edits in the same turn.
     ctx.turnState.readFiles.set(path, { hash: hashContent(content) });
-    return { ok: true, value: { bytes: Buffer.byteLength(content, "utf8") } };
+
+    const { content: formatted, note } = await runFormatter(path, content, ctx);
+    const bytes = Buffer.byteLength(formatted ?? content, "utf8");
+    return { ok: true, value: note === null ? { bytes } : { bytes, note } };
 };
 
 export const WriteTool: Tool = {

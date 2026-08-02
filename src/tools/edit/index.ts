@@ -1,6 +1,7 @@
 import { isAbsolute } from "node:path";
 import { checkpointFile } from "../../storage/index.ts";
 import { prettyPath } from "../../ui/path.ts";
+import { runFormatter } from "../format.ts";
 import { atomicWrite, hashContent } from "../fs.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
@@ -208,9 +209,16 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     await atomicWrite(path, updated, { preserveMode: true });
     ctx.turnState.readFiles.set(path, { hash: hashContent(updated) });
 
-    const siteLineIdx = updated.slice(0, firstIdx).split("\n").length - 1;
+    const { content: formatted, note } = await runFormatter(path, updated, ctx);
+
+    // Preview renders whatever is on disk now, so a formatter that reflowed the
+    // file can't leave the model reading line numbers that have already moved.
+    const previewSource = formatted ?? updated;
+    const formattedIdx = formatted === null ? -1 : formatted.indexOf(new_string);
+    const siteIdx = formattedIdx === -1 ? firstIdx : formattedIdx;
+    const siteLineIdx = previewSource.slice(0, siteIdx).split("\n").length - 1;
     const newStringLineSpan = new_string.split("\n").length;
-    const { line, preview } = buildPreview(updated, siteLineIdx, newStringLineSpan);
+    const { line, preview } = buildPreview(previewSource, siteLineIdx, newStringLineSpan);
 
     const feedback = evaluateHeuristics({
         original,
@@ -219,10 +227,11 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
         new_string,
         replace_all,
     });
+    const notes = note === null ? feedback : [...feedback, note];
 
     return {
         ok: true,
-        value: formatEditResult(replace_all ? total : 1, line, preview, feedback),
+        value: formatEditResult(replace_all ? total : 1, line, preview, notes),
     };
 };
 
