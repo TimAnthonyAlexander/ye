@@ -1,3 +1,5 @@
+import { OUTPUT_FORMATS, type OutputFormat } from "./output.ts";
+
 export interface CliFlags {
     readonly resume: boolean;
     readonly resumeSessionId: string | null;
@@ -5,6 +7,7 @@ export interface CliFlags {
     readonly prompt: string | null;
     readonly mode: string | null;
     readonly maxBudgetUsd: number | null;
+    readonly outputFormat: OutputFormat;
     readonly help: boolean;
     readonly version: boolean;
 }
@@ -14,15 +17,22 @@ export type ParseFlagsResult =
     | { readonly ok: false; readonly error: string };
 
 export const HELP_TEXT = `Usage: ye [options]
+       ye [options] < prompt.txt
+       echo "prompt" | ye [options]
 
 Options:
   -p, --prompt <text>             Run one turn headlessly and exit
+      --output-format <fmt>       Headless output: text (default), json, stream-json
       --mode <AUTO|NORMAL|PLAN>   Permission mode for the session
       --resume [sessionId]        Resume the most recent session, or a specific one
       --max-budget-usd <n>        Stop the session once it has spent this much (USD)
       --update, --upgrade         Download and install the latest release binary
   -h, --help                      Show this help
   -v, --version                   Show version
+
+With no -p/--prompt and stdin piped or redirected, the prompt is read from
+stdin (10MB max) and the run is headless. json buffers the run and prints one
+object; stream-json prints one JSON object per line as events happen.
 `;
 
 export const parseFlags = (argv: readonly string[]): ParseFlagsResult => {
@@ -32,6 +42,7 @@ export const parseFlags = (argv: readonly string[]): ParseFlagsResult => {
     let prompt: string | null = null;
     let mode: string | null = null;
     let maxBudgetUsd: number | null = null;
+    let outputFormat: OutputFormat = "text";
     let help = false;
     let version = false;
     for (let i = 0; i < argv.length; i++) {
@@ -81,6 +92,23 @@ export const parseFlags = (argv: readonly string[]): ParseFlagsResult => {
             }
             maxBudgetUsd = parsed;
             i += 1;
+        } else if (a === "--output-format") {
+            const next = argv[i + 1];
+            if (!next) {
+                return {
+                    ok: false,
+                    error: `ye: --output-format requires ${OUTPUT_FORMATS.join(", ")}`,
+                };
+            }
+            const found = OUTPUT_FORMATS.find((f) => f === next);
+            if (found === undefined) {
+                return {
+                    ok: false,
+                    error: `ye: invalid --output-format "${next}" — must be ${OUTPUT_FORMATS.join(", ")}`,
+                };
+            }
+            outputFormat = found;
+            i += 1;
         } else if (a === "-h" || a === "--help") {
             help = true;
         } else if (a === "-v" || a === "--version") {
@@ -94,6 +122,16 @@ export const parseFlags = (argv: readonly string[]): ParseFlagsResult => {
     }
     return {
         ok: true,
-        flags: { resume, resumeSessionId, update, prompt, mode, maxBudgetUsd, help, version },
+        flags: {
+            resume,
+            resumeSessionId,
+            update,
+            prompt,
+            mode,
+            maxBudgetUsd,
+            outputFormat,
+            help,
+            version,
+        },
     };
 };

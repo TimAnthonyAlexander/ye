@@ -22,6 +22,7 @@ describe("parseFlags", () => {
             prompt: null,
             mode: null,
             maxBudgetUsd: null,
+            outputFormat: "text",
             help: false,
             version: false,
         });
@@ -124,14 +125,33 @@ describe("parseFlags", () => {
             prompt: "do a thing",
             mode: "AUTO",
             maxBudgetUsd: null,
+            outputFormat: "text",
             help: false,
             version: false,
         });
     });
 
+    test("--output-format defaults to text and accepts every format", () => {
+        expect(ok([]).outputFormat).toBe("text");
+        expect(ok(["--output-format", "text"]).outputFormat).toBe("text");
+        expect(ok(["--output-format", "json"]).outputFormat).toBe("json");
+        expect(ok(["--output-format", "stream-json"]).outputFormat).toBe("stream-json");
+    });
+
+    test("--output-format rejects missing and unknown values", () => {
+        expect(err(["--output-format"])).toBe(
+            "ye: --output-format requires text, json, stream-json",
+        );
+        expect(err(["--output-format", "yaml"])).toBe(
+            'ye: invalid --output-format "yaml" — must be text, json, stream-json',
+        );
+        expect(err(["--output-format", "JSON"])).toContain('invalid --output-format "JSON"');
+    });
+
     test("help text documents every flag", () => {
         for (const flag of [
             "-p, --prompt",
+            "--output-format <fmt>",
             "--mode",
             "--resume",
             "--max-budget-usd",
@@ -141,5 +161,10 @@ describe("parseFlags", () => {
         ]) {
             expect(HELP_TEXT).toContain(flag);
         }
+    });
+
+    test("help text documents the stdin form", () => {
+        expect(HELP_TEXT).toContain("| ye");
+        expect(HELP_TEXT).toContain("read from\nstdin");
     });
 });

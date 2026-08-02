@@ -1,7 +1,16 @@
+import {
+    emptyRunUsage,
+    writeStreamEvent,
+    writeSummary,
+    type OutputFormat,
+    type RunSummary,
+    type RunUsage,
+} from "../cli/output.ts";
 import type { LoadResult } from "../config/index.ts";
 import { runEventHooks } from "../hooks/index.ts";
 import { getProjectId, openSession, type SessionHandle } from "../storage/index.ts";
-import { getProvider, isMissingKeyError } from "../providers/index.ts";
+import { loadSessionUsage } from "../storage/usage.ts";
+import { getProvider, isMissingKeyError, type Provider } from "../providers/index.ts";
 import { destroyBackgroundManager } from "../tools/bash/background.ts";
 import { destroyBackgroundSubagentManager } from "../subagents/background.ts";
 import {
@@ -10,6 +19,7 @@ import {
     WAKEUP_REMINDERS,
     type BackgroundKind,
 } from "./backgroundWakeup.ts";
+import type { StopReason } from "./events.ts";
 import { queryLoop } from "./index.ts";
 import type { SessionState } from "./state.ts";
 
@@ -17,27 +27,80 @@ import type { SessionState } from "./state.ts";
 // headless run open forever.
 const MAX_HEADLESS_WAKEUPS = 50;
 
-export const runHeadless = async (config: LoadResult, prompt: string): Promise<void> => {
+export const runHeadless = async (
+    config: LoadResult,
+    prompt: string,
+    format: OutputFormat = "text",
+): Promise<void> => {
+    const startedAt = Date.now();
     const cfg = config.config;
     const providerId = cfg.defaultProvider;
-    const provider = (() => {
-        try {
-            return getProvider(cfg);
-        } catch (e) {
-            if (isMissingKeyError(e)) {
-                const provCfg = cfg.providers[providerId];
-                const envVar = provCfg?.apiKeyEnv ?? "API key";
-                process.stderr.write(
-                    `ye: ${envVar} is not set. Set it or add an apiKey to ~/.ye/config.json.\n`,
-                );
-                process.exit(1);
-            }
-            throw e;
+    const model = cfg.defaultModel.model;
+
+    let sessionId = "";
+    let projectId = "";
+    let turns = 0;
+    let turnText = "";
+    let result = "";
+    let stopReason: StopReason = "end_turn";
+    let errorMessage: string | null = null;
+    let hadError = false;
+
+    const summarise = async (): Promise<RunSummary> => {
+        let usage: RunUsage = emptyRunUsage();
+        if (sessionId.length > 0) {
+            const totals = (await loadSessionUsage(sessionId)).totals;
+            usage = {
+                inputTokens: totals.inputTokens,
+                outputTokens: totals.outputTokens,
+                cachedTokens: totals.cacheReadTokens + totals.cacheCreationTokens,
+                costUsd: totals.costUsd,
+            };
         }
-    })();
+        return {
+            ok: !hadError,
+            result,
+            stopReason,
+            sessionId,
+            projectId,
+            model,
+            provider: providerId,
+            turns,
+            usage,
+            durationMs: Date.now() - startedAt,
+            ...(errorMessage !== null ? { error: errorMessage } : {}),
+        };
+    };
+
+    const finish = async (code: number): Promise<never> => {
+        await writeSummary(format, await summarise());
+        process.exit(code);
+    };
+
+    const fail = async (message: string): Promise<never> => {
+        process.stderr.write(`ye: ${message}\n`);
+        hadError = true;
+        stopReason = "error";
+        errorMessage = message;
+        return finish(1);
+    };
+
+    let provider: Provider;
+    try {
+        provider = getProvider(cfg);
+    } catch (e) {
+        if (isMissingKeyError(e)) {
+            const provCfg = cfg.providers[providerId];
+            const envVar = provCfg?.apiKeyEnv ?? "API key";
+            await fail(`${envVar} is not set. Set it or add an apiKey to ~/.ye/config.json.`);
+        }
+        throw e;
+    }
 
     const proj = await getProjectId();
+    projectId = proj.id;
     const session: SessionHandle = await openSession(proj.id);
+    sessionId = session.sessionId;
 
     let contextWindow = 128_000;
     try {
@@ -80,16 +143,12 @@ export const runHeadless = async (config: LoadResult, prompt: string): Promise<v
         signal,
     );
     if (promptHook.blocked) {
-        process.stderr.write(
-            `ye: UserPromptSubmit hook blocked: ${promptHook.reason ?? "unknown"}\n`,
-        );
-        process.exit(1);
+        await session.close();
+        await fail(`UserPromptSubmit hook blocked: ${promptHook.reason ?? "unknown"}`);
     }
     if (promptHook.context && promptHook.context.length > 0) {
         expanded = `${promptHook.context}\n\n${expanded}`;
     }
-
-    let hadError = false;
 
     const drain = async (prompt: string): Promise<void> => {
         const stream = queryLoop({
@@ -101,9 +160,15 @@ export const runHeadless = async (config: LoadResult, prompt: string): Promise<v
             signal,
         });
         for await (const evt of stream) {
+            if (format === "stream-json") writeStreamEvent(evt);
             switch (evt.type) {
+                case "turn.start":
+                    turns += 1;
+                    turnText = "";
+                    break;
                 case "model.text":
-                    process.stdout.write(evt.delta);
+                    if (format === "text") process.stdout.write(evt.delta);
+                    else turnText += evt.delta;
                     break;
                 case "model.reasoning":
                     break;
@@ -114,12 +179,17 @@ export const runHeadless = async (config: LoadResult, prompt: string): Promise<v
                     process.stderr.write(`[${evt.name}: freed ~${evt.tokensFreed} tokens]\n`);
                     break;
                 case "turn.end":
+                    if (turnText.trim().length > 0) result = turnText;
+                    stopReason = evt.stopReason;
                     if (evt.stopReason === "error" && evt.error) {
                         process.stderr.write(`\nye: ${evt.error.message}\n`);
+                        errorMessage = evt.error.message;
                         hadError = true;
                     }
                     if (evt.stopReason === "budget_exhausted") {
-                        process.stderr.write(`\nye: ${evt.message ?? "budget cap reached"}\n`);
+                        const message = evt.message ?? "budget cap reached";
+                        process.stderr.write(`\nye: ${message}\n`);
+                        errorMessage = message;
                         hadError = true;
                     }
                     break;
@@ -153,6 +223,12 @@ export const runHeadless = async (config: LoadResult, prompt: string): Promise<v
             wakeups += 1;
             await drain(WAKEUP_REMINDERS[kind]);
         }
+    } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        process.stderr.write(`\nye: ${message}\n`);
+        errorMessage = message;
+        stopReason = "error";
+        hadError = true;
     } finally {
         // Kills any still-running background shell command or subagent, so
         // nothing outlives the process.
@@ -161,6 +237,6 @@ export const runHeadless = async (config: LoadResult, prompt: string): Promise<v
         await session.close();
     }
 
-    process.stdout.write("\n");
-    if (hadError) process.exit(1);
+    if (format === "text") process.stdout.write("\n");
+    await finish(hadError ? 1 : 0);
 };

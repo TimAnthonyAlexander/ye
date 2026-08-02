@@ -3,6 +3,8 @@ import "./patch-stdin.ts";
 import { render } from "ink";
 import { App } from "./components/app.tsx";
 import { HELP_TEXT, parseFlags } from "./cli/flags.ts";
+import { errorSummary, writeSummary, type OutputFormat } from "./cli/output.ts";
+import { readStdinPrompt } from "./cli/stdin.ts";
 import { ConfigValidationError, loadConfig, type LoadResult } from "./config/index.ts";
 import { runHeadless } from "./pipeline/headless.ts";
 import { resolveBudgetCap } from "./pipeline/stop.ts";
@@ -31,14 +33,37 @@ const runUpdateCommand = async (): Promise<void> => {
     }
 };
 
+const startedAt = Date.now();
+
+// Machine formats promise a parseable object on stdout even when the run never
+// reaches the pipeline (bad config, unreadable stdin).
+const abort = async (
+    format: OutputFormat,
+    message: string,
+    stderrText: string = message,
+): Promise<never> => {
+    process.stderr.write(`${stderrText}\n`);
+    await writeSummary(format, errorSummary(message, { durationMs: Date.now() - startedAt }));
+    process.exit(1);
+};
+
+const readPipedPrompt = async (format: OutputFormat): Promise<string> => {
+    const read = await readStdinPrompt(Bun.stdin.stream());
+    if (!read.ok) await abort(format, read.error, `ye: ${read.error}`);
+    const text = read.ok ? read.text : "";
+    if (text.length === 0) await abort(format, "no prompt on stdin", "ye: no prompt on stdin");
+    return text;
+};
+
 const main = async (): Promise<void> => {
+    const parsed = parseFlags(process.argv.slice(2));
+    if (!parsed.ok) {
+        process.stderr.write(`${parsed.error}\n`);
+        process.exit(1);
+    }
+    const flags = parsed.flags;
+    const format = flags.outputFormat;
     try {
-        const parsed = parseFlags(process.argv.slice(2));
-        if (!parsed.ok) {
-            process.stderr.write(`${parsed.error}\n`);
-            process.exit(1);
-        }
-        const flags = parsed.flags;
         if (flags.help) {
             process.stdout.write(HELP_TEXT);
             process.exit(0);
@@ -51,6 +76,10 @@ const main = async (): Promise<void> => {
             await runUpdateCommand();
             return;
         }
+        // Read before loading config so a piped run never blocks on a prompt
+        // the TUI would have owned.
+        const headlessPrompt =
+            flags.prompt ?? (process.stdin.isTTY ? null : await readPipedPrompt(format));
         await cleanupWindowsOldBinary();
         const loaded = await loadConfig();
         const budgetCap = resolveBudgetCap(flags.maxBudgetUsd, loaded.config.budget?.maxUsd);
@@ -58,8 +87,8 @@ const main = async (): Promise<void> => {
             budgetCap === loaded.config.budget?.maxUsd
                 ? loaded
                 : { ...loaded, config: { ...loaded.config, budget: { maxUsd: budgetCap } } };
-        if (flags.prompt !== null) {
-            await runHeadless(config, flags.prompt);
+        if (headlessPrompt !== null) {
+            await runHeadless(config, headlessPrompt, format);
             process.exit(0);
         }
         // Background update check — fire-and-forget; status surfaces in StatusBar.
@@ -77,8 +106,11 @@ const main = async (): Promise<void> => {
         await waitUntilExit();
     } catch (error) {
         if (error instanceof ConfigValidationError) {
-            process.stderr.write(`${error.message}\n`);
-            process.exit(1);
+            await abort(format, error.message);
+        }
+        if (format !== "text") {
+            const message = error instanceof Error ? error.message : String(error);
+            await abort(format, message, `ye: ${message}`);
         }
         throw error;
     }
