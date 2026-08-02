@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { PermissionMode } from "../config/index.ts";
+import type { PermissionMode, PermissionRule } from "../config/index.ts";
+import { parseSessionRuleEvent, SESSION_RULE_EVENT } from "../permissions/index.ts";
 import type { Message, ReasoningDetail, ToolCallRequest } from "../providers/index.ts";
 import { getProjectSessionsDir } from "./paths.ts";
 
@@ -40,6 +41,10 @@ export interface ReplayedSession {
     // on the first user message of a fresh session by a small/cheap LLM, then
     // surfaced in the resume picker and used to rename the terminal/tmux pane.
     readonly title: string | null;
+    // "allow for the rest of this session" grants recorded during the session,
+    // minus any that a /rewind discarded. Restored into state.sessionRules on
+    // resume unless permissions.persistSessionRules is false.
+    readonly sessionRules: readonly PermissionRule[];
 }
 
 interface RawEvent {
@@ -85,6 +90,9 @@ export const replaySessionFile = async (jsonlPath: string): Promise<ReplayedSess
     let turnsCompleted = 0;
     let maxGlobalTurnIndex = 0;
     const prompts: PromptStartEntry[] = [];
+    // Each grant is tagged with the prompt it was granted under so a /rewind can
+    // drop exactly the grants that came after the rewind point.
+    const sessionRules: Array<{ rule: PermissionRule; promptOrdinal: number }> = [];
     const toolCalls: Array<{
         id: string;
         name: string;
@@ -207,6 +215,12 @@ export const replaySessionFile = async (jsonlPath: string): Promise<ReplayedSess
                 if (evt.stopReason !== "continue") turnsCompleted += 1;
                 break;
             }
+            case SESSION_RULE_EVENT: {
+                // Not a message: it must never reach the model, only state.sessionRules.
+                const rule = parseSessionRuleEvent(evt);
+                if (rule) sessionRules.push({ rule, promptOrdinal: prompts.length - 1 });
+                break;
+            }
             case "mode.changed": {
                 if (typeof evt.mode === "string") {
                     mode = evt.mode as PermissionMode;
@@ -247,6 +261,9 @@ export const replaySessionFile = async (jsonlPath: string): Promise<ReplayedSess
                 if (target) {
                     history.splice(target.historyIdx);
                     prompts.splice(ordinal);
+                    for (let i = sessionRules.length - 1; i >= 0; i--) {
+                        if (sessionRules[i]!.promptOrdinal >= ordinal) sessionRules.splice(i, 1);
+                    }
                     pendingText = "";
                     pendingToolCalls = [];
                     pendingReasoningDetails = null;
@@ -285,7 +302,16 @@ export const replaySessionFile = async (jsonlPath: string): Promise<ReplayedSess
         if (candidate > maxGlobalTurnIndex) maxGlobalTurnIndex = candidate;
     }
 
-    return { history, mode, turnsCompleted, maxGlobalTurnIndex, prompts, toolCalls, title };
+    return {
+        history,
+        mode,
+        turnsCompleted,
+        maxGlobalTurnIndex,
+        prompts,
+        toolCalls,
+        title,
+        sessionRules: sessionRules.map((entry) => entry.rule),
+    };
 };
 
 const safeParseArgs = (raw: string): unknown => {

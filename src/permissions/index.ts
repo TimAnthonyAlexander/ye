@@ -9,6 +9,13 @@ export type { PermissionMode, PermissionRule } from "../config/index.ts";
 export { USER_DENIED, PLAN_MODE_BLOCKED } from "./messages.ts";
 export { PLAN_ALLOWED } from "./modes.ts";
 export { isBlanketDeny } from "./rules.ts";
+export { deriveAlwaysRule, type Derivation } from "./derive.ts";
+export {
+    parseSessionRuleEvent,
+    restoredSessionRules,
+    SESSION_RULE_EVENT,
+    sessionRulesPersisted,
+} from "./persist.ts";
 export type { PermissionPromptPayload, PromptReason } from "./prompt.ts";
 export type { Decision, HeuristicReason, PromptResponse, ToolCall } from "./types.ts";
 

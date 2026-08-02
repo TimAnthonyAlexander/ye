@@ -1,5 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import type { PermissionRule } from "../config/index.ts";
+import { SESSION_RULE_EVENT } from "../permissions/persist.ts";
 import { getProjectSessionsDir, getSidechainSessionsDir } from "./paths.ts";
 
 export interface SessionEvent {
@@ -36,6 +38,14 @@ const openSessionInDir = async (dir: string): Promise<SessionHandle> => {
         },
     };
 };
+
+export const recordSessionRule = (session: SessionHandle, rule: PermissionRule): Promise<void> =>
+    session.appendEvent({
+        type: SESSION_RULE_EVENT,
+        effect: rule.effect,
+        tool: rule.tool,
+        ...(rule.pattern !== undefined ? { pattern: rule.pattern } : {}),
+    });
 
 export const openSession = (projectId: string): Promise<SessionHandle> =>
     openSessionInDir(getProjectSessionsDir(projectId));

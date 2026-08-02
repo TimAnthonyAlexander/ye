@@ -91,7 +91,7 @@ export const subjectOf = (toolCall: ToolCall): Subject | null => {
     return spec.cwdWhenAbsent === true ? { value: process.cwd(), kind: spec.kind } : null;
 };
 
-const expandTilde = (p: string): string => {
+export const expandTilde = (p: string): string => {
     if (p === "~") return homedir();
     if (p.startsWith("~/")) return join(homedir(), p.slice(2));
     return p;

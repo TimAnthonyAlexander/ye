@@ -21,4 +21,4 @@ export type Decision =
     | { readonly kind: "deny"; readonly message: string }
     | { readonly kind: "prompt"; readonly promptReason?: HeuristicReason };
 
-export type PromptResponse = "allow_once" | "allow_session" | "deny";
+export type PromptResponse = "allow_once" | "allow_session" | "allow_always" | "deny";

@@ -1,5 +1,9 @@
 import { Box, Text, useInput } from "ink";
-import type { PermissionPromptPayload, PromptResponse } from "../permissions/index.ts";
+import {
+    deriveAlwaysRule,
+    type PermissionPromptPayload,
+    type PromptResponse,
+} from "../permissions/index.ts";
 import { prettyPath } from "../ui/path.ts";
 
 interface PermissionPromptProps {
@@ -45,11 +49,14 @@ export const renderArgs = (name: string, args: unknown): string => {
 const truncate = (s: string, max = 200): string => (s.length > max ? `${s.slice(0, max)}…` : s);
 
 export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) => {
+    const always = payload.reason === "tool_use" ? deriveAlwaysRule(payload.toolCall) : null;
+
     useInput((input, key) => {
         if (key.escape) return onRespond("deny");
         const ch = input.toLowerCase();
         if (ch === "y") return onRespond("allow_once");
         if (ch === "s" && payload.reason !== "exit_plan_mode") return onRespond("allow_session");
+        if (ch === "a" && always?.kind === "rule") return onRespond("allow_always");
         if (ch === "n") return onRespond("deny");
     });
 
@@ -129,7 +136,18 @@ export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) 
                 <Text dimColor>auto-flagged: {payload.promptReason.label}</Text>
             )}
             <Text>{truncate(renderArgs(payload.toolCall.name, payload.toolCall.args))}</Text>
-            <Text dimColor>y allow once · s allow for session · n deny</Text>
+            {always?.kind === "rule" && (
+                <Text dimColor>
+                    a saves the rule <Text bold>{always.text}</Text> to your config
+                </Text>
+            )}
+            {always?.kind === "none" && (
+                <Text dimColor>no always-rule offered — {always.reason}</Text>
+            )}
+            <Text dimColor>
+                y allow once · s allow for session
+                {always?.kind === "rule" ? " · a always" : ""} · n deny
+            </Text>
         </Box>
     );
 };
