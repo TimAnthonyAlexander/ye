@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { evaluateStop, PLAN_START_REMINDER, shouldNudgePlanStart } from "./stop.ts";
+import {
+    evaluateBudgetStop,
+    evaluateStop,
+    PLAN_START_REMINDER,
+    resolveBudgetCap,
+    shouldNudgePlanStart,
+} from "./stop.ts";
 import { newShapingFlags, newTurnState, type DenialTrail, type SessionState } from "./state.ts";
 
 const makeState = (overrides: Partial<SessionState> = {}): SessionState => ({
@@ -102,6 +108,40 @@ describe("evaluateStop", () => {
             hadToolCalls: true,
         });
         expect(r).toBe("plan_loop_guard");
+    });
+});
+
+describe("resolveBudgetCap", () => {
+    test("B1 the flag wins over the config value", () => {
+        expect(resolveBudgetCap(1.5, 10)).toBe(1.5);
+    });
+
+    test("B2 config is used when the flag is absent", () => {
+        expect(resolveBudgetCap(null, 10)).toBe(10);
+        expect(resolveBudgetCap(undefined, 10)).toBe(10);
+    });
+
+    test("B3 neither set → no cap", () => {
+        expect(resolveBudgetCap(null, undefined)).toBeUndefined();
+    });
+});
+
+describe("evaluateBudgetStop", () => {
+    test("B4 no cap → never stops", () => {
+        expect(evaluateBudgetStop({ maxUsd: undefined, spentUsd: 999 })).toBeNull();
+        expect(evaluateBudgetStop({ maxUsd: 0, spentUsd: 999 })).toBeNull();
+    });
+
+    test("B5 spend under the cap → keeps going", () => {
+        expect(evaluateBudgetStop({ maxUsd: 1, spentUsd: 0.999 })).toBeNull();
+    });
+
+    test("B6 spend at or over the cap → message names cap and actual spend", () => {
+        const message = evaluateBudgetStop({ maxUsd: 2, spentUsd: 2.3456 });
+        expect(message).not.toBeNull();
+        expect(message).toContain("$2.3456");
+        expect(message).toContain("$2.00");
+        expect(evaluateBudgetStop({ maxUsd: 2, spentUsd: 2 })).not.toBeNull();
     });
 });
 

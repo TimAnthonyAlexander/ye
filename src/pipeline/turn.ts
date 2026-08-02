@@ -17,7 +17,21 @@ import { capturePinnedUpstream, resolveProviderOptions } from "./routing.ts";
 import { runShapers } from "./shapers/index.ts";
 import { resetShapingFlags, type SessionState } from "./state.ts";
 import { executeToolCalls } from "./executeToolCalls.ts";
-import { evaluateStop, PLAN_START_REMINDER, shouldNudgePlanStart } from "./stop.ts";
+import {
+    evaluateBudgetStop,
+    evaluateStop,
+    PLAN_START_REMINDER,
+    shouldNudgePlanStart,
+} from "./stop.ts";
+import { loadSessionUsage } from "../storage/usage.ts";
+import {
+    clearVerifyChain,
+    formatVerifyReminder,
+    recordToolWrite,
+    runVerification,
+    shouldVerify,
+    useVerifyContinuation,
+} from "./verify.ts";
 
 export interface TurnDeps {
     readonly provider: Provider;
@@ -28,6 +42,9 @@ export interface TurnDeps {
     readonly turnIndex: number;
     readonly maxTurns: number;
     readonly signal: AbortSignal;
+    // Injectable so budget tests can supply a spend figure without writing to
+    // the real ~/.ye/usage.jsonl.
+    readonly loadSpentUsd?: (sessionId: string) => Promise<number>;
 }
 
 const buildAssistantMessage = (
@@ -92,6 +109,32 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
 
     yield { type: "turn.start", turnIndex };
     await session.appendEvent({ type: "turn.start", turnIndex });
+
+    // Budget gate. Runs ahead of every model call this turn could make —
+    // including the auto-memory selection call below — so the cap is never
+    // crossed by the very call that discovers it.
+    const budgetCap = config.budget?.maxUsd;
+    if (budgetCap !== undefined) {
+        const loadSpent =
+            deps.loadSpentUsd ??
+            (async (sid: string) => (await loadSessionUsage(sid)).totals.costUsd);
+        const budgetMessage = evaluateBudgetStop({
+            maxUsd: budgetCap,
+            spentUsd: await loadSpent(state.sessionId),
+        });
+        if (budgetMessage !== null) {
+            const budgetEvent: Event = {
+                type: "turn.end",
+                stopReason: "budget_exhausted",
+                message: budgetMessage,
+            };
+            yield budgetEvent;
+            await session.appendEvent(transcriptable(budgetEvent));
+            clearSkillScope(state.sessionId);
+            clearVerifyChain(state.sessionId);
+            return "budget_exhausted";
+        }
+    }
 
     // Auto-memory: populate once per session, gated on a non-empty user query.
     if (state.selectedMemory === null) {
@@ -236,6 +279,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
                 yield errorEvent;
                 await session.appendEvent(transcriptable(errorEvent));
                 clearSkillScope(state.sessionId);
+                clearVerifyChain(state.sessionId);
                 return "error";
             }
             if (out.result.stopReason === "abort") {
@@ -243,6 +287,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
                 yield cancelEvent;
                 await session.appendEvent(transcriptable(cancelEvent));
                 clearSkillScope(state.sessionId);
+                clearVerifyChain(state.sessionId);
                 return "user_cancel";
             }
             break;
@@ -275,7 +320,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         if (decision.kind === "allow") parallelIds.add(call.id);
     }
 
-    yield* executeToolCalls({
+    const toolGen = executeToolCalls({
         toolCalls,
         session,
         state,
@@ -286,6 +331,14 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         signal,
         parallelIds,
     });
+    while (true) {
+        const next = await toolGen.next();
+        if (next.done) break;
+        if (next.value.type === "tool.end") {
+            recordToolWrite(state.sessionId, next.value.name, next.value.result.ok);
+        }
+        yield next.value;
+    }
 
     // Step 9: stop condition check. null from evaluateStop means "continue".
     let stopReason: StopReason =
@@ -304,7 +357,37 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         stopReason = "continue";
     }
 
-    if (stopReason !== "continue") clearSkillScope(state.sessionId);
+    // Post-edit verification: once per chain, at the moment the model would
+    // stop. Running it per tool call would run the test suite on every Edit.
+    // Main chain only — parentSessionId marks a subagent run, and every
+    // explore/general subagent ending its chain would otherwise fire the whole
+    // lint+test suite, several times per parent turn.
+    const verify = config.verify;
+    if (
+        stopReason === "end_turn" &&
+        state.parentSessionId === undefined &&
+        verify !== undefined &&
+        shouldVerify(verify, state.sessionId)
+    ) {
+        const outcome = await runVerification({
+            verify,
+            cwd: state.projectRoot,
+            signal,
+        });
+        if (outcome.kind === "failed") {
+            const retry = useVerifyContinuation(state.sessionId);
+            state.history.push({
+                role: "user",
+                content: formatVerifyReminder(outcome.failure, !retry),
+            });
+            if (retry) stopReason = "continue";
+        }
+    }
+
+    if (stopReason !== "continue") {
+        clearSkillScope(state.sessionId);
+        clearVerifyChain(state.sessionId);
+    }
 
     const turnEnd: Event = { type: "turn.end", stopReason };
     yield turnEnd;

@@ -118,6 +118,10 @@ export const runHeadless = async (config: LoadResult, prompt: string): Promise<v
                         process.stderr.write(`\nye: ${evt.error.message}\n`);
                         hadError = true;
                     }
+                    if (evt.stopReason === "budget_exhausted") {
+                        process.stderr.write(`\nye: ${evt.message ?? "budget cap reached"}\n`);
+                        hadError = true;
+                    }
                     break;
                 case "permission.prompt":
                     evt.respond("deny");

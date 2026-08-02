@@ -4,6 +4,7 @@ export interface CliFlags {
     readonly update: boolean;
     readonly prompt: string | null;
     readonly mode: string | null;
+    readonly maxBudgetUsd: number | null;
     readonly help: boolean;
     readonly version: boolean;
 }
@@ -18,6 +19,7 @@ Options:
   -p, --prompt <text>             Run one turn headlessly and exit
       --mode <AUTO|NORMAL|PLAN>   Permission mode for the session
       --resume [sessionId]        Resume the most recent session, or a specific one
+      --max-budget-usd <n>        Stop the session once it has spent this much (USD)
       --update, --upgrade         Download and install the latest release binary
   -h, --help                      Show this help
   -v, --version                   Show version
@@ -29,6 +31,7 @@ export const parseFlags = (argv: readonly string[]): ParseFlagsResult => {
     let update = false;
     let prompt: string | null = null;
     let mode: string | null = null;
+    let maxBudgetUsd: number | null = null;
     let help = false;
     let version = false;
     for (let i = 0; i < argv.length; i++) {
@@ -64,6 +67,20 @@ export const parseFlags = (argv: readonly string[]): ParseFlagsResult => {
             }
             mode = upper;
             i += 1;
+        } else if (a === "--max-budget-usd") {
+            const next = argv[i + 1];
+            if (!next) {
+                return { ok: false, error: "ye: --max-budget-usd requires a value" };
+            }
+            const parsed = Number(next);
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+                return {
+                    ok: false,
+                    error: `ye: invalid --max-budget-usd "${next}" — must be a positive number`,
+                };
+            }
+            maxBudgetUsd = parsed;
+            i += 1;
         } else if (a === "-h" || a === "--help") {
             help = true;
         } else if (a === "-v" || a === "--version") {
@@ -75,5 +92,8 @@ export const parseFlags = (argv: readonly string[]): ParseFlagsResult => {
             };
         }
     }
-    return { ok: true, flags: { resume, resumeSessionId, update, prompt, mode, help, version } };
+    return {
+        ok: true,
+        flags: { resume, resumeSessionId, update, prompt, mode, maxBudgetUsd, help, version },
+    };
 };

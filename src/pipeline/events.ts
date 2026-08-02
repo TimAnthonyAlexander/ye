@@ -13,6 +13,7 @@ export type StopReason =
     | "max_turns"
     | "context_overflow"
     | "plan_loop_guard"
+    | "budget_exhausted"
     | "user_cancel"
     | "error"
     | "continue"; // non-terminal turn boundary; queryLoop runs another turn
@@ -87,6 +88,9 @@ export type Event =
           readonly type: "turn.end";
           readonly stopReason: StopReason;
           readonly error?: ProviderError;
+          // Human-readable detail for stops that are neither errors nor plain
+          // end-of-turn (currently budget_exhausted).
+          readonly message?: string;
       };
 
 // A subset of Event that's safe to persist to the JSONL transcript (no callbacks).

@@ -21,6 +21,7 @@ describe("parseFlags", () => {
             update: false,
             prompt: null,
             mode: null,
+            maxBudgetUsd: null,
             help: false,
             version: false,
         });
@@ -78,6 +79,18 @@ describe("parseFlags", () => {
         expect(ok(["--resume", "-p"]).resumeSessionId).toBe("-p");
     });
 
+    test("--max-budget-usd takes a positive number", () => {
+        expect(ok(["--max-budget-usd", "2.5"]).maxBudgetUsd).toBe(2.5);
+        expect(ok(["--max-budget-usd", "10"]).maxBudgetUsd).toBe(10);
+    });
+
+    test("--max-budget-usd rejects missing, zero, negative and non-numeric values", () => {
+        expect(err(["--max-budget-usd"])).toBe("ye: --max-budget-usd requires a value");
+        expect(err(["--max-budget-usd", "0"])).toContain('invalid --max-budget-usd "0"');
+        expect(err(["--max-budget-usd", "-3"])).toContain('invalid --max-budget-usd "-3"');
+        expect(err(["--max-budget-usd", "abc"])).toContain('invalid --max-budget-usd "abc"');
+    });
+
     test("--update and --upgrade", () => {
         expect(ok(["--update"]).update).toBe(true);
         expect(ok(["--upgrade"]).update).toBe(true);
@@ -110,6 +123,7 @@ describe("parseFlags", () => {
             update: false,
             prompt: "do a thing",
             mode: "AUTO",
+            maxBudgetUsd: null,
             help: false,
             version: false,
         });
@@ -120,6 +134,7 @@ describe("parseFlags", () => {
             "-p, --prompt",
             "--mode",
             "--resume",
+            "--max-budget-usd",
             "--update, --upgrade",
             "-h, --help",
             "-v, --version",

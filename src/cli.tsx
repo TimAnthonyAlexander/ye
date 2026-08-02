@@ -3,8 +3,9 @@ import "./patch-stdin.ts";
 import { render } from "ink";
 import { App } from "./components/app.tsx";
 import { HELP_TEXT, parseFlags } from "./cli/flags.ts";
-import { ConfigValidationError, loadConfig } from "./config/index.ts";
+import { ConfigValidationError, loadConfig, type LoadResult } from "./config/index.ts";
 import { runHeadless } from "./pipeline/headless.ts";
+import { resolveBudgetCap } from "./pipeline/stop.ts";
 import { refreshUpdateStatus } from "./update/check.ts";
 import { cleanupWindowsOldBinary, runSelfUpdate, UpdateError } from "./update/install.ts";
 import { CURRENT_VERSION } from "./update/version.ts";
@@ -51,7 +52,12 @@ const main = async (): Promise<void> => {
             return;
         }
         await cleanupWindowsOldBinary();
-        const config = await loadConfig();
+        const loaded = await loadConfig();
+        const budgetCap = resolveBudgetCap(flags.maxBudgetUsd, loaded.config.budget?.maxUsd);
+        const config: LoadResult =
+            budgetCap === loaded.config.budget?.maxUsd
+                ? loaded
+                : { ...loaded, config: { ...loaded.config, budget: { maxUsd: budgetCap } } };
         if (flags.prompt !== null) {
             await runHeadless(config, flags.prompt);
             process.exit(0);

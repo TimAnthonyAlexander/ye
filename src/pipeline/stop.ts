@@ -34,6 +34,29 @@ export const evaluateStop = ({
     return null;
 };
 
+export interface BudgetInput {
+    readonly maxUsd: number | undefined;
+    readonly spentUsd: number;
+}
+
+// Flag beats config.
+export const resolveBudgetCap = (
+    flagUsd: number | null | undefined,
+    configUsd: number | undefined,
+): number | undefined => flagUsd ?? configUsd;
+
+// Checked before the model call, not after: the point is to stop before the
+// spend crosses the cap, so a session already at or past it never dispatches.
+// Returns the user-facing message, or null when there is budget left.
+export const evaluateBudgetStop = ({ maxUsd, spentUsd }: BudgetInput): string | null => {
+    if (maxUsd === undefined || maxUsd <= 0) return null;
+    if (spentUsd < maxUsd) return null;
+    return (
+        `Budget cap reached: $${spentUsd.toFixed(4)} spent this session against a $${maxUsd.toFixed(2)} cap. ` +
+        `Stopped before the next model call. Raise the cap with --max-budget-usd or budget.maxUsd to keep going.`
+    );
+};
+
 // Injected as a pseudo-user turn when the model stalls right after a plan is
 // approved. Approval IS the go-ahead — the model must not wait for more.
 export const PLAN_START_REMINDER = `<system-reminder>
