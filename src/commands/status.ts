@@ -1,5 +1,7 @@
 import { effectiveSettings } from "../config/detect.ts";
+import { getMonitorManager } from "../monitors/index.ts";
 import { estimateTokens } from "../pipeline/shapers/tokens.ts";
+import { runningMonitorSummary } from "./monitors.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
 
 const row = (label: string, value: string): string => `  ${label.padEnd(17)}${value}`;
@@ -21,6 +23,7 @@ export const StatusCommand: SlashCommand = {
                 row("cwd", ctx.cwd),
                 row("context", `${used} / ${ctx.contextWindow} tokens (${pct}%)`),
                 row("background", bg === 0 ? "none" : `${bg} running`),
+                row("monitors", runningMonitorSummary(getMonitorManager(ctx.sessionId).list())),
                 ...effectiveSettings(ctx.config, ctx.projectRoot).map((entry) =>
                     row(entry.key, entry.origin ? `${entry.value} (${entry.origin})` : entry.value),
                 ),

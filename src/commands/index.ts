@@ -14,6 +14,7 @@ import { LspCommand } from "./lsp.ts";
 import { MemoryCommand } from "./memory.ts";
 import { ModeCommand } from "./mode.ts";
 import { ModelCommand } from "./model.ts";
+import { MonitorsCommand } from "./monitors.ts";
 import { PermissionsCommand } from "./permissions.ts";
 import { ProviderCommand } from "./provider.ts";
 import { ResumeCommand } from "./resume.ts";
@@ -79,6 +80,7 @@ const buildBuiltins = (): readonly SlashCommand[] => {
         MemoryCommand,
         PermissionsCommand,
         AgentsCommand,
+        MonitorsCommand,
         DoctorCommand,
         LspCommand,
         ModeCommand,
