@@ -5,6 +5,7 @@ import { CompactCommand } from "./compact.ts";
 import { ContextCommand } from "./context.ts";
 import { CopyCommand } from "./copy.ts";
 import { CostCommand } from "./cost.ts";
+import { DiffCommand } from "./diff.ts";
 import { DoctorCommand } from "./doctor.ts";
 import { ExitCommand } from "./exit.ts";
 import { ExportCommand } from "./export.ts";
@@ -22,6 +23,7 @@ import { RewindCommand } from "./rewind.ts";
 import { RoutingCommand } from "./routing.ts";
 import { StatusCommand } from "./status.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
+import { UsageCommand } from "./usage.ts";
 
 export type {
     OutputSink,
@@ -74,6 +76,8 @@ const buildBuiltins = (): readonly SlashCommand[] => {
         CompactCommand,
         CopyCommand,
         CostCommand,
+        UsageCommand,
+        DiffCommand,
         StatusCommand,
         BtwCommand,
         ExportCommand,

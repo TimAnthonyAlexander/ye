@@ -107,7 +107,9 @@ A line that is exactly `@<path>` inlines that file, resolved relative to the imp
 
 Auto-memory: LLM-based selection from `~/.ye/projects/<hash>/memory/*.md`, `~/.ye/memory/*.md` and `~/.ye/MEMORY.md`. No embeddings, no vector DB.
 
-Slash commands: `src/commands/`. Built-ins: `/help /clear /context /compact /copy /cost /status /btw /export /memory /permissions /agents /doctor /mode /provider /model /routing /resume /rewind /init /exit`.
+Slash commands: `src/commands/`. Built-ins: `/help /clear /context /compact /copy /cost /usage /diff /status /btw /export /memory /permissions /agents /monitors /doctor /lsp /mode /provider /model /routing /resume /rewind /init /exit`.
+
+`/cost` is this session plus a lifetime total; `/usage` is the lifetime log split by provider and by model over three windows (24h, 7d, all time), from the same `~/.ye/usage.jsonl`. `/diff` renders `git diff HEAD` for the project root in the same red/green/`… N unchanged lines` language as the inline Edit diffs, capped so a large diff cannot flood the scrollback. `/help` lists commands **and** keybindings — the home-screen tip promises both.
 
 User-defined markdown commands load from `<projectRoot>/.ye/commands/` and `~/.ye/commands/`, recursively, with subdirectories namespaced by `:` (`git/sync.md` → `/git:sync`). Frontmatter `description` and `argument-hint`; the body is sent as a hidden prompt with `$ARGUMENTS` and `$0..$N` substitution. Precedence: **built-in > project markdown > user markdown > skill**.
 
@@ -165,6 +167,7 @@ Precedence, in order:
 - Subagents run in-process (no sandboxing), write sidechain transcripts under `<sessionDir>/sidechains/`, and return a single summary string to the parent.
 - Self-update: `ye --update`. Background check on launch surfaces in the status bar.
 - Ctrl+C cancels reverse-search, then clears input, then aborts the stream — never exits. Use `/exit` to quit.
-- Key bindings: Shift+Tab cycles mode, Ctrl+O toggles tool-call group expansion, Ctrl+G composes the buffer in `$VISUAL`/`$EDITOR`, Ctrl+R searches cross-session prompt history. `!cmd` runs a one-off shell command, `@` opens the file-mention picker.
+- Key bindings: Shift+Tab cycles mode, Ctrl+O toggles tool-call group expansion, Ctrl+G composes the buffer in `$VISUAL`/`$EDITOR`, Ctrl+R searches cross-session prompt history. `!cmd` runs a one-off shell command, `@` opens the file-mention picker, `/` opens the command picker (↑↓ move, Enter/Tab complete, Esc dismiss).
+- Readline editing in the input: Ctrl+A/E move to the start/end of the **logical** line (delimited by `\n`, not a wrapped visual row), Ctrl+K/U kill to the end/start of it, Ctrl+Y yanks the last kill. One kill slot, last kill wins; an empty kill leaves it alone. Home/End are Ctrl+A/Ctrl+E — Ink's `Key` has no flag for either and blanks their `input`, so `patch-stdin.ts` rewrites both sequences (`src/ui/keySequences.ts`) before Ink sees them. That rewrite is why `permissionPrompt` ignores Ctrl chords: Ink reports one as the bare letter, and Home would otherwise answer `a` = allow_always.
 - Prompt suggestions (`suggestions.enabled`, `src/suggest/`): after a clean chain, one predicted next prompt is generated on the cheap model with reasoning forced off, capped at 24 tokens, and shown as dim ghost text in an empty input. Tab or Right accepts it into the buffer without submitting; any keystroke, Esc, or a paste dismisses it. Tab precedence is mention accept → command completion → suggestion accept, so it can never shadow the pickers. Generation is fire-and-forget and fails silently — a failed suggestion must never surface an error.
 - `patch-stdin.ts` rewrites Kitty/modifyOtherKeys sequences for Ink. Its terminal write is guarded by `isTTY` — unguarded, it prefixed piped `--help`/`--version`/`-p` output with a raw escape.

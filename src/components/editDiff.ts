@@ -73,7 +73,7 @@ const computeOps = (oldLines: readonly string[], newLines: readonly string[]): r
     return ops.reverse();
 };
 
-const gapMarker = (count: number): DiffSegment => ({
+export const gapMarker = (count: number): DiffSegment => ({
     type: "gap",
     line: `… ${count} unchanged line${count === 1 ? "" : "s"}`,
 });

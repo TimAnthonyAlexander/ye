@@ -27,14 +27,18 @@ export {
 } from "./checkpoints.ts";
 export { appendHistory, loadHistory } from "./history.ts";
 export {
+    aggregateUsageWindows,
     appendUsageRecord,
     loadSessionUsage,
     loadUsageTotals,
+    loadUsageWindows,
     type CallKindTotals,
+    type ProviderModelTotals,
     type SessionUsage,
     type UsageCallKind,
     type UsageRecord,
     type UsageTotals,
+    type UsageWindows,
 } from "./usage.ts";
 export { _resetProjectCache, getProjectId, type ProjectId } from "./project.ts";
 export {
