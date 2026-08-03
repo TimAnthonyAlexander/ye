@@ -14,9 +14,16 @@ import {
 } from "../subagents/background.ts";
 import { destroyBackgroundManager, getBackgroundManager } from "../tools/bash/background.ts";
 import {
+    destroyMonitorManager,
+    getMonitorManager,
+    _resetMonitorTimings,
+    _setMonitorTimings,
+} from "../monitors/index.ts";
+import {
     anyBackgroundRunning,
     waitForAnyBackgroundCompletion,
     WAKEUP_REMINDERS,
+    type BackgroundKind,
 } from "./backgroundWakeup.ts";
 
 const stubProvider: Provider = {
@@ -69,13 +76,29 @@ const finishSubagent = (id: string): void => {
     task.summary = "all clear";
 };
 
+// `true` exits 0 on the first poll, so the monitor reaches condition_met at
+// once; `false` exits 1 forever, so it stays running for the whole test.
+const startMonitor = (condition: string): string =>
+    getMonitorManager(sessionId).start({ reason: "watch", condition }, ".");
+
+const waitUntil = async (predicate: () => boolean): Promise<void> => {
+    for (let i = 0; i < 400; i += 1) {
+        if (predicate()) return;
+        await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error("predicate never became true");
+};
+
 beforeEach(() => {
     sessionId = uniqueSession();
+    _setMonitorTimings({ intervalFloorMs: 20, pollTimeoutMs: 5_000 });
 });
 
 afterEach(() => {
     destroyBackgroundManager(sessionId);
     destroyBackgroundSubagentManager(sessionId);
+    destroyMonitorManager(sessionId);
+    _resetMonitorTimings();
 });
 
 describe("anyBackgroundRunning", () => {
@@ -90,6 +113,11 @@ describe("anyBackgroundRunning", () => {
 
     test("true for a running subagent", () => {
         startSubagent();
+        expect(anyBackgroundRunning(sessionId)).toBe(true);
+    });
+
+    test("true for a running monitor", () => {
+        startMonitor("false");
         expect(anyBackgroundRunning(sessionId)).toBe(true);
     });
 });
@@ -129,6 +157,45 @@ describe("waitForAnyBackgroundCompletion", () => {
         expect(drained.map((t) => t.id)).toContain(subagentId);
     });
 
+    test("a finished monitor wakes up even while a long bash task still runs", async () => {
+        startLongBashTask();
+        startMonitor("true");
+
+        const kind = await waitForAnyBackgroundCompletion(sessionId, new AbortController().signal);
+        expect(kind).toBe("monitor");
+    });
+
+    // With all three kinds holding a result, a fixed scan order would report the
+    // same kind forever and the other two would never wake the agent.
+    test("the three-way race reports every kind — none starves", async () => {
+        getBackgroundManager(sessionId).start("true", ".", 0, "");
+        finishSubagent(startSubagent());
+        startMonitor("true");
+        await waitUntil(
+            () =>
+                getBackgroundManager(sessionId).hasUndelivered() &&
+                getMonitorManager(sessionId).hasUndelivered(),
+        );
+
+        const seen: BackgroundKind[] = [];
+        for (let i = 0; i < 3; i += 1) {
+            seen.push(
+                await waitForAnyBackgroundCompletion(sessionId, new AbortController().signal),
+            );
+        }
+
+        expect([...seen].sort()).toEqual(["bash", "monitor", "subagent"]);
+    });
+
+    test("leaves the completed monitor undelivered for the drain to pick up", async () => {
+        const monitorId = startMonitor("true");
+
+        await waitForAnyBackgroundCompletion(sessionId, new AbortController().signal);
+
+        const drained = getMonitorManager(sessionId).drainCompleted();
+        expect(drained.map((t) => t.id)).toContain(monitorId);
+    });
+
     test("rejects when the signal aborts, so user input takes over", async () => {
         startSubagent();
         const ctrl = new AbortController();
@@ -149,12 +216,26 @@ describe("waitForAnyBackgroundCompletion", () => {
     });
 });
 
+describe("monitor teardown", () => {
+    test("destroyMonitorManager kills a running monitor", async () => {
+        startMonitor("false");
+        expect(getMonitorManager(sessionId).runningCount()).toBe(1);
+
+        destroyMonitorManager(sessionId);
+
+        expect(getMonitorManager(sessionId).runningCount()).toBe(0);
+        expect(getMonitorManager(sessionId).list()).toHaveLength(0);
+        expect(anyBackgroundRunning(sessionId)).toBe(false);
+    });
+});
+
 describe("WAKEUP_REMINDERS", () => {
     // These are injected right before the result itself, so they must not send
     // the model off to fetch what it already has.
-    test("neither reminder tells the model to fetch the output", () => {
+    test("no reminder tells the model to fetch the output", () => {
         expect(WAKEUP_REMINDERS.bash).toContain("do not call BashOutput");
         expect(WAKEUP_REMINDERS.subagent).toContain("do not call TaskOutput");
+        expect(WAKEUP_REMINDERS.monitor).toContain("do not call Monitor");
         expect(WAKEUP_REMINDERS.bash).not.toContain("check the output");
         expect(WAKEUP_REMINDERS.subagent).not.toContain("check its output");
     });

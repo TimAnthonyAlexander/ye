@@ -144,6 +144,7 @@ export async function* executeToolCalls(deps: ExecuteToolCallsDeps): AsyncGenera
                         provider,
                         config,
                         activeModel,
+                        headless: state.headless,
                         log: () => {},
                         emitProgress: (lines) => {
                             queue.push({ kind: "progress", id: call.id, lines });
@@ -389,6 +390,7 @@ export async function* executeToolCalls(deps: ExecuteToolCallsDeps): AsyncGenera
             provider,
             config,
             activeModel,
+            headless: state.headless,
             log: () => {},
             emitProgress: (lines) => {
                 progressQueue.push(lines);

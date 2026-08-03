@@ -13,6 +13,7 @@ import { loadSessionUsage } from "../storage/usage.ts";
 import { getProvider, isMissingKeyError, type Provider } from "../providers/index.ts";
 import { destroyBackgroundManager } from "../tools/bash/background.ts";
 import { destroyBackgroundSubagentManager } from "../subagents/background.ts";
+import { destroyMonitorManager } from "../monitors/index.ts";
 import {
     anyBackgroundRunning,
     waitForAnyBackgroundCompletion,
@@ -230,10 +231,11 @@ export const runHeadless = async (
         stopReason = "error";
         hadError = true;
     } finally {
-        // Kills any still-running background shell command or subagent, so
-        // nothing outlives the process.
+        // Kills any still-running background shell command, subagent or
+        // monitor, so nothing outlives the process.
         destroyBackgroundManager(state.sessionId);
         destroyBackgroundSubagentManager(state.sessionId);
+        destroyMonitorManager(state.sessionId);
         await session.close();
     }
 

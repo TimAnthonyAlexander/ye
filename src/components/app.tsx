@@ -113,6 +113,7 @@ import {
     type BackgroundSubagentTask,
     type SubagentItem,
 } from "../subagents/background.ts";
+import { destroyMonitorManager, getMonitorManager } from "../monitors/index.ts";
 import { Home, HOME_MIN_COLS, HOME_MIN_ROWS } from "./home.tsx";
 import { LspOffer } from "./lspOffer.tsx";
 import { pickTip } from "./homeTips.ts";
@@ -377,6 +378,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     const [usedTokens, setUsedTokens] = useState(0);
     const [contextWindow, setContextWindow] = useState(0);
     const [bgTaskCount, setBgTaskCount] = useState(0);
+    const [monitorCount, setMonitorCount] = useState(0);
     // null = normal chat view, "main" = tabs visible, task id = inside subagent
     const [subagentView, setSubagentView] = useState<string | null>(null);
     const [subagentTasks, setSubagentTasks] = useState<readonly BackgroundSubagentTask[]>([]);
@@ -482,6 +484,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             const bashCount = getBackgroundManager(s.sessionId).runningCount();
             const subagentCount = getBackgroundSubagentManager(s.sessionId).runningCount();
             setBgTaskCount(bashCount + subagentCount);
+            setMonitorCount(getMonitorManager(s.sessionId).runningCount());
         }
     };
 
@@ -661,6 +664,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         if (oldSession) {
             destroyBackgroundManager(oldSession.sessionId);
             destroyBackgroundSubagentManager(oldSession.sessionId);
+            destroyMonitorManager(oldSession.sessionId);
             await oldSession.close().catch(() => {});
         }
         state.history = [];
@@ -675,6 +679,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         setUsedTokens(0);
         setSessionTokenUsage({ input: 0, output: 0, cached: 0, costUsd: 0 });
         setBgTaskCount(0);
+        setMonitorCount(0);
         titleGeneratedRef.current = false;
         resetTerminalTitle();
         bumpChatKey();
@@ -1343,6 +1348,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             if (s) {
                 destroyBackgroundManager(s.sessionId);
                 destroyBackgroundSubagentManager(s.sessionId);
+                destroyMonitorManager(s.sessionId);
             }
             s?.close().catch(() => {});
         };
@@ -2097,6 +2103,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 tokenUsage={tokenUsage}
                 sessionTokenUsage={sessionTokenUsage}
                 bgTaskCount={bgTaskCount}
+                monitorCount={monitorCount}
             />
             {subagentView !== null && (
                 <SubagentTabBar

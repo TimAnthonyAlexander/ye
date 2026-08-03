@@ -8,6 +8,7 @@ import { narrowAllowedTools } from "../tools/pool.ts";
 import { clearSkillScope, getSkillScope } from "../skills/scope.ts";
 import { getBackgroundManager, formatBackgroundNotice } from "../tools/bash/background.ts";
 import { getBackgroundSubagentManager } from "../subagents/background.ts";
+import { getMonitorManager, monitorCompletionNotice } from "../monitors/index.ts";
 import { assemble } from "./assemble.ts";
 import { type CollectedToolCall } from "./dispatch.ts";
 import { transcriptable, type Event, type StopReason } from "./events.ts";
@@ -185,6 +186,17 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         state.history.push({
             role: "user",
             content: `<system-reminder>\n${body}\n${runningNote}\n</system-reminder>`,
+        });
+    }
+
+    // Drain finished monitors. The notice carries the outcome verbatim because
+    // the outcome is what the model gets wrong: gave_up says only that the
+    // condition was never observed true, never that the watched job failed.
+    const monitorMgr = getMonitorManager(state.sessionId);
+    for (const task of monitorMgr.drainCompleted()) {
+        state.history.push({
+            role: "user",
+            content: `<system-reminder>\n${monitorCompletionNotice(task)}\n</system-reminder>`,
         });
     }
 

@@ -1102,3 +1102,74 @@ describe("session transcript", () => {
         expect(endEv).toBeDefined();
     });
 });
+
+// ===========================================================================
+// ToolContext population
+// ===========================================================================
+
+describe("ToolContext", () => {
+    const captureCtx = (): { readonly seen: ToolContext[]; readonly tool: Tool } => {
+        const seen: ToolContext[] = [];
+        return {
+            seen,
+            tool: mkTool({
+                name: "ctx_tool",
+                execute: async (_args: unknown, ctx: ToolContext) => {
+                    seen.push(ctx);
+                    return { ok: true, value: "ok" } as ToolResult;
+                },
+            }),
+        };
+    };
+
+    test("headless mirrors state.headless on the sequential path", async () => {
+        const { seen, tool } = captureCtx();
+        toolMap.set("ctx_tool", tool);
+
+        await collect(
+            executeToolCalls(
+                baseDeps({
+                    toolCalls: [mkCall("cx1", "ctx_tool")],
+                    state: mkState({ headless: true }),
+                }),
+            ),
+        );
+
+        expect(seen).toHaveLength(1);
+        expect(seen[0]!.headless).toBe(true);
+    });
+
+    test("headless mirrors state.headless on the parallel path", async () => {
+        const { seen, tool } = captureCtx();
+        toolMap.set("ctx_tool", tool);
+
+        await collect(
+            executeToolCalls(
+                baseDeps({
+                    toolCalls: [mkCall("cx2", "ctx_tool")],
+                    state: mkState({ headless: true }),
+                    parallelIds: ["cx2"],
+                }),
+            ),
+        );
+
+        expect(seen).toHaveLength(1);
+        expect(seen[0]!.headless).toBe(true);
+    });
+
+    test("headless is false for an interactive session", async () => {
+        const { seen, tool } = captureCtx();
+        toolMap.set("ctx_tool", tool);
+
+        await collect(
+            executeToolCalls(
+                baseDeps({
+                    toolCalls: [mkCall("cx3", "ctx_tool")],
+                    state: mkState({ headless: false }),
+                }),
+            ),
+        );
+
+        expect(seen[0]!.headless).toBe(false);
+    });
+});

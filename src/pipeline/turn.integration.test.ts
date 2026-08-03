@@ -12,6 +12,12 @@ import type {
     ProviderInput,
 } from "../providers/index.ts";
 import type { SessionHandle, SessionEvent } from "../storage/index.ts";
+import {
+    destroyMonitorManager,
+    getMonitorManager,
+    _resetMonitorTimings,
+    _setMonitorTimings,
+} from "../monitors/index.ts";
 import type { Event, StopReason } from "./events.ts";
 import { newShapingFlags, newTurnState, type SessionState } from "./state.ts";
 import { runTurn } from "./turn.ts";
@@ -299,5 +305,89 @@ describe("runTurn integration", () => {
         // No actual Edit execution happened; stopReason is "continue" (tool calls
         // were present so evaluateStop returns null → "continue").
         expect(stopReason).toBe("continue");
+    });
+});
+
+describe("monitor drain", () => {
+    const monitorSession = "monitor-drain-session";
+
+    beforeEach(() => {
+        _setMonitorTimings({ intervalFloorMs: 20, pollTimeoutMs: 5_000 });
+    });
+
+    afterEach(() => {
+        destroyMonitorManager(monitorSession);
+        _resetMonitorTimings();
+    });
+
+    const runOneTurn = async (state: SessionState): Promise<void> => {
+        await collect(
+            runTurn({
+                provider: new MockProvider([
+                    { type: "text.delta", text: "ok" },
+                    { type: "stop", reason: "end_turn" },
+                ]),
+                config: makeConfig(),
+                session: makeSession(),
+                state,
+                turnState: newTurnState(),
+                turnIndex: 0,
+                maxTurns: 100,
+                signal: new AbortController().signal,
+            }),
+        );
+    };
+
+    test("a finished monitor reaches history exactly once as a system-reminder", async () => {
+        const mgr = getMonitorManager(monitorSession);
+        const id = mgr.start({ reason: "wait for the build", condition: "true" }, workDir);
+        for (let i = 0; i < 400 && !mgr.hasUndelivered(); i += 1) {
+            await new Promise((r) => setTimeout(r, 10));
+        }
+
+        const state = makeState(workDir, {
+            sessionId: monitorSession,
+            history: [{ role: "user", content: "hello" }],
+        });
+
+        await runOneTurn(state);
+        const notices = state.history.filter(
+            (m) => typeof m.content === "string" && m.content.includes(id),
+        );
+        expect(notices).toHaveLength(1);
+        expect(notices[0]!.role).toBe("user");
+        expect(notices[0]!.content).toContain("<system-reminder>");
+        expect(notices[0]!.content).toContain("OUTCOME condition_met");
+
+        await runOneTurn(state);
+        expect(
+            state.history.filter((m) => typeof m.content === "string" && m.content.includes(id)),
+        ).toHaveLength(1);
+    });
+
+    // gave_up must read as "never observed true", never as a verdict on the job.
+    test("a gave_up monitor is drained with its outcome intact", async () => {
+        const mgr = getMonitorManager(monitorSession);
+        const id = mgr.start(
+            { reason: "wait for the build", condition: "false", giveUpAfterSec: 0 },
+            workDir,
+        );
+        for (let i = 0; i < 400 && !mgr.hasUndelivered(); i += 1) {
+            await new Promise((r) => setTimeout(r, 10));
+        }
+
+        const state = makeState(workDir, {
+            sessionId: monitorSession,
+            history: [{ role: "user", content: "hello" }],
+        });
+        await runOneTurn(state);
+
+        const notice = state.history.find(
+            (m) => typeof m.content === "string" && m.content.includes(id),
+        );
+        expect(notice).toBeDefined();
+        expect(notice!.content).toContain("OUTCOME gave_up");
+        expect(notice!.content).toContain("the condition was NEVER true at any poll");
+        expect(notice!.content).toContain("Check it directly");
     });
 });
