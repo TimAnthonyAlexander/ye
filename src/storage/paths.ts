@@ -11,6 +11,20 @@ export const USER_NOTES_FILE = join(YE_DIR, "CLAUDE.md");
 export const MANAGED_NOTES_FILE = "/etc/ye/CLAUDE.md";
 export const FREE_MODELS_CACHE_FILE = join(YE_DIR, "free-models.json");
 
+// Language servers are installed under ~/.ye rather than into the user's global
+// environment: `rm -rf ~/.ye/lsp` is a complete uninstall, and a bad install
+// cannot break a toolchain Ye does not own. Node-based servers get a private
+// package root; compiled ones land in bin/.
+export const LSP_DIR = join(YE_DIR, "lsp");
+export const LSP_BIN_DIR = join(LSP_DIR, "bin");
+export const LSP_NODE_DIR = join(LSP_DIR, "node");
+export const LSP_NODE_BIN_DIR = join(LSP_NODE_DIR, "node_modules", ".bin");
+export const LSP_STATE_FILE = join(LSP_DIR, "state.json");
+
+// Directories to probe before $PATH when resolving a server binary, so a
+// Ye-installed server wins over a stale system one.
+export const lspSearchDirs = (): readonly string[] => [LSP_BIN_DIR, LSP_NODE_BIN_DIR];
+
 export const getProjectDir = (projectId: string): string => join(PROJECTS_DIR, projectId);
 export const getProjectMetaPath = (projectId: string): string =>
     join(getProjectDir(projectId), "meta.json");
