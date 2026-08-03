@@ -10,6 +10,7 @@ import { ExitCommand } from "./exit.ts";
 import { ExportCommand } from "./export.ts";
 import { buildHelpCommand } from "./help.ts";
 import { InitCommand } from "./init.ts";
+import { LspCommand } from "./lsp.ts";
 import { MemoryCommand } from "./memory.ts";
 import { ModeCommand } from "./mode.ts";
 import { ModelCommand } from "./model.ts";
@@ -22,6 +23,7 @@ import { StatusCommand } from "./status.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
 
 export type {
+    OutputSink,
     PickerOption,
     PickerPayload,
     SlashCommand,
@@ -78,6 +80,7 @@ const buildBuiltins = (): readonly SlashCommand[] => {
         PermissionsCommand,
         AgentsCommand,
         DoctorCommand,
+        LspCommand,
         ModeCommand,
         ProviderCommand,
         ModelCommand,

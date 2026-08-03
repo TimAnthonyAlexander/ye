@@ -11,10 +11,13 @@ import {
     parseSlash,
     setExtraCommands,
     setMarkdownCommands,
+    type OutputSink,
     type PickerPayload,
     type SlashCommandContext,
 } from "../commands/index.ts";
 import { runAside } from "../commands/aside.ts";
+import { runInstall } from "../commands/lsp.ts";
+import { type InstallOffer, pendingOffers, recordDecline } from "../lsp/install/index.ts";
 import { runManualCompact } from "../pipeline/shapers/manualCompact.ts";
 import {
     buildSkillToolDescription,
@@ -111,6 +114,7 @@ import {
     type SubagentItem,
 } from "../subagents/background.ts";
 import { Home, HOME_MIN_COLS, HOME_MIN_ROWS } from "./home.tsx";
+import { LspOffer } from "./lspOffer.tsx";
 import { pickTip } from "./homeTips.ts";
 import { KeyPrompt } from "./keyPrompt.tsx";
 import { MentionPicker } from "./mentionPicker.tsx";
@@ -298,6 +302,9 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     );
     const [pendingPicker, setPendingPicker] = useState<PendingPicker | null>(null);
     const [pendingKeyPrompt, setPendingKeyPrompt] = useState<PendingKeyPrompt | null>(null);
+    // At most one language-server install offer, surfaced once per session
+    // start. Never a queue: the second one waits for the next session.
+    const [lspOffer, setLspOffer] = useState<InstallOffer | null>(null);
     const [todos, setTodos] = useState<readonly TodoItem[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [bootError, setBootError] = useState<string | null>(null);
@@ -517,6 +524,31 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
 
     const addSystemMessage = (text: string): void => {
         setItems((prev) => [...prev, { kind: "system", id: newChatItemId(), content: text }]);
+    };
+
+    // Progress lines are batched into whole chat items rather than mutated in
+    // place: outside a stream every item is committed to Ink's <Static> as soon
+    // as it settles, and a committed item never re-renders.
+    const streamOutput = (): OutputSink => {
+        let buffer: string[] = [];
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const flush = (): void => {
+            timer = null;
+            if (buffer.length === 0) return;
+            const text = buffer.join("\n");
+            buffer = [];
+            addSystemMessage(text);
+        };
+        return {
+            write: (line: string) => {
+                buffer.push(line);
+                if (timer === null) timer = setTimeout(flush, 400);
+            },
+            close: () => {
+                if (timer !== null) clearTimeout(timer);
+                flush();
+            },
+        };
     };
 
     // "allow_always" never reaches the pipeline: it is a UI-level shorthand for
@@ -971,6 +1003,36 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         });
     };
 
+    // The banner is an offer, not a gate — this only runs when the user asks
+    // for the chooser, and only an explicit "install" installs anything. Esc,
+    // "not now" and simply typing all leave the machine untouched.
+    const openLspOffer = async (offer: InstallOffer): Promise<void> => {
+        const choice = await pick({
+            title: `Install a language server for ${offer.displayName}?`,
+            options: [
+                { id: "install", label: "Install now", description: offer.command },
+                { id: "later", label: "Not now", description: "may be offered again next session" },
+                {
+                    id: "never",
+                    label: `Never for ${offer.language}`,
+                    description: "remembered across sessions; /lsp install undoes it",
+                },
+            ],
+            initialId: "later",
+        });
+        setLspOffer(null);
+        if (choice === "never") {
+            recordDecline(offer.language);
+            addSystemMessage(
+                `Ye will not offer a ${offer.language} language server again. \`/lsp install ${offer.language}\` still works.`,
+            );
+            return;
+        }
+        if (choice !== "install") return;
+        const result = await runInstall(offer.language, { addSystemMessage, streamOutput });
+        if (result.kind === "error") setError(result.message);
+    };
+
     const askAside = async (question: string): Promise<void> => {
         const state = stateRef.current;
         const provider = providerRef.current;
@@ -1081,6 +1143,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             rewind: runRewindFlow,
             exitApp: exit,
             addSystemMessage,
+            streamOutput,
             sendHiddenPrompt,
             getLastAssistantText: () => {
                 const history = stateRef.current?.history ?? [];
@@ -1217,6 +1280,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 setContextWindow(state.contextWindow);
                 setUsedTokens(estimateTokens(state.history));
                 refreshHome(proj.id);
+
+                // One offer, once, at session start — this effect runs on mount
+                // only, so /resume, /clear and a rewind can never re-trigger it.
+                // Headless exits in cli.tsx before App is rendered, and a
+                // non-TTY run is not interactive, so neither can reach it.
+                const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
+                const offer = pendingOffers(built.cfg, state.projectRoot, { interactive })[0];
+                if (offer !== undefined) setLspOffer(offer);
 
                 // SessionStart hook: fire-and-forget after provider + session are ready.
                 void runEventHooks(
@@ -1880,6 +1951,16 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         termCols >= HOME_MIN_COLS &&
         termRows >= HOME_MIN_ROWS;
 
+    // The offer lives on the start screen only: once the user has sent
+    // anything, it stops being an offer and starts being clutter.
+    const showLspOffer =
+        lspOffer !== null &&
+        items.length === 0 &&
+        !pendingPrompt &&
+        !pendingUserQuestion &&
+        !pendingPicker &&
+        !pendingKeyPrompt;
+
     return (
         <Box flexDirection="column">
             {showHome && (
@@ -1945,6 +2026,14 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                             ))}
                             <Text dimColor>↑ to edit</Text>
                         </Box>
+                    )}
+                    {showLspOffer && lspOffer !== null && (
+                        <LspOffer
+                            offer={lspOffer}
+                            onOpen={() => {
+                                void openLspOffer(lspOffer);
+                            }}
+                        />
                     )}
                     {pendingPrompt ? (
                         <PermissionPrompt

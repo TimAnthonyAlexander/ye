@@ -22,6 +22,13 @@ export interface PickerPayload {
     readonly initialId?: string;
 }
 
+// Output that arrives over time (an install log). Lines are coalesced into
+// chat messages as they arrive; `close` flushes whatever is left.
+export interface OutputSink {
+    write(line: string): void;
+    close(): void;
+}
+
 export interface SlashCommandContext {
     readonly cwd: string;
     readonly projectRoot: string;
@@ -46,6 +53,8 @@ export interface SlashCommandContext {
     rewind(): Promise<boolean>;
     exitApp(): void;
     addSystemMessage(text: string): void;
+    // Open a sink for a long-running command's output.
+    streamOutput(): OutputSink;
     // Send a synthetic user prompt to the model without surfacing it in the
     // chat UI. Used by commands like /init that want to drive the agent loop
     // without polluting the visible transcript with internal instructions.
