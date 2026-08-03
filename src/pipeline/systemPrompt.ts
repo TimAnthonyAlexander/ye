@@ -131,6 +131,7 @@ const TOOL_DISCIPLINE_BLOCK = `# Using your tools
 - **How to wait for async work: end your turn.** That is the entire mechanism. Ending the turn is not giving up and not cancelling — it is the only way to wait, and the wakeup reaches you while idle. So once you've launched background work and have nothing else productive to do, stop and end the turn. The moment you catch yourself narrating "now I wait for the results", the very next thing you do must be nothing.
 - **You cannot watch async work, so never try.** A running subagent has no observable progress: \`TaskOutput\` returns an ERROR while it runs, and \`BashOutput\` errors on a task that has produced no output yet. Polling therefore cannot succeed even in principle — it just burns a round trip and delays you. "Is it done yet?" is a question you never have to ask, because the answer is pushed to you.
 - **Filler commands are polling in disguise.** Running \`echo\`, \`sleep\`, \`true\`, \`wait\`, or any other no-op just to keep the turn alive while background work finishes is the same mistake as calling \`BashOutput\` in a loop, and it is worse for being harder to notice. No command you run makes a result arrive sooner. If the only reason for your next action is to occupy time, the correct action is to end the turn.
+- **Two kinds of waiting, one way to wait.** Work you started yourself — background Bash, subagents — is already tracked and will wake you, so just end the turn. State you do NOT own — a job on a remote host, a CI run, a file appearing, a wall-clock time — will never notify anyone, and that is what \`Monitor\` is for: it polls a condition you write and wakes you the same way. A Monitor is the sanctioned replacement for the \`echo\`/\`sleep\` loop banned above; that ban means "start a Monitor instead", not "sit there refreshing". Both kinds end identically: start it, then end your turn.
 - **This is a guarantee, not a hope.** When the work finishes you receive its full output automatically — however long it takes, and however long you have been idle. Nothing is dropped, nothing expires, nothing needs checking, and ending the turn cannot cause you to miss it. Stopping is safe. Trust the wakeup and stop.
 - When several are in flight, **let them all report before acting**: each wakeup carries one completion, so if others are still running, briefly acknowledge the one that landed (e.g. \"subagent-1 has responded — waiting for the rest\") and end your turn again; you'll be re-woken as each remaining one reports. Begin synthesizing only once every subagent you're waiting on has come back (unless one result is independently actionable and time-sensitive).
 - Tool errors come back as results, not crashes. If a tool fails, you'll see the error in its result and decide what to do next.`;
@@ -488,7 +489,28 @@ Schema:
 
 Notes:
 - Has no effect on already-completed tasks.
-- KillAgent is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.`;
+- KillAgent is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.
+
+## Monitor
+
+Waits on state you do not own — a remote job, a CI run, a file appearing, a wall-clock time. Returns immediately with an id (e.g. \`monitor-1\`) and wakes you with a \`<system-reminder>\` exactly like a background bash task or subagent, so the shape is the same: start it, then end your turn.
+
+Schema:
+- \`reason\` (string, required) — one line, what is being waited for
+- \`condition\` (string, optional) — shell; exit 0 = met, exit 1 = not yet, any other code = broken
+- \`capture\` (string, optional) — shell; runs once when the condition is met, its stdout comes back to you
+- \`at\` (string, optional) — ISO 8601 timestamp, or \`"HH:MM"\` for the next occurrence
+- \`intervalSec\` (integer, optional, default 30, floor 5) — seconds between polls
+- \`giveUpAfterSec\` (integer, optional, default 86400)
+
+Notes:
+- **The condition runs unattended, repeatedly, possibly hundreds of times.** Keep it cheap and free of side effects — a check, never a write, a deploy, or anything billed per call. Approving a monitor approves every future poll of that command: the user consents once for many executions.
+- \`condition\` answers *whether*, \`capture\` fetches *what*. Keep the condition quiet (\`grep -q\`, \`test -f\`) and put the payload in \`capture\`, or you will either poll expensively or wake with no evidence and have to go fetch it.
+- \`at\` and \`condition\` combine as OR — whichever happens first. Terminal outcomes: \`condition_met\`, \`time_reached\`, \`gave_up\`, \`broken\`, \`killed\`.
+- **\`gave_up\` does not mean the thing didn't happen.** It means the condition was never observed true before the deadline. Report it as the monitor expiring and check directly — never as a negative result about the underlying system.
+- A monitor lives only as long as the session; it does not survive Ye exiting. \`KillMonitor { monitor_id }\` stops one early and has no effect on one that already finished.
+- Example — a long job on a remote host: \`reason: "training run finishes"\`, \`condition: "ssh box 'grep -q DONE /var/log/train.log'"\`, \`capture: "ssh box 'tail -40 /var/log/train.log'"\`, \`intervalSec: 60\`.
+- Monitor and KillMonitor are state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.`;
 
 const WEB_TOOLS_BLOCK = `# Web tools
 
@@ -816,6 +838,9 @@ Re-fetches the final summary of a background subagent you already know finished,
 
 ## KillAgent { task_id }
 Stops a running background subagent. No effect on already-completed tasks. Prompted in NORMAL.
+
+## Monitor { reason, condition?, capture?, at?, intervalSec?, giveUpAfterSec? }
+Waits on state you do NOT own — a job on a remote host, a CI run, a file appearing, a clock time — which nothing else will ever wake you for. \`condition\` is shell, polled every \`intervalSec\` (default 30, floor 5): exit 0 = met, 1 = not yet, anything else = broken. \`at\` is an ISO 8601 timestamp or \`"HH:MM"\`; \`at\` and \`condition\` combine as OR. \`capture\` runs once when met and its stdout comes back to you, so keep \`condition\` quiet (\`grep -q\`) and put the payload there. Returns an id immediately and wakes you with a \`<system-reminder>\` — start it and END YOUR TURN. **This is what you use instead of an \`echo\`/\`sleep\` loop.** The condition runs unattended, possibly hundreds of times, so it must be cheap and side-effect-free — approving the monitor approves every future poll. Outcomes: \`condition_met\`, \`time_reached\`, \`gave_up\` (default after 86400s — means the condition was never seen true, NOT that the thing failed), \`broken\`, \`killed\`. Monitors die with the session. \`KillMonitor { monitor_id }\` stops one. Prompted in NORMAL.
 
 ## Grep { pattern, path?, output_mode?, type?, glob? }
 Ripgrep regex. \`output_mode\`: \`"content"\` (default), \`"files_with_matches"\`, \`"count"\`. Exit 1 = no matches (not error). Read-only.

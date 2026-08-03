@@ -50,6 +50,30 @@ describe("buildSystemPrompt — small-prompt routing", () => {
     });
 });
 
+describe("Monitor documentation", () => {
+    test("R11 full prompt documents Monitor and KillMonitor", () => {
+        const out = buildSystemPrompt(env({ providerId: "openrouter", model: "gpt-5-codex" }));
+        expect(out).toContain("## Monitor");
+        expect(out).toContain("KillMonitor");
+        expect(out).toContain("condition_met");
+    });
+
+    test("R12 compact prompt documents Monitor", () => {
+        const out = buildSmallSystemPrompt(env({ providerId: "ollama", model: "llama3.1:70b" }));
+        expect(out).toContain("## Monitor {");
+        expect(out).toContain("KillMonitor");
+    });
+
+    test("R13 both variants tie Monitor to the forbidden echo/sleep loop", () => {
+        for (const out of [
+            buildSystemPrompt(env({ providerId: "openrouter", model: "gpt-5-codex" })),
+            buildSmallSystemPrompt(env({ providerId: "ollama", model: "llama3.1:70b" })),
+        ]) {
+            expect(out).toContain("`echo`/`sleep`");
+        }
+    });
+});
+
 describe("buildSmallSystemPrompt — OpenAI persistence", () => {
     test("R6 OpenAI + NORMAL includes the persistence block", () => {
         const out = buildSmallSystemPrompt(env({ providerId: "openai", mode: "NORMAL" }));
