@@ -39,7 +39,7 @@ export const SlashPicker = ({ matches, activeIndex }: SlashPickerProps) => {
                 );
             })}
             {below > 0 && <Text dimColor>↓ {below} more</Text>}
-            <Text dimColor>↑↓ move · Enter/Tab complete · Esc dismiss</Text>
+            <Text dimColor>↑↓ move · Enter run · Tab complete · Esc dismiss</Text>
         </Box>
     );
 };

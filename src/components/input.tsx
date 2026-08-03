@@ -87,7 +87,8 @@ interface ChatInputProps {
 
     // Slash-command picker integration, same shape as the mention picker.
     // `onSlashAccept` returns the selected command's name, or null when there
-    // is no selection. Enter completes rather than submits while it is open.
+    // is no selection. Tab completes the selection into the buffer; Enter
+    // submits it outright.
     readonly slashOpen?: boolean;
     readonly onSlashMove?: (delta: 1 | -1) => void;
     readonly onSlashAccept?: () => string | null;
@@ -252,11 +253,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         return true;
     };
 
-    const acceptSlash = (): boolean => {
-        if (!onSlashAccept) return false;
+    const slashCompletion = (): string | null => {
+        if (!onSlashAccept) return null;
         const name = onSlashAccept();
-        if (name === null) return false;
-        const completed = `/${name} `;
+        if (name === null) return null;
+        return `/${name} `;
+    };
+
+    const acceptSlash = (): boolean => {
+        const completed = slashCompletion();
+        if (completed === null) return false;
         apply(completed, completed.length);
         return true;
     };
@@ -404,8 +410,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 return;
             }
             if (mentionOpen && acceptMention()) return;
-            if (slashOpen && acceptSlash()) return;
-            const v = valueRef.current;
+            // Enter on a highlighted command runs it — completing and waiting
+            // for a second Enter is a keystroke nobody wants. Tab still just
+            // completes, which is the way to reach a command's arguments.
+            const picked = slashOpen ? slashCompletion() : null;
+            const v = picked !== null ? picked.trimEnd() : valueRef.current;
             if (v.trim().length === 0) return;
             onSubmit(v);
             apply("", 0);
