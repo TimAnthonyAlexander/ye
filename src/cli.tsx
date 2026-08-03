@@ -4,7 +4,7 @@ import { render } from "ink";
 import { App } from "./components/app.tsx";
 import { HELP_TEXT, parseFlags } from "./cli/flags.ts";
 import { errorSummary, writeSummary, type OutputFormat } from "./cli/output.ts";
-import { applyModelOverrides } from "./cli/overrides.ts";
+import { applyModelOverrides, persistedModelOf } from "./cli/overrides.ts";
 import { resolveResumeTarget, type ResumeTarget } from "./cli/resume.ts";
 import { readStdinPrompt } from "./cli/stdin.ts";
 import { writeErr, writeOut } from "./cli/write.ts";
@@ -122,6 +122,11 @@ const main = async (): Promise<void> => {
         const { waitUntilExit } = render(
             <App
                 config={config}
+                persistedModel={
+                    flags.provider !== null || flags.model !== null
+                        ? persistedModelOf(budgeted)
+                        : null
+                }
                 resumeOnStart={wantsResume}
                 resumeSessionId={startSessionId}
                 modeOnStart={flags.mode}

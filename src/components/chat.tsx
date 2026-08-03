@@ -37,9 +37,9 @@ interface ChatProps {
     // Holds back commits during a streaming session so consecutive read-only
     // tool calls can fold into a single group as they arrive.
     readonly committedCount: number;
-    // Toggled with Ctrl+O; only affects groups in the dynamic (in-flight)
-    // section. Static-committed groups freeze in collapsed form.
-    readonly groupsExpanded: boolean;
+    // Toggled with Ctrl+O: expands read-groups and shows full tool results.
+    // App repaints scrollback when it flips, so committed items honour it too.
+    readonly verbose: boolean;
 }
 
 // Sequence-based IDs for messages/system items. Module-level is fine because
@@ -130,12 +130,13 @@ const groupItems = (items: readonly ChatItem[]): readonly RenderUnit[] => {
 
 interface RenderItemProps {
     readonly item: ChatItem;
+    readonly verbose: boolean;
 }
 
 // Memoized: re-renders only when the item reference changes. Tool calls get
 // new entry references on status updates (entry: {...prev, status}), which
 // is what we want; messages and system items never mutate after creation.
-const RenderItem = memo(({ item }: RenderItemProps) => {
+const RenderItem = memo(({ item, verbose }: RenderItemProps) => {
     if (item.kind === "message") {
         return <MessageView message={{ role: item.role, content: item.content }} />;
     }
@@ -158,7 +159,7 @@ const RenderItem = memo(({ item }: RenderItemProps) => {
     if (item.kind === "context") {
         return <ContextPanel snapshot={item.snapshot} />;
     }
-    return <ToolCallView entry={item.entry} />;
+    return <ToolCallView entry={item.entry} verbose={verbose} />;
 });
 RenderItem.displayName = "RenderItem";
 
@@ -179,13 +180,13 @@ const GroupView = memo(({ name, entries, expanded, interactive }: GroupViewProps
     if (entries.length === 1) {
         // A "group" of one renders identically to a single tool call — no
         // count, no hint, no special framing.
-        return <ToolCallView entry={entries[0]!} />;
+        return <ToolCallView entry={entries[0]!} verbose={expanded} />;
     }
     if (expanded) {
         return (
             <Box flexDirection="column">
                 {entries.map((entry) => (
-                    <ToolCallView key={entry.id} entry={entry} />
+                    <ToolCallView key={entry.id} entry={entry} verbose={true} />
                 ))}
                 {interactive && (
                     <Box marginBottom={1}>
@@ -229,7 +230,7 @@ interface RenderUnitProps {
 }
 
 const RenderUnitView = ({ unit, expanded, interactive }: RenderUnitProps) => {
-    if (unit.kind === "single") return <RenderItem item={unit.item} />;
+    if (unit.kind === "single") return <RenderItem item={unit.item} verbose={expanded} />;
     return (
         <GroupView
             name={unit.name}
@@ -240,13 +241,7 @@ const RenderUnitView = ({ unit, expanded, interactive }: RenderUnitProps) => {
     );
 };
 
-export const Chat = ({
-    items,
-    streamingText,
-    streaming,
-    committedCount,
-    groupsExpanded,
-}: ChatProps) => {
+export const Chat = ({ items, streamingText, streaming, committedCount, verbose }: ChatProps) => {
     // Stable commit boundary: items[0..committedCount) are eligible for Ink's
     // <Static> (scrollback). Static is append-only — re-rendering a previously
     // rendered item is a no-op — so we hold the boundary back until the
@@ -274,7 +269,7 @@ export const Chat = ({
             <Static items={committedUnits as RenderUnit[]}>
                 {(unit) => (
                     <Box key={unit.key}>
-                        <RenderUnitView unit={unit} expanded={false} interactive={false} />
+                        <RenderUnitView unit={unit} expanded={verbose} interactive={false} />
                     </Box>
                 )}
             </Static>
@@ -283,7 +278,7 @@ export const Chat = ({
                     <RenderUnitView
                         key={unit.key}
                         unit={unit}
-                        expanded={groupsExpanded}
+                        expanded={verbose}
                         interactive={true}
                     />
                 ))}

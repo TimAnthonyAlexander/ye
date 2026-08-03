@@ -33,10 +33,10 @@ export interface RecoveryOutput {
     readonly finalMessages: Message[];
 }
 
-const DEFAULT_MAX_RETRIES = 3;
+export const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BACKOFF_BASE_MS = 500;
 const DEFAULT_BACKOFF_MAX_MS = 8_000;
-const DEFAULT_RATE_LIMIT_MAX_RETRIES = 10;
+export const DEFAULT_RATE_LIMIT_MAX_RETRIES = 10;
 const DEFAULT_RATE_LIMIT_BACKOFF_BASE_MS = 1_000;
 const DEFAULT_RATE_LIMIT_BACKOFF_MAX_MS = 60_000;
 const MIN_REPLY_TOKEN_FLOOR = 1024;
@@ -304,6 +304,8 @@ export async function* runModelCallWithRecovery(
                     attempt,
                     kind: err.kind,
                     action: "fallback_model",
+                    provider: provider.id,
+                    model,
                 };
                 continue;
             } catch {

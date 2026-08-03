@@ -108,7 +108,16 @@ import {
 import type { TodoItem } from "../tools/index.ts";
 import { cycleMode } from "../ui/keybinds.ts";
 import { refreshUpdateStatus, type UpdateStatus } from "../update/check.ts";
+import { withPersistedModel, type PersistedModel } from "../cli/overrides.ts";
 import { Chat, type ChatItem, computeDynamicStart, newChatItemId } from "./chat.tsx";
+import {
+    flushNotices,
+    formatShaperNotice,
+    NO_NOTICES,
+    reduceRetryNotice,
+    retryLimits,
+    type NoticeState,
+} from "./notices.ts";
 import { ChatInput, type ChatInputHandle } from "./input.tsx";
 import { runBangCommand } from "./bangCommand.ts";
 import { runEventHooks } from "../hooks/index.ts";
@@ -152,6 +161,9 @@ interface QueuedDisplayItem {
 
 interface AppProps {
     readonly config: LoadResult;
+    // Set only when --model/--provider rewrote the in-memory config: the model
+    // identity to write back if anything persists the config this run.
+    readonly persistedModel?: PersistedModel | null;
     // When set, App opens the resume picker (or loads the named session
     // directly) instead of starting a fresh transcript on mount.
     readonly resumeOnStart?: boolean;
@@ -292,7 +304,13 @@ const toChatItem = (item: SubagentItem): ChatItem => {
     return { kind: "toolCall", entry };
 };
 
-export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: AppProps) => {
+export const App = ({
+    config,
+    persistedModel,
+    resumeOnStart,
+    resumeSessionId,
+    modeOnStart,
+}: AppProps) => {
     const initialCfg = config.config;
     const { exit } = useApp();
     const [mode, setMode] = useState<PermissionMode>(
@@ -348,9 +366,8 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     // reprint the new history.
     const [chatKey, setChatKey] = useState(0);
     const bumpChatKey = (): void => setChatKey((k) => k + 1);
-    // Toggled with Ctrl+O. Only affects groups in the dynamic section —
-    // anything in scrollback already committed in collapsed form.
-    const [groupsExpanded, setGroupsExpanded] = useState(false);
+    // Toggled with Ctrl+O: expanded read-groups plus full tool results.
+    const [verbose, setVerbose] = useState(false);
     const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
     const [suggestion, setSuggestion] = useState<SuggestionState>(NO_SUGGESTION);
     const suggestionRef = useRef<SuggestionState>(NO_SUGGESTION);
@@ -376,6 +393,9 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     // an updated cfg when a key is persisted; we write it here so subsequent
     // builds and queryLoop calls see the new key without a stale closure.
     const cfgRef = useRef<Config>(initialCfg);
+    // Retry/shaper notices coalesce per turn; reset on turn.start, summarised
+    // on turn.end.
+    const noticesRef = useRef<NoticeState>(NO_NOTICES);
     const pendingTodosRef = useRef<readonly TodoItem[] | null>(null);
     const streamingRef = useRef(false);
     const queueRef = useRef<QueuedSend[]>([]);
@@ -924,6 +944,12 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         });
     };
 
+    // Every config write that isn't the user explicitly picking a model goes
+    // through here, so a run-only --model/--provider can never reach disk.
+    const persistConfig = async (next: Config): Promise<void> => {
+        await saveConfig(withPersistedModel(next, persistedModel ?? null));
+    };
+
     const switchProvider = async (nextId: string): Promise<void> => {
         const state = stateRef.current;
         if (!state) throw new Error("session not ready");
@@ -931,7 +957,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             cfg: cfgRef.current,
             providerId: nextId,
             askForKey,
-            persistConfig: saveConfig,
+            persistConfig,
         });
         if (!built) {
             // Cancellation routes through /provider's try/catch, which surfaces
@@ -1292,7 +1318,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     cfg: cfgRef.current,
                     providerId: cfgRef.current.defaultProvider,
                     askForKey,
-                    persistConfig: saveConfig,
+                    persistConfig,
                 });
                 if (cancelled) return;
                 if (!built) {
@@ -1432,7 +1458,16 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             return;
         }
         if (key.ctrl && input === "o") {
-            setGroupsExpanded((v) => !v);
+            setVerbose((v) => !v);
+            // Items already in scrollback were emitted at the old verbosity and
+            // <Static> never re-renders them. Same repaint the resize handler
+            // uses: clear, drop the commit boundary, remount Chat so every item
+            // is re-emitted at the new setting.
+            if (items.length > 0) {
+                process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+                setCommittedCount(0);
+                bumpChatKey();
+            }
             return;
         }
         if (key.downArrow && subagentView === null && bgTaskCount > 0) {
@@ -1570,6 +1605,24 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
 
             for await (const evt of stream) {
                 switch (evt.type) {
+                    case "turn.start": {
+                        noticesRef.current = NO_NOTICES;
+                        break;
+                    }
+                    case "shaper.applied": {
+                        addSystemMessage(formatShaperNotice(evt));
+                        break;
+                    }
+                    case "recovery.retry": {
+                        const step = reduceRetryNotice(
+                            noticesRef.current,
+                            evt,
+                            retryLimits(cfgRef.current),
+                        );
+                        noticesRef.current = step.state;
+                        if (step.line !== null) addSystemMessage(step.line);
+                        break;
+                    }
                     case "model.reasoning": {
                         if (!liveThinking) {
                             const id = newChatItemId();
@@ -1695,6 +1748,9 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     case "turn.end": {
                         finalizeThinking();
                         commitText();
+                        const summary = flushNotices(noticesRef.current);
+                        noticesRef.current = NO_NOTICES;
+                        if (summary.length > 0) addSystemMessage(summary.join("\n"));
                         if (evt.error || evt.stopReason === "user_cancel") {
                             if (evt.error) setError(evt.error.message);
                             chainFailedRef.current = true;
@@ -2086,7 +2142,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 committedCount={
                     subagentView !== null && subagentView !== "main" ? 0 : committedCount
                 }
-                groupsExpanded={groupsExpanded}
+                verbose={verbose}
             />
             {(subagentView === null || subagentView === "main") && (
                 <>

@@ -77,6 +77,10 @@ export type Event =
               | "fallback_model"
               | "backoff";
           readonly waitMs?: number;
+          // Set only for action "fallback_model": the model the call moved to.
+          // Switching model silently is the one recovery step a user must see.
+          readonly provider?: string;
+          readonly model?: string;
       }
     | {
           readonly type: "userQuestion.prompt";

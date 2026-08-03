@@ -5,7 +5,7 @@ const TIPS: readonly string[] = [
     "Shift+Tab cycles permission mode (NORMAL → AUTO → PLAN).",
     "/resume reopens any prior session by title or preview.",
     "/rewind drops the conversation back to a chosen prompt.",
-    "Ctrl+O toggles tool-call group expansion.",
+    "Ctrl+O toggles verbose output — expanded tool groups and full results.",
     "Ctrl+C clears your input; press it again to abort a streaming reply.",
     "/mode AUTO runs tools without per-call permission prompts.",
     "Type a slash to discover commands — / opens the picker.",

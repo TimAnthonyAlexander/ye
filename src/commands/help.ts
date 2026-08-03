@@ -8,7 +8,7 @@ const KEYS: readonly (readonly [string, string])[] = [
     ["↑ / ↓", "walk prompt history (↓ also opens the background task tabs)"],
     ["Shift+Tab", "cycle permission mode (NORMAL → AUTO → PLAN)"],
     ["Ctrl+C", "cancel search, then clear input, then abort the reply — never exits"],
-    ["Ctrl+O", "expand or collapse tool-call groups"],
+    ["Ctrl+O", "verbose output: expanded tool groups, full tool results"],
     ["Ctrl+R", "search prompt history across sessions"],
     ["Ctrl+G", "compose the current buffer in $VISUAL / $EDITOR"],
     ["Ctrl+W", "delete the word before the cursor"],

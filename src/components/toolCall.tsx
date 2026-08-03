@@ -4,6 +4,7 @@ import type { ToolResult } from "../tools/index.ts";
 import { prettyPath } from "../ui/path.ts";
 import { computeEditDiff, type EditDiff } from "./editDiff.ts";
 import { ELAPSED_INTERVAL_MS, FRAME_INTERVAL_MS, FRAMES } from "./spinner.ts";
+import { collapsedResultText, expandedResultLines } from "./toolResult.ts";
 
 export type ToolCallStatus = "running" | "done" | "error";
 
@@ -40,11 +41,6 @@ export const summarizeArgs = (name: string, args: unknown): string => {
         default:
             return "";
     }
-};
-
-const summarizeResult = (result: ToolResult | undefined): string => {
-    if (!result || result.ok) return "";
-    return result.error.slice(0, 200) + (result.error.length > 200 ? "…" : "");
 };
 
 // Action-line answer (shown next to the tool name) for tools where the result
@@ -132,12 +128,14 @@ const RunningGlyph = () => {
 
 interface Props {
     readonly entry: ToolCallEntry;
+    readonly verbose: boolean;
 }
 
-export const ToolCallView = ({ entry }: Props) => {
+export const ToolCallView = ({ entry, verbose }: Props) => {
     const final = finalGlyph(entry.status);
     const argSummary = summarizeArgs(entry.name, entry.args);
-    const resultSummary = summarizeResult(entry.result);
+    const resultSummary = verbose ? "" : collapsedResultText(entry.result);
+    const resultLines = verbose ? expandedResultLines(entry.result) : [];
     const answerLine = actionLineAnswer(entry.name, entry.args, entry.result);
     const diff =
         entry.name === "Edit" && (entry.status === "done" || entry.status === "running")
@@ -212,6 +210,15 @@ export const ToolCallView = ({ entry }: Props) => {
             {resultSummary.length > 0 && (
                 <Box paddingLeft={2}>
                     <Text dimColor>{resultSummary}</Text>
+                </Box>
+            )}
+            {resultLines.length > 0 && (
+                <Box flexDirection="column" paddingLeft={2}>
+                    {resultLines.map((line, i) => (
+                        <Text key={`r-${i}`} dimColor>
+                            {line}
+                        </Text>
+                    ))}
                 </Box>
             )}
         </Box>
