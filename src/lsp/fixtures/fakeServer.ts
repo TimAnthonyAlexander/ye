@@ -5,6 +5,7 @@
 //   silent  — completes the handshake, then never answers a query
 //   die     — completes the handshake, then exits mid-query
 const MODE = process.argv[2] ?? "normal";
+let coldCalls = 0;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -111,6 +112,12 @@ const handle = async (message: Record<string, unknown>): Promise<void> => {
     if (method === "workspace/symbol") {
         const query =
             isRecord(params) && typeof params["query"] === "string" ? params["query"] : "";
+        // Reproduces tsserver's cold-project behaviour: an empty list, not an
+        // error, until the project finishes building.
+        if (MODE === "coldProject" && coldCalls++ < 2) {
+            await respond(id, []);
+            return;
+        }
         await respond(id, [
             {
                 name: `${query}Handler`,

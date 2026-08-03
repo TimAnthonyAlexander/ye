@@ -176,6 +176,21 @@ describe("LSP navigation tools", () => {
         }
     });
 
+    test("N7b SymbolSearch waits out a cold project instead of reporting no matches", async () => {
+        const r = await SymbolSearchTool.execute(
+            { query: "foo" },
+            makeCtx({ enabled: true, servers: { typescript: fakeServer("coldProject") } }),
+        );
+        expect(r.ok).toBe(true);
+        if (r.ok) {
+            // The server answers with an empty list twice before its project is
+            // built. Taking that at face value would report a real symbol as
+            // absent, which reads as a wrong answer rather than a failure.
+            expect(text(r.value)).toContain('count="2"');
+            expect(text(r.value)).toContain("Function fooHandler");
+        }
+    });
+
     test("N8 a position below 1 is rejected as a 1-based API violation", async () => {
         const lsp = { enabled: true, servers: { typescript: fakeServer("normal") } };
         const zeroLine = await DefinitionTool.execute(
