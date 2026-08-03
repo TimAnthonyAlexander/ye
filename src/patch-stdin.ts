@@ -8,6 +8,8 @@
 //
 // Must be imported BEFORE any Ink module. Import at the very top of cli.tsx.
 
+import { readlineForNavKey } from "./ui/keySequences.ts";
+
 // CSI u (kitty keyboard protocol): ESC [ codepoint [; modifier] u
 const CSI_U_RE = /^\x1b\[(\d+)(?:;(\d+))?u$/;
 // xterm modifyOtherKeys: ESC [ 27 ; modifier ; keycode ~
@@ -41,10 +43,15 @@ const KITTY_MAP: Record<number, string> = {
 const transform = (s: string): string | null => {
     let match: RegExpExecArray | null;
 
+    const direct = readlineForNavKey(s);
+    if (direct !== null) return direct;
+
     if ((match = CSI_U_RE.exec(s))) {
         const code = parseInt(match[1]!, 10);
         const mod = match[2] ? parseInt(match[2], 10) : 1;
-        return rewriteCsiU(code, mod);
+        const rewritten = rewriteCsiU(code, mod);
+        if (rewritten === null) return null;
+        return readlineForNavKey(rewritten) ?? rewritten;
     }
 
     if ((match = MODIFY_OTHER_KEYS_RE.exec(s))) {

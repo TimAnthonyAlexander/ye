@@ -32,6 +32,43 @@ export const nextWordStart = (value: string, cursor: number): number => {
     return i;
 };
 
+// Logical-line bounds for the readline motions (Ctrl+A/E/K/U). A "line" is
+// delimited by \n — never the whole buffer, and never a wrapped visual row.
+export const lineStart = (value: string, cursor: number): number => {
+    if (cursor <= 0) return 0;
+    const nl = value.lastIndexOf("\n", cursor - 1);
+    return nl === -1 ? 0 : nl + 1;
+};
+
+export const lineEnd = (value: string, cursor: number): number => {
+    const nl = value.indexOf("\n", Math.max(0, cursor));
+    return nl === -1 ? value.length : nl;
+};
+
+interface LineKill {
+    readonly value: string;
+    readonly cursor: number;
+    readonly killed: string;
+}
+
+export const killToLineEnd = (value: string, cursor: number): LineKill => {
+    const end = lineEnd(value, cursor);
+    return {
+        value: value.slice(0, cursor) + value.slice(end),
+        cursor,
+        killed: value.slice(cursor, end),
+    };
+};
+
+export const killToLineStart = (value: string, cursor: number): LineKill => {
+    const start = lineStart(value, cursor);
+    return {
+        value: value.slice(0, start) + value.slice(cursor),
+        cursor: start,
+        killed: value.slice(start, cursor),
+    };
+};
+
 interface ChatInputProps {
     readonly onSubmit: (text: string) => void;
     readonly disabled: boolean;
@@ -47,6 +84,14 @@ interface ChatInputProps {
     readonly onMentionMove?: (delta: 1 | -1) => void;
     readonly onMentionAccept?: () => string | null;
     readonly onMentionDismiss?: () => void;
+
+    // Slash-command picker integration, same shape as the mention picker.
+    // `onSlashAccept` returns the selected command's name, or null when there
+    // is no selection. Enter completes rather than submits while it is open.
+    readonly slashOpen?: boolean;
+    readonly onSlashMove?: (delta: 1 | -1) => void;
+    readonly onSlashAccept?: () => string | null;
+    readonly onSlashDismiss?: () => void;
 
     // When true, ↑/↓ are no-ops here so another component (the Home screen)
     // can claim them. Mention picker takes precedence — its arrow handling
@@ -89,6 +134,9 @@ interface SearchState {
 //   - Ctrl+R: reverse search over cross-session prompt history.
 //   - Tab / →: accept the ghost suggestion, but only after the mention picker
 //     and command completion have had their turn.
+//   - Ctrl+A/E/K/U/Y and Home/End: readline motions over the logical line.
+//     Home/End reach us as Ctrl+A/Ctrl+E — patch-stdin rewrites them, because
+//     Ink's Key exposes no flag for either.
 // Shift+Enter for newline depends on the terminal sending a distinguishable
 // sequence (key.shift) — works in iTerm2/kitty with the right config; on
 // terminals that fold Shift+Enter into plain Enter, Alt/Option+Enter (key.meta)
@@ -104,6 +152,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         onMentionMove,
         onMentionAccept,
         onMentionDismiss,
+        slashOpen,
+        onSlashMove,
+        onSlashAccept,
+        onSlashDismiss,
         historyDisabled,
         onUnqueue,
         suggestion,
@@ -198,6 +250,25 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             mention.start + insert.length,
         );
         return true;
+    };
+
+    const acceptSlash = (): boolean => {
+        if (!onSlashAccept) return false;
+        const name = onSlashAccept();
+        if (name === null) return false;
+        const completed = `/${name} `;
+        apply(completed, completed.length);
+        return true;
+    };
+
+    // Single-slot kill ring shared by Ctrl+K, Ctrl+U and Ctrl+Y.
+    const killRef = useRef("");
+    const killLine = (next: string, nextCursor: number, killed: string): void => {
+        exitHistoryNav();
+        // An empty kill leaves the ring alone — otherwise Ctrl+K on an already
+        // empty line would silently discard what Ctrl+Y is about to yank.
+        if (killed.length > 0) killRef.current = killed;
+        apply(next, nextCursor);
     };
 
     const { stdin, setRawMode, isRawModeSupported } = useStdin();
@@ -312,6 +383,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         if (key.tab) {
             if (key.shift) return;
             if (mentionOpen && acceptMention()) return;
+            if (slashOpen && acceptSlash()) return;
             if (getCompletion) {
                 const completed = getCompletion(valueRef.current);
                 if (completed !== null) {
@@ -332,6 +404,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 return;
             }
             if (mentionOpen && acceptMention()) return;
+            if (slashOpen && acceptSlash()) return;
             const v = valueRef.current;
             if (v.trim().length === 0) return;
             onSubmit(v);
@@ -357,6 +430,36 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 savedCursor: cursorRef.current,
             });
             apply("", 0);
+            return;
+        }
+
+        if (key.ctrl && input === "a") {
+            const v = valueRef.current;
+            apply(v, lineStart(v, cursorRef.current));
+            return;
+        }
+        if (key.ctrl && input === "e") {
+            const v = valueRef.current;
+            apply(v, lineEnd(v, cursorRef.current));
+            return;
+        }
+        if (key.ctrl && input === "k") {
+            const kill = killToLineEnd(valueRef.current, cursorRef.current);
+            killLine(kill.value, kill.cursor, kill.killed);
+            return;
+        }
+        if (key.ctrl && input === "u") {
+            const kill = killToLineStart(valueRef.current, cursorRef.current);
+            killLine(kill.value, kill.cursor, kill.killed);
+            return;
+        }
+        if (key.ctrl && input === "y") {
+            const yanked = killRef.current;
+            if (yanked.length === 0) return;
+            exitHistoryNav();
+            const v = valueRef.current;
+            const c = cursorRef.current;
+            apply(v.slice(0, c) + yanked + v.slice(c), c + yanked.length);
             return;
         }
 
@@ -442,6 +545,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 onMentionMove?.(-1);
                 return;
             }
+            if (slashOpen) {
+                onSlashMove?.(-1);
+                return;
+            }
             if (historyDisabled) return;
             // Editing a queued message wins over history recall, but only on an
             // empty buffer so ↑ can never clobber a draft the user is typing.
@@ -470,6 +577,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 onMentionMove?.(1);
                 return;
             }
+            if (slashOpen) {
+                onSlashMove?.(1);
+                return;
+            }
             if (historyDisabled) return;
             if (historyIndex === null) return;
             if (historyIndex === 0) {
@@ -483,6 +594,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         }
         if (key.escape) {
             if (mentionOpen) onMentionDismiss?.();
+            if (slashOpen) onSlashDismiss?.();
             if (ghost !== null) onSuggestionDismiss?.();
             return;
         }

@@ -8,11 +8,13 @@ import {
     completeCommand,
     dispatch,
     loadMarkdownCommands,
+    matchCommands,
     parseSlash,
     setExtraCommands,
     setMarkdownCommands,
     type OutputSink,
     type PickerPayload,
+    type SlashCommand,
     type SlashCommandContext,
 } from "../commands/index.ts";
 import { runAside } from "../commands/aside.ts";
@@ -317,6 +319,8 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     // user edits the mention (causing the query to change) — that's how Esc
     // closes the picker without preventing it from reopening on `@`.
     const [dismissedMentionQuery, setDismissedMentionQuery] = useState<string | null>(null);
+    const [slashActive, setSlashActive] = useState(0);
+    const [dismissedSlashQuery, setDismissedSlashQuery] = useState<string | null>(null);
     // Index up to which `items` has been committed to Ink's <Static>
     // (scrollback). Advanced eagerly via useLayoutEffect below — every
     // stable, non-trailing-mergeable item is committed as soon as it
@@ -1911,6 +1915,25 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         }
     }, [activeMention?.query, dismissedMentionQuery]);
 
+    // The dismissal key is the whole trimmed buffer: any edit to a slash draft
+    // changes the match list, so Esc must stop suppressing the picker there.
+    const slashQuery = currentInput.trimStart().startsWith("/") ? currentInput.trimStart() : null;
+    const slashMatches: readonly SlashCommand[] = useMemo(
+        () => matchCommands(currentInput),
+        [currentInput],
+    );
+    const slashOpen = slashMatches.length > 0 && dismissedSlashQuery !== slashQuery;
+
+    useEffect(() => {
+        setSlashActive(0);
+    }, [slashQuery]);
+
+    useEffect(() => {
+        if (dismissedSlashQuery !== null && dismissedSlashQuery !== slashQuery) {
+            setDismissedSlashQuery(null);
+        }
+    }, [slashQuery, dismissedSlashQuery]);
+
     useEffect(() => {
         let cancelled = false;
         void refreshUpdateStatus()
@@ -1938,6 +1961,18 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     };
     const handleMentionDismiss = (): void => {
         if (activeMention) setDismissedMentionQuery(activeMention.query);
+    };
+    const handleSlashMove = (delta: 1 | -1): void => {
+        if (slashMatches.length === 0) return;
+        setSlashActive((i) => (i + delta + slashMatches.length) % slashMatches.length);
+    };
+    const handleSlashAccept = (): string | null => {
+        if (slashMatches.length === 0) return null;
+        const safe = Math.min(Math.max(slashActive, 0), slashMatches.length - 1);
+        return slashMatches[safe]?.name ?? null;
+    };
+    const handleSlashDismiss = (): void => {
+        if (slashQuery !== null) setDismissedSlashQuery(slashQuery);
     };
 
     if (bootError !== null) {
@@ -2060,7 +2095,9 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                         />
                     ) : (
                         <>
-                            <SlashPicker input={currentInput} />
+                            {slashOpen && (
+                                <SlashPicker matches={slashMatches} activeIndex={slashActive} />
+                            )}
                             {mentionOpen && (
                                 <MentionPicker
                                     matches={mentionMatches}
@@ -2078,6 +2115,10 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                                 onMentionMove={handleMentionMove}
                                 onMentionAccept={handleMentionAccept}
                                 onMentionDismiss={handleMentionDismiss}
+                                slashOpen={slashOpen}
+                                onSlashMove={handleSlashMove}
+                                onSlashAccept={handleSlashAccept}
+                                onSlashDismiss={handleSlashDismiss}
                                 historyDisabled={showHome || tabBarFocused}
                                 onUnqueue={popQueuedForEdit}
                                 suggestion={suggestion.text}

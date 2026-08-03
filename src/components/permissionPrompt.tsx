@@ -53,6 +53,10 @@ export const PermissionPrompt = ({ payload, onRespond }: PermissionPromptProps) 
 
     useInput((input, key) => {
         if (key.escape) return onRespond("deny");
+        // Ink reports a Ctrl chord as the bare letter, so without this an
+        // unrelated chord (Ctrl+A, and Home which arrives as Ctrl+A) would
+        // answer the prompt.
+        if (key.ctrl || key.meta) return;
         const ch = input.toLowerCase();
         if (ch === "y") return onRespond("allow_once");
         if (ch === "s" && payload.reason !== "exit_plan_mode") return onRespond("allow_session");

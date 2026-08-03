@@ -9,6 +9,10 @@ import { describe, expect, test } from "bun:test";
 import {
     buildVisualRows,
     findCursorRow,
+    killToLineEnd,
+    killToLineStart,
+    lineEnd,
+    lineStart,
     nextWordStart,
     normalizePaste,
     prevWordStart,
@@ -78,6 +82,100 @@ describe("nextWordStart", () => {
 
     test("returns length when no next word", () => {
         expect(nextWordStart("hello   ", 5)).toBe(8);
+    });
+});
+
+describe("lineStart", () => {
+    test("returns 0 on a single-line buffer", () => {
+        expect(lineStart("hello world", 7)).toBe(0);
+    });
+
+    test("returns 0 when the cursor is at the very start", () => {
+        expect(lineStart("\nabc", 0)).toBe(0);
+    });
+
+    test("finds the start of the logical line the cursor sits on", () => {
+        // "ab\ncd\nef" — cursor at 7 (in "ef"), line starts at 6
+        expect(lineStart("ab\ncd\nef", 7)).toBe(6);
+    });
+
+    test("cursor immediately after a newline is already at the line start", () => {
+        expect(lineStart("ab\ncd", 3)).toBe(3);
+    });
+
+    test("cursor at the newline itself belongs to the preceding line", () => {
+        expect(lineStart("ab\ncd", 2)).toBe(0);
+    });
+
+    test("does not treat wrapped visual rows as lines", () => {
+        const long = "x".repeat(200);
+        expect(lineStart(long, 150)).toBe(0);
+    });
+});
+
+describe("lineEnd", () => {
+    test("returns buffer length on a single-line buffer", () => {
+        expect(lineEnd("hello", 2)).toBe(5);
+    });
+
+    test("stops at the next newline", () => {
+        expect(lineEnd("ab\ncd", 0)).toBe(2);
+    });
+
+    test("cursor already at the newline stays put", () => {
+        expect(lineEnd("ab\ncd", 2)).toBe(2);
+    });
+
+    test("finds the end of the last line", () => {
+        expect(lineEnd("ab\ncd", 4)).toBe(5);
+    });
+
+    test("handles an empty line between newlines", () => {
+        expect(lineEnd("ab\n\ncd", 3)).toBe(3);
+    });
+});
+
+describe("killToLineEnd", () => {
+    test("removes the tail of the current line and keeps the cursor", () => {
+        const r = killToLineEnd("hello world", 6);
+        expect(r.value).toBe("hello ");
+        expect(r.cursor).toBe(6);
+        expect(r.killed).toBe("world");
+    });
+
+    test("leaves following lines intact", () => {
+        const r = killToLineEnd("ab\ncd\nef", 4);
+        expect(r.value).toBe("ab\nc\nef");
+        expect(r.killed).toBe("d");
+    });
+
+    test("kills nothing when already at the end of the line", () => {
+        const r = killToLineEnd("ab\ncd", 2);
+        expect(r.value).toBe("ab\ncd");
+        expect(r.killed).toBe("");
+    });
+});
+
+describe("killToLineStart", () => {
+    test("removes the head of the current line and moves the cursor there", () => {
+        const r = killToLineStart("hello world", 6);
+        expect(r.value).toBe("world");
+        expect(r.cursor).toBe(0);
+        expect(r.killed).toBe("hello ");
+    });
+
+    test("leaves preceding lines intact", () => {
+        const r = killToLineStart("ab\ncdef", 5);
+        expect(r.value).toBe("ab\nef");
+        expect(r.cursor).toBe(3);
+        expect(r.killed).toBe("cd");
+    });
+
+    test("kills nothing when already at the start of the line", () => {
+        const r = killToLineStart("ab\ncd", 3);
+        expect(r.value).toBe("ab\ncd");
+        expect(r.cursor).toBe(3);
+        expect(r.killed).toBe("");
     });
 });
 
