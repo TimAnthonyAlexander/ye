@@ -142,6 +142,7 @@ export const ToolCallView = ({ entry, verbose }: Props) => {
             ? editDiff(entry.args)
             : null;
     const showDiff = diff !== null && entry.result?.ok !== false;
+    const DIFF_WIDTH = 80;
     const showProgress =
         entry.status === "running" && entry.progress !== undefined && entry.progress.length > 0;
     return (
@@ -173,35 +174,59 @@ export const ToolCallView = ({ entry, verbose }: Props) => {
                 </Box>
             )}
             {showDiff && diff && (
-                <Box flexDirection="column" paddingLeft={2}>
+                <Box flexDirection="column">
                     {diff.segments.map((seg, i) => {
                         const key = `${seg.type}-${i}`;
                         if (seg.type === "del") {
+                            const text =
+                                seg.line.length > DIFF_WIDTH
+                                    ? seg.line.slice(0, DIFF_WIDTH - 1) + "…"
+                                    : seg.line.padEnd(DIFF_WIDTH);
                             return (
-                                <Text key={key} color="red">
-                                    - {clipLine(seg.line)}
-                                </Text>
+                                <Box key={key}>
+                                    <Text color="red">- </Text>
+                                    <Text color="red" backgroundColor="#1a1a1a">
+                                        {text}
+                                    </Text>
+                                </Box>
                             );
                         }
                         if (seg.type === "add") {
+                            const text =
+                                seg.line.length > DIFF_WIDTH
+                                    ? seg.line.slice(0, DIFF_WIDTH - 1) + "…"
+                                    : seg.line.padEnd(DIFF_WIDTH);
                             return (
-                                <Text key={key} color="green">
-                                    + {clipLine(seg.line)}
-                                </Text>
+                                <Box key={key}>
+                                    <Text color="green">+ </Text>
+                                    <Text color="green" backgroundColor="#1a1a1a">
+                                        {text}
+                                    </Text>
+                                </Box>
                             );
                         }
                         if (seg.type === "gap") {
+                            const text =
+                                seg.line.length > DIFF_WIDTH
+                                    ? seg.line.slice(0, DIFF_WIDTH - 1) + "…"
+                                    : seg.line.padEnd(DIFF_WIDTH);
                             return (
-                                <Text key={key} dimColor>
-                                    {seg.line}
+                                <Text key={key} dimColor backgroundColor="#1a1a1a">
+                                    {text}
                                 </Text>
                             );
                         }
+                        const text =
+                            seg.line.length > DIFF_WIDTH
+                                ? seg.line.slice(0, DIFF_WIDTH - 1) + "…"
+                                : seg.line.padEnd(DIFF_WIDTH);
                         return (
-                            <Text key={key} dimColor>
-                                {"  "}
-                                {clipLine(seg.line)}
-                            </Text>
+                            <Box key={key}>
+                                <Text dimColor>{"  "}</Text>
+                                <Text dimColor backgroundColor="#1a1a1a">
+                                    {text}
+                                </Text>
+                            </Box>
                         );
                     })}
                     {diff.truncated && <Text dimColor>… diff truncated</Text>}
