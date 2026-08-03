@@ -35,7 +35,7 @@ UI layer: `src/components/`. Home screen + recents picker, chat, input, status b
 Pipeline: `src/pipeline/`
 
 - `queryLoop` drives turns; `runTurn` is one full turn.
-- Assemble: system prompt + notes hierarchy + auto-memory → `Message[]`. Full prompt ~11k tokens; Ollama and small models get a compact variant via `buildSmallSystemPrompt()`.
+- Assemble: system prompt + notes hierarchy + auto-memory → `Message[]`. Full prompt ~15k tokens; Ollama and small models get a compact variant (~3.6k) via `buildSmallSystemPrompt()`.
 - Shapers: cheapest→most-expensive chain `budgetReduction → snip → microcompact → contextCollapse → autoCompact`. Each returns `skip`/`applied`/`done`; history is re-assembled after each `applied`. Hard cap of 4 applications per turn. `PreCompact` hook can block the chain. `/compact [focus]` drives the same summariser on demand via `shapers/manualCompact.ts`.
 - Model call: `dispatch.ts` streams provider events; `recovery.ts` wraps with retry + backoff, streaming→batch fallback, forced shaper escalation on `prompt_too_long`, and a `fallbackModel` last resort.
 - Permission gate + tool execution: read-only tools whose gate decision is `allow` fan out in parallel; everything else runs sequentially.
