@@ -686,9 +686,16 @@ const validateLspConfig = (value: unknown): LspConfig => {
     if (!isObject(value)) {
         throw new ConfigValidationError("lsp must be an object");
     }
-    const out: { enabled?: boolean; servers?: Readonly<Record<string, LspServerConfig>> } = {};
+    const out: {
+        enabled?: boolean;
+        autoInstall?: boolean;
+        servers?: Readonly<Record<string, LspServerConfig>>;
+    } = {};
     if (value.enabled !== undefined) {
         out.enabled = validateBoolean("lsp.enabled", value.enabled);
+    }
+    if (value.autoInstall !== undefined) {
+        out.autoInstall = validateBoolean("lsp.autoInstall", value.autoInstall);
     }
     if (value.servers !== undefined) {
         out.servers = validateRecord("lsp.servers", value.servers, validateLspServerConfig);

@@ -1,9 +1,16 @@
 import { mkdir, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { effectiveSettings } from "../config/detect.ts";
+import { join, sep } from "node:path";
+import { effectiveSettings, resolveLspBinary } from "../config/detect.ts";
 import { CONFIG_FILE, loadConfig } from "../config/index.ts";
+import {
+    CATALOGUE,
+    checkPrerequisite,
+    declinedLanguages,
+    matchesProject,
+} from "../lsp/install/index.ts";
 import { resolveApiKey } from "../providers/index.ts";
 import { YE_DIR } from "../storage/index.ts";
+import { lspSearchDirs } from "../storage/paths.ts";
 import { getCachedUpdateStatus } from "../update/check.ts";
 import { CURRENT_VERSION } from "../update/version.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
@@ -113,9 +120,80 @@ const effectiveLines = (ctx: SlashCommandContext): readonly string[] => {
     ];
 };
 
+const originOf = (path: string): string =>
+    lspSearchDirs().some((dir) => path.startsWith(`${dir}${sep}`)) ? "Ye-installed" : "on PATH";
+
+const serverCheck = (
+    entry: (typeof CATALOGUE)[number],
+    projectRoot: string,
+    declined: ReadonlySet<string>,
+): Check => {
+    const candidates = [entry.binary, ...(entry.alternates ?? []).map((alt) => alt.binary)];
+    for (const binary of candidates) {
+        const path = resolveLspBinary(binary);
+        if (path !== undefined) {
+            return {
+                name: entry.language,
+                verdict: "pass",
+                detail: `${binary} — ${path} (${originOf(path)})`,
+            };
+        }
+    }
+
+    const markers = entry.markers.join(" / ");
+    if (!matchesProject(entry, projectRoot)) {
+        return {
+            name: entry.language,
+            verdict: "pass",
+            detail: `no ${markers} in this project — not needed`,
+        };
+    }
+
+    const prerequisite = checkPrerequisite(entry);
+    if (!prerequisite.ok) {
+        return {
+            name: entry.language,
+            verdict: "fail",
+            detail: `${markers} here but ${entry.binary} is missing — ${prerequisite.message}`,
+        };
+    }
+    return {
+        name: entry.language,
+        verdict: "warn",
+        detail: declined.has(entry.language)
+            ? `${markers} here, ${entry.binary} declined — run /lsp install ${entry.language} to change your mind`
+            : `${markers} here but ${entry.binary} is missing — run /lsp install ${entry.language}`,
+    };
+};
+
+const languageServerLines = (ctx: SlashCommandContext): readonly string[] => {
+    const declined = new Set(declinedLanguages());
+    const checks = CATALOGUE.map((entry) => serverCheck(entry, ctx.projectRoot, declined));
+    const width = Math.max(...checks.map((check) => check.name.length)) + 2;
+
+    const notes: string[] = [];
+    if (ctx.config.lsp?.enabled === false) {
+        notes.push("  lsp.enabled is false — the navigation tools are off whatever is installed");
+    }
+    if (ctx.config.autoDetect === false) {
+        notes.push("  autoDetect is false — only servers listed in lsp.servers are used");
+    }
+    if (ctx.config.lsp?.autoInstall === false) {
+        notes.push("  lsp.autoInstall is false — Ye will not offer to install a missing server");
+    }
+
+    return [
+        "",
+        "Language servers",
+        ...notes,
+        ...checks.map((check) => `  [${check.verdict}] ${check.name.padEnd(width)}${check.detail}`),
+    ];
+};
+
 export const DoctorCommand: SlashCommand = {
     name: "doctor",
-    description: "Check the local environment: ripgrep, config, key, storage, version.",
+    description:
+        "Check the local environment: ripgrep, config, key, storage, version, language servers.",
     execute: async (_args: string, ctx: SlashCommandContext): Promise<SlashCommandResult> => {
         const checks: readonly Check[] = [
             checkRipgrep(),
@@ -128,7 +206,13 @@ export const DoctorCommand: SlashCommand = {
         const lines = checks.map((c) => `  [${c.verdict}] ${c.name.padEnd(9)}${c.detail}`);
         const summary = failed === 0 ? "all checks passed" : `${failed} check(s) failed`;
         ctx.addSystemMessage(
-            ["Doctor", ...lines, `  ${summary}`, ...effectiveLines(ctx)].join("\n"),
+            [
+                "Doctor",
+                ...lines,
+                `  ${summary}`,
+                ...effectiveLines(ctx),
+                ...languageServerLines(ctx),
+            ].join("\n"),
         );
         return { kind: "ok" };
     },

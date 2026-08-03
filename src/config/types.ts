@@ -171,6 +171,9 @@ export interface LspServerConfig {
 
 export interface LspConfig {
     readonly enabled?: boolean;
+    // Gates whether Ye may OFFER to install a missing language server. Unset
+    // means offering is allowed; nothing ever installs without an explicit yes.
+    readonly autoInstall?: boolean;
     // Keyed by language id, e.g. "typescript".
     readonly servers?: Readonly<Record<string, LspServerConfig>>;
 }

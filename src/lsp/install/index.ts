@@ -21,6 +21,21 @@ export {
     type Which,
 } from "./catalogue.ts";
 export {
+    matchesProject,
+    offerFor,
+    pendingOffers,
+    type InstallOffer,
+    type OfferOptions,
+} from "./offer.ts";
+export {
+    clearDecline,
+    declinedLanguages,
+    isDeclined,
+    readState,
+    recordDecline,
+    type LspInstallState,
+} from "./state.ts";
+export {
     installedServers,
     installServer,
     resolveServerBinary,
