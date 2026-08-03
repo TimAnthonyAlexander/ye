@@ -48,7 +48,7 @@ interface ChatProps {
 let idSeq = 0;
 export const newChatItemId = (): string => `c${++idSeq}`;
 
-const itemKey = (item: ChatItem): string =>
+export const itemKey = (item: ChatItem): string =>
     item.kind === "toolCall" ? `t-${item.entry.id}` : `c-${item.id}`;
 
 // Tools whose runs are bundled into one row when consecutive. Exclusively
@@ -136,7 +136,7 @@ interface RenderItemProps {
 // Memoized: re-renders only when the item reference changes. Tool calls get
 // new entry references on status updates (entry: {...prev, status}), which
 // is what we want; messages and system items never mutate after creation.
-const RenderItem = memo(({ item, verbose }: RenderItemProps) => {
+export const RenderItem = memo(({ item, verbose }: RenderItemProps) => {
     if (item.kind === "message") {
         return <MessageView message={{ role: item.role, content: item.content }} />;
     }

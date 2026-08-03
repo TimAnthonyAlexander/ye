@@ -1,6 +1,7 @@
 import { resolveAgent } from "./catalogue.ts";
 import { subagentBudgetFor, type SpawnContext } from "./index.ts";
 import { runInProcess } from "./isolate/inProcess.ts";
+import { SubagentMailbox, type EnqueueResult } from "./mailbox.ts";
 import type { SubagentKind, SubagentResult, SubagentSpec } from "./types.ts";
 import type { Event } from "../pipeline/events.ts";
 
@@ -19,7 +20,15 @@ export interface SubagentTextItem {
     readonly content: string;
 }
 
-export type SubagentItem = SubagentToolItem | SubagentTextItem;
+// A steer the user typed in the transcript view, recorded at the point it was
+// handed to the subagent so the transcript reads in delivery order.
+export interface SubagentUserItem {
+    readonly kind: "user";
+    readonly id: string;
+    readonly content: string;
+}
+
+export type SubagentItem = SubagentToolItem | SubagentTextItem | SubagentUserItem;
 
 let itemSeq = 0;
 const nextItemId = (): string => `sa-${++itemSeq}`;
@@ -52,7 +61,19 @@ export interface BackgroundSubagentTask {
     lastActivityAt: number;
     abortController: AbortController | null;
     readonly items: SubagentItem[];
+    // UI-driven steering inbox. Closed the moment the task leaves "running", so
+    // a message typed at an agent that already finished is refused rather than
+    // sitting in a queue nothing will ever read.
+    readonly mailbox: SubagentMailbox;
 }
+
+type TerminalStatus = "completed" | "failed" | "killed";
+
+const CLOSE_REASON: Readonly<Record<TerminalStatus, string>> = {
+    completed: "the subagent already finished",
+    failed: "the subagent failed",
+    killed: "the subagent was stopped",
+};
 
 class BackgroundSubagentManager {
     private readonly tasks = new Map<string, BackgroundSubagentTask>();
@@ -61,6 +82,27 @@ class BackgroundSubagentManager {
 
     start(spec: SubagentSpec, ctx: SpawnContext): string {
         const id = `subagent-${++this.counter}`;
+
+        const items: SubagentItem[] = [];
+        const pushItem = (item: SubagentItem): void => {
+            items.push(item);
+            if (items.length > MAX_ITEMS) items.shift();
+        };
+
+        let textBuf = "";
+        const flushText = (): void => {
+            if (textBuf.length === 0) return;
+            pushItem({ kind: "text", id: nextItemId(), content: textBuf });
+            textBuf = "";
+        };
+
+        const mailbox = new SubagentMailbox({
+            onDelivered: (message) => {
+                flushText();
+                pushItem({ kind: "user", id: message.id, content: message.text });
+            },
+        });
+
         const task: BackgroundSubagentTask = {
             id,
             kind: spec.kind,
@@ -74,7 +116,8 @@ class BackgroundSubagentManager {
             startedAt: Date.now(),
             lastActivityAt: Date.now(),
             abortController: null,
-            items: [],
+            items,
+            mailbox,
         };
         this.tasks.set(id, task);
         this.ensureSweep();
@@ -84,18 +127,6 @@ class BackgroundSubagentManager {
         const abort = new AbortController();
         task.abortController = abort;
 
-        let textBuf = "";
-        const flushText = (): void => {
-            if (textBuf.length === 0) return;
-            task.items.push({
-                kind: "text",
-                id: nextItemId(),
-                content: textBuf,
-            });
-            if (task.items.length > MAX_ITEMS) task.items.shift();
-            textBuf = "";
-        };
-
         const onChildEvent = (evt: Event): void => {
             task.lastActivityAt = Date.now();
             switch (evt.type) {
@@ -104,19 +135,18 @@ class BackgroundSubagentManager {
                     return;
                 case "tool.start":
                     flushText();
-                    task.items.push({
+                    pushItem({
                         kind: "tool",
                         id: evt.id,
                         name: evt.name,
                         args: evt.args,
                         status: "running",
                     });
-                    if (task.items.length > MAX_ITEMS) task.items.shift();
                     return;
                 case "tool.end": {
                     flushText();
-                    for (let i = task.items.length - 1; i >= 0; i--) {
-                        const item = task.items[i];
+                    for (let i = items.length - 1; i >= 0; i--) {
+                        const item = items[i];
                         if (item?.kind === "tool" && item.id === evt.id) {
                             item.status = evt.result.ok ? "done" : "error";
                             // Append the formatted line as post-label
@@ -124,19 +154,18 @@ class BackgroundSubagentManager {
                         }
                     }
                     // Orphan tool.end — create a done item.
-                    task.items.push({
+                    pushItem({
                         kind: "tool",
                         id: evt.id,
                         name: evt.name,
                         args: {},
                         status: evt.result.ok ? "done" : "error",
                     });
-                    if (task.items.length > MAX_ITEMS) task.items.shift();
                     return;
                 }
                 case "tool.progress":
-                    for (let i = task.items.length - 1; i >= 0; i--) {
-                        const item = task.items[i];
+                    for (let i = items.length - 1; i >= 0; i--) {
+                        const item = items[i];
                         if (item?.kind === "tool" && item.id === evt.id) {
                             item.progress = evt.lines;
                             return;
@@ -166,19 +195,37 @@ class BackgroundSubagentManager {
             signal: abort.signal,
             ...(resolved.model !== undefined ? { model: resolved.model } : {}),
             onChildEvent,
+            mailbox,
         })
             .then((result: SubagentResult) => {
                 task.summary = result.summary;
                 task.transcriptPath = result.transcriptPath;
                 task.turnCount = result.turnCount;
-                task.status = "completed";
+                this.settle(task, "completed");
             })
             .catch((err: unknown) => {
-                task.status = "failed";
                 task.error = err instanceof Error ? err.message : String(err);
+                this.settle(task, "failed");
             });
 
         return id;
+    }
+
+    // Single exit for every terminal transition. The mailbox has to close on all
+    // of them, and a status assignment scattered across five call sites is how
+    // one of them would eventually be missed.
+    private settle(task: BackgroundSubagentTask, status: TerminalStatus): void {
+        task.status = status;
+        task.mailbox.close(CLOSE_REASON[status]);
+    }
+
+    // UI-driven steering. Deliberately not reachable from any tool: the parent
+    // already has Task, and a model-facing steering tool is a second way to do
+    // the same thing.
+    steer(id: string, text: string): EnqueueResult {
+        const task = this.tasks.get(id);
+        if (!task) return { ok: false, error: `no background subagent with id "${id}"` };
+        return task.mailbox.enqueue(text);
     }
 
     poll(id: string): BackgroundSubagentTask | undefined {
@@ -188,7 +235,7 @@ class BackgroundSubagentManager {
     kill(id: string): boolean {
         const task = this.tasks.get(id);
         if (!task || task.status !== "running") return false;
-        task.status = "killed";
+        this.settle(task, "killed");
         task.abortController?.abort();
         return true;
     }
@@ -247,10 +294,10 @@ class BackgroundSubagentManager {
                 task.status === "running" &&
                 now - task.lastActivityAt > SUBAGENT_STALL_TIMEOUT_MS
             ) {
-                task.status = "failed";
                 task.error = `subagent produced no activity for ${Math.round(
                     SUBAGENT_STALL_TIMEOUT_MS / 60000,
                 )} minutes and is presumed dead`;
+                this.settle(task, "failed");
                 task.abortController?.abort();
             }
         }
@@ -293,7 +340,7 @@ class BackgroundSubagentManager {
         }
         for (const task of this.tasks.values()) {
             if (task.status === "running") {
-                task.status = "killed";
+                this.settle(task, "killed");
             }
         }
         this.tasks.clear();

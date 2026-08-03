@@ -1,6 +1,7 @@
 import { FALLBACK_CONTEXT_WINDOW, type Config } from "../config/index.ts";
 import type { Message, Provider } from "../providers/index.ts";
 import { openSession, type SessionHandle } from "../storage/index.ts";
+import type { MailboxDrain } from "../subagents/mailbox.ts";
 import type { Event, StopReason } from "./events.ts";
 import { newShapingFlags, newTurnState, type SessionState } from "./state.ts";
 import { runTurn } from "./turn.ts";
@@ -61,6 +62,10 @@ export interface QueryLoopInput {
     readonly signal?: AbortSignal;
     // Override the per-loop turn budget (subagents pass their own narrower limit).
     readonly maxTurnsOverride?: number;
+    // UI-driven steering for a background subagent. Drained at a turn boundary
+    // only — never mid-turn, which would splice a user message between an
+    // assistant tool call and its result.
+    readonly mailbox?: MailboxDrain;
 }
 
 // Drives turns until a terminal stop reason fires. Yields all turn events
@@ -91,6 +96,14 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
 
     let turnIndex = 0;
     while (turnIndex < maxTurns) {
+        // Drained here, at the top, rather than after the turn that observed it:
+        // a message pushed into history is only "delivered" once a turn actually
+        // reads it, and only this position guarantees one follows.
+        for (const steer of input.mailbox?.drain() ?? []) {
+            input.state.history.push({ role: "user", content: steer.text });
+            await input.session.appendEvent({ type: "user.message", content: steer.text });
+        }
+
         const turn = runTurn({
             provider: input.provider,
             config: input.config,
@@ -112,7 +125,19 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
             yield next.value;
         }
 
-        if (stopReason !== "continue") return;
+        if (stopReason !== "continue") {
+            // A steer that landed while the chain was ending revives it, but the
+            // turn ceiling still wins — it is the one budget nothing may raise.
+            if (input.mailbox?.hasQueued() === true && turnIndex + 1 < maxTurns) {
+                turnIndex += 1;
+                continue;
+            }
+            break;
+        }
         turnIndex += 1;
     }
+
+    input.mailbox?.rejectQueued(
+        `not delivered — the subagent stopped at its ceiling of ${maxTurns} turns`,
+    );
 }

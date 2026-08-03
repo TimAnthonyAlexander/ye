@@ -138,6 +138,7 @@ import { PermissionPrompt } from "./permissionPrompt.tsx";
 import { Picker } from "./picker.tsx";
 import { ConfigEditor } from "./configEditor.tsx";
 import { SubagentTabBar } from "./subagentTabBar.tsx";
+import { SubagentTranscript } from "./subagentTranscript.tsx";
 import { SlashPicker } from "./slashPicker.tsx";
 import { StatusBar } from "./statusBar.tsx";
 import { TodoPanel } from "./todoPanel.tsx";
@@ -290,9 +291,14 @@ const buildItemsFromReplay = (replayed: ReplayedSession): ChatItem[] => {
     return items;
 };
 
+const NO_CHAT_ITEMS: readonly ChatItem[] = [];
+
 const toChatItem = (item: SubagentItem): ChatItem => {
     if (item.kind === "text") {
         return { kind: "message", id: item.id, role: "assistant", content: item.content };
+    }
+    if (item.kind === "user") {
+        return { kind: "message", id: item.id, role: "user", content: item.content };
     }
     const entry: ToolCallEntry = {
         id: item.id,
@@ -525,6 +531,20 @@ export const App = ({
         }
     };
 
+    const steerSubagent = (taskId: string, text: string): string => {
+        const s = stateRef.current;
+        if (!s) return "no active session";
+        const result = getBackgroundSubagentManager(s.sessionId).steer(taskId, text);
+        return result.ok ? "" : result.error;
+    };
+
+    const killSubagent = (taskId: string): void => {
+        const s = stateRef.current;
+        if (!s) return;
+        getBackgroundSubagentManager(s.sessionId).kill(taskId);
+        refreshBgCount();
+    };
+
     // Poll the background subagent manager when tabs are visible so items and
     // statuses update live.
     useEffect(() => {
@@ -543,9 +563,10 @@ export const App = ({
                 setTabBarFocused(false);
             } else {
                 setSubagentTasks(tasks);
-                // If viewing a subagent that just finished, return to main.
-                const viewed = tasks.find((t) => t.id === subagentView);
-                if (viewed && viewed.status !== "running") {
+                // Stay in a finished subagent's transcript until the parent drains
+                // it — that is when its final output is worth reading, and when a
+                // steer typed at it has to be refused to the user's face.
+                if (subagentView !== "main" && !tasks.some((t) => t.id === subagentView)) {
                     setSubagentView("main");
                     setTabBarFocused(true);
                 }
@@ -2075,6 +2096,11 @@ export const App = ({
         );
     }
 
+    const viewedSubagent =
+        subagentView !== null && subagentView !== "main"
+            ? subagentTasks.find((t) => t.id === subagentView)
+            : undefined;
+
     const showHome =
         items.length === 0 &&
         !pendingPrompt &&
@@ -2118,20 +2144,16 @@ export const App = ({
                     }}
                 />
             )}
+            {/* Chat stays mounted in the transcript view with no items: <Static>
+                is append-only and its internal cursor is what stops committed
+                scrollback re-emitting, so unmounting it would duplicate the
+                whole conversation on the way back. */}
             <Chat
                 key={chatKey}
-                items={
-                    subagentView !== null && subagentView !== "main"
-                        ? (subagentTasks
-                              .find((t) => t.id === subagentView)
-                              ?.items.map(toChatItem) ?? [])
-                        : items
-                }
-                streamingText={
-                    subagentView !== null && subagentView !== "main" ? "" : streamingText
-                }
+                items={viewedSubagent ? NO_CHAT_ITEMS : items}
+                streamingText={viewedSubagent ? "" : streamingText}
                 streaming={
-                    (subagentView === null || subagentView === "main") &&
+                    !viewedSubagent &&
                     streaming &&
                     !pendingPrompt &&
                     !pendingUserQuestion &&
@@ -2139,12 +2161,25 @@ export const App = ({
                     !pendingConfigEditor &&
                     !pendingKeyPrompt
                 }
-                committedCount={
-                    subagentView !== null && subagentView !== "main" ? 0 : committedCount
-                }
+                committedCount={viewedSubagent ? 0 : committedCount}
                 verbose={verbose}
             />
-            {(subagentView === null || subagentView === "main") && (
+            {viewedSubagent && (
+                <SubagentTranscript
+                    title={`${viewedSubagent.kind} · ${viewedSubagent.id}`}
+                    status={viewedSubagent.status}
+                    items={viewedSubagent.items.map(toChatItem)}
+                    queued={viewedSubagent.mailbox.queued()}
+                    rejected={viewedSubagent.mailbox.rejected()}
+                    onSend={(text) => steerSubagent(viewedSubagent.id, text)}
+                    onBack={() => {
+                        setSubagentView("main");
+                        setTabBarFocused(true);
+                    }}
+                    verbose={verbose}
+                />
+            )}
+            {!viewedSubagent && (
                 <>
                     {error !== null && (
                         <Box marginBottom={1}>
@@ -2207,7 +2242,10 @@ export const App = ({
                             <ChatInput
                                 ref={chatInputRef}
                                 onSubmit={send}
-                                disabled={false}
+                                // Focus is exclusive: while the tab bar has the
+                                // keys, a typed "k" must open the stop confirm
+                                // and not also land in the buffer.
+                                disabled={tabBarFocused}
                                 onValueChange={handleValueChange}
                                 getCompletion={completeCommand}
                                 history={history}
@@ -2256,15 +2294,16 @@ export const App = ({
                     }}
                     onEnter={(tab) => {
                         setSubagentView(tab);
-                        // Keep focus when entering a subagent so arrow keys still work.
-                        if (tab !== "main") setTabBarFocused(true);
+                        // Entering a transcript hands ↑↓/enter/esc to it — the
+                        // tab bar must stop competing for them.
+                        setTabBarFocused(tab === "main");
                     }}
-                    focused={tabBarFocused}
+                    onKill={killSubagent}
+                    focused={tabBarFocused && !viewedSubagent}
                     onFocusBack={() => {
                         setTabBarFocused(false);
                         setSubagentView("main");
                     }}
-                    alwaysFocused={subagentView !== null && subagentView !== "main"}
                 />
             )}
         </Box>

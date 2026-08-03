@@ -9,6 +9,7 @@ import {
 } from "../../pipeline/index.ts";
 import type { Message, Provider } from "../../providers/index.ts";
 import { openSidechainSession } from "../../storage/index.ts";
+import type { MailboxDrain } from "../mailbox.ts";
 import { SubagentError, type SubagentResult } from "../types.ts";
 
 export interface InProcessRun {
@@ -28,6 +29,7 @@ export interface InProcessRun {
     readonly provider: Provider;
     readonly signal: AbortSignal;
     readonly onChildEvent?: (evt: Event) => void;
+    readonly mailbox?: MailboxDrain;
 }
 
 export const runInProcess = async (input: InProcessRun): Promise<SubagentResult> => {
@@ -70,6 +72,7 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
             userPrompt: input.prompt,
             signal: input.signal,
             maxTurnsOverride: input.maxTurns,
+            ...(input.mailbox ? { mailbox: input.mailbox } : {}),
         })) {
             input.onChildEvent?.(evt);
             if (evt.type === "turn.start") turnCount = evt.turnIndex + 1;
