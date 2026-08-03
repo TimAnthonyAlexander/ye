@@ -191,6 +191,18 @@ describe("LSP navigation tools", () => {
         }
     });
 
+    test("N7c SymbolSearch stays correct on a second call", async () => {
+        const lsp = { enabled: true, servers: { typescript: fakeServer("needsOpenDocument") } };
+        // The server discards its project whenever nothing is open, exactly as
+        // tsserver does. Warming up once per client and skipping it thereafter
+        // makes the second call fail outright.
+        const first = await SymbolSearchTool.execute({ query: "foo" }, makeCtx(lsp));
+        const second = await SymbolSearchTool.execute({ query: "foo" }, makeCtx(lsp));
+        expect(first.ok).toBe(true);
+        expect(second.ok).toBe(true);
+        if (second.ok) expect(text(second.value)).toContain("Function fooHandler");
+    });
+
     test("N8 a position below 1 is rejected as a 1-based API violation", async () => {
         const lsp = { enabled: true, servers: { typescript: fakeServer("normal") } };
         const zeroLine = await DefinitionTool.execute(

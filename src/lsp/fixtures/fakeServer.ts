@@ -6,6 +6,7 @@
 //   die     — completes the handshake, then exits mid-query
 const MODE = process.argv[2] ?? "normal";
 let coldCalls = 0;
+const openDocs = new Set<string>();
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -22,6 +23,10 @@ const frame = (payload: unknown): Uint8Array => {
     bytes.set(header, 0);
     bytes.set(body, header.byteLength);
     return bytes;
+};
+
+const respondError = async (id: unknown, message: string): Promise<void> => {
+    await Bun.write(Bun.stdout, frame({ jsonrpc: "2.0", id, error: { code: -32603, message } }));
 };
 
 const respond = async (id: unknown, result: unknown): Promise<void> => {
@@ -78,6 +83,8 @@ const handle = async (message: Record<string, unknown>): Promise<void> => {
         return;
     }
     if (method === "exit") process.exit(0);
+    if (method === "textDocument/didOpen") openDocs.add(uriOf(params));
+    if (method === "textDocument/didClose") openDocs.delete(uriOf(params));
     if (typeof id !== "number") return;
 
     if (MODE === "silent") return;
@@ -110,6 +117,10 @@ const handle = async (message: Record<string, unknown>): Promise<void> => {
     }
 
     if (method === "workspace/symbol") {
+        if (MODE === "needsOpenDocument" && openDocs.size === 0) {
+            await respondError(id, "No Project.");
+            return;
+        }
         const query =
             isRecord(params) && typeof params["query"] === "string" ? params["query"] : "";
         // Reproduces tsserver's cold-project behaviour: an empty list, not an

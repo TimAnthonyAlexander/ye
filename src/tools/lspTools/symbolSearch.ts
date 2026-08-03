@@ -1,5 +1,6 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
     configuredTargets,
     getClient,
@@ -48,18 +49,44 @@ const findWarmupFile = (root: string, configKey: string): string | undefined => 
 // Opening a document is necessary but not sufficient, so poll until results
 // arrive. A query with genuinely no matches waits out the full timeout; that is
 // the price of not reporting a cold project as an empty workspace.
-// Once a client has answered with symbols its project is built, so a later
-// empty result is a real "no match" and must not be waited out again.
-const provenClients = new WeakSet<LspClient>();
+// A cold server answers a workspace query by throwing ("No Project") or by
+// returning an empty list, and both look exactly like a genuine no-match.
+// Readiness cannot be judged by "did the probe return anything" either: until
+// the real project loads, tsserver serves a single-file inferred project and
+// happily answers from the warmup file alone. So the signal is a symbol
+// resolving in a DIFFERENT file — that is only possible once the project spans
+// the workspace.
+const READINESS_QUERY = "a";
 
+const projectReady = async (
+    client: LspClient,
+    warmupPath: string,
+    deadline: number,
+): Promise<void> => {
+    for (;;) {
+        try {
+            const probe = await workspaceSymbols(client, READINESS_QUERY);
+            if (probe.some((symbol) => symbol.location.uri !== pathToFileURL(warmupPath).href)) {
+                return;
+            }
+        } catch {
+            // Still building: a cold tsserver throws rather than answering empty.
+        }
+        if (Date.now() >= deadline) return;
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+};
+
+// The warmup document must be opened on EVERY call, not once per client. It is
+// closed again below so the server's copy cannot go stale, and a server with no
+// open document discards the project — so a "we already warmed this client"
+// shortcut makes the very next query fail outright.
 const warmupSymbols = async (
     client: LspClient,
     query: string,
     root: string,
     target: LanguageServerTarget,
 ): Promise<readonly LspSymbol[]> => {
-    if (provenClients.has(client)) return workspaceSymbols(client, query);
-
     const path = findWarmupFile(root, target.configKey);
     if (path === undefined) return workspaceSymbols(client, query);
 
@@ -71,16 +98,10 @@ const warmupSymbols = async (
     }
 
     try {
-        const deadline = Date.now() + READY_TIMEOUT_MS;
-        for (;;) {
-            const symbols = await workspaceSymbols(client, query);
-            if (symbols.length > 0) {
-                provenClients.add(client);
-                return symbols;
-            }
-            if (Date.now() >= deadline) return symbols;
-            await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-        }
+        await projectReady(client, path, Date.now() + READY_TIMEOUT_MS);
+        // Deliberately unguarded: if the project never came up, the real query
+        // raises the server's own error instead of reporting an empty workspace.
+        return await workspaceSymbols(client, query);
     } finally {
         client.closeDocument(path);
     }
