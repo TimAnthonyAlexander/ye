@@ -1,4 +1,4 @@
-import { resolveLsp } from "../config/detect.ts";
+import { resolveLsp, resolveLspBinary } from "../config/detect.ts";
 import type { Config, LspConfig, LspServerConfig } from "../config/types.ts";
 import { LspClient } from "./client.ts";
 import { extensionOf, languageForPath } from "./languages.ts";
@@ -95,7 +95,9 @@ export const getClient = async (
 
     const launch = (async () => {
         const client = new LspClient({
-            command: target.server.command,
+            // Spawn the absolute path. An unresolvable name is passed through so
+            // the spawn failure still names the command the user configured.
+            command: resolveLspBinary(target.server.command) ?? target.server.command,
             args: target.server.args ?? [],
             rootPath: root,
             ...(requestTimeoutMs !== undefined ? { requestTimeoutMs } : {}),

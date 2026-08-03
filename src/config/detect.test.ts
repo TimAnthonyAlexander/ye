@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
+import { LSP_BIN_DIR, LSP_NODE_BIN_DIR, lspSearchDirs } from "../storage/paths.ts";
 import {
     _resetDetectionCache,
     effectiveSettings,
+    resetDetectionFor,
     resolveFormat,
     resolveLsp,
+    resolveLspBinary,
     resolveVerify,
 } from "./detect.ts";
 import type { Config } from "./types.ts";
@@ -41,6 +45,27 @@ const fakeBinary = async (name: string): Promise<void> => {
     process.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
 };
 
+// Fixtures written into the user's real ~/.ye/lsp dirs — the constants are the
+// thing under test, so pointing them elsewhere would test nothing.
+const installed: string[] = [];
+
+const yeInstalled = async (dir: string, name: string, mode = 0o755): Promise<string> => {
+    const path = join(dir, name);
+    // Never clobber a real install: these are the user's own directories.
+    if (existsSync(path)) return path;
+    await mkdir(dir, { recursive: true });
+    await writeFile(path, "#!/bin/sh\nexit 0\n", "utf8");
+    await chmod(path, mode);
+    installed.push(path);
+    return path;
+};
+
+const emptyPath = async (): Promise<void> => {
+    const dir = join(root, "empty-bin");
+    await mkdir(dir, { recursive: true });
+    process.env.PATH = dir;
+};
+
 beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "ye-detect-test-"));
     originalPath = process.env.PATH;
@@ -50,6 +75,8 @@ beforeEach(async () => {
 afterEach(async () => {
     process.env.PATH = originalPath;
     _resetDetectionCache();
+    for (const path of installed) await rm(path, { force: true });
+    installed.length = 0;
     await rm(root, { recursive: true, force: true });
 });
 
@@ -252,6 +279,118 @@ describe("lsp detection", () => {
         expect(resolveLsp(configWith({ lsp: { enabled: false } }), root).value).toEqual({
             enabled: false,
         });
+    });
+});
+
+describe("Ye-installed server resolution", () => {
+    const FIXTURE = "ye-fixture-language-server";
+
+    test("AD32 the search dirs are the Ye install dirs, probed before PATH", () => {
+        expect(lspSearchDirs()).toEqual([LSP_BIN_DIR, LSP_NODE_BIN_DIR]);
+    });
+
+    test("AD33 a binary in LSP_BIN_DIR resolves to its absolute path", async () => {
+        await emptyPath();
+        expect(resolveLspBinary(FIXTURE)).toBeUndefined();
+
+        const path = await yeInstalled(LSP_BIN_DIR, FIXTURE);
+        const resolved = resolveLspBinary(FIXTURE);
+        expect(resolved).toBe(path);
+        expect(isAbsolute(resolved ?? "")).toBe(true);
+    });
+
+    test("AD34 a symlinked binary in LSP_NODE_BIN_DIR resolves", async () => {
+        await emptyPath();
+        const target = join(root, "real-server");
+        await writeFile(target, "#!/bin/sh\nexit 0\n", "utf8");
+        await chmod(target, 0o755);
+
+        const link = join(LSP_NODE_BIN_DIR, FIXTURE);
+        await mkdir(LSP_NODE_BIN_DIR, { recursive: true });
+        await symlink(target, link);
+        installed.push(link);
+
+        expect(resolveLspBinary(FIXTURE)).toBe(link);
+    });
+
+    test("AD35 a Ye-installed binary beats a same-named one on PATH", async () => {
+        await fakeBinary(FIXTURE);
+        expect(resolveLspBinary(FIXTURE)).toBe(join(root, "fake-bin", FIXTURE));
+
+        const path = await yeInstalled(LSP_BIN_DIR, FIXTURE);
+        expect(resolveLspBinary(FIXTURE)).toBe(path);
+    });
+
+    test("AD36 a file that exists but is not executable is absent, not a spawn crash", async () => {
+        await emptyPath();
+        await yeInstalled(LSP_BIN_DIR, FIXTURE, 0o644);
+        expect(resolveLspBinary(FIXTURE)).toBeUndefined();
+    });
+
+    test("AD37 a dangling symlink is absent", async () => {
+        await emptyPath();
+        const link = join(LSP_BIN_DIR, FIXTURE);
+        await mkdir(LSP_BIN_DIR, { recursive: true });
+        await symlink(join(root, "gone"), link);
+        installed.push(link);
+
+        expect(resolveLspBinary(FIXTURE)).toBeUndefined();
+    });
+
+    test("AD38 a command carrying a path separator is passed through untouched", () => {
+        expect(resolveLspBinary("/opt/servers/gopls")).toBe("/opt/servers/gopls");
+        expect(resolveLspBinary("./gopls")).toBe("./gopls");
+    });
+
+    test("AD39 a name found only on PATH still resolves", async () => {
+        await fakeBinary(FIXTURE);
+        expect(resolveLspBinary(FIXTURE)).toBe(join(root, "fake-bin", FIXTURE));
+    });
+
+    test("AD40 detection finds a Ye-installed server with nothing on PATH", async () => {
+        await emptyPath();
+        await write("go.mod", "module fixture\n");
+        expect(resolveLsp(configWith(), root).value).toEqual({ enabled: false });
+
+        await yeInstalled(LSP_BIN_DIR, "gopls");
+        resetDetectionFor(root);
+        const lsp = resolveLsp(configWith(), root);
+        expect(lsp.value.enabled).toBe(true);
+        expect(lsp.value.servers).toEqual({ go: { command: "gopls" } });
+        expect(lsp.origins["go"]).toBe("detected");
+    });
+
+    test("AD41 the vetoes still hold for a Ye-installed server", async () => {
+        await emptyPath();
+        await write("go.mod", "module fixture\n");
+        await yeInstalled(LSP_BIN_DIR, "gopls");
+        resetDetectionFor(root);
+
+        expect(resolveLsp(configWith({ lsp: { enabled: false } }), root).value).toEqual({
+            enabled: false,
+        });
+        expect(resolveLsp(configWith({ autoDetect: false }), root).value).toEqual({
+            enabled: false,
+        });
+        expect(
+            resolveLsp(configWith({ lsp: { servers: { go: { command: "my-gopls" } } } }), root)
+                .value.servers,
+        ).toEqual({ go: { command: "my-gopls" } });
+    });
+
+    test("AD42 resetDetectionFor only clears the root it is given", async () => {
+        await emptyPath();
+        await write("go.mod", "module fixture\n");
+        expect(resolveLsp(configWith(), root).value.enabled).toBe(false);
+
+        await yeInstalled(LSP_BIN_DIR, "gopls");
+        expect(resolveLsp(configWith(), root).value.enabled).toBe(false);
+
+        resetDetectionFor(join(root, "elsewhere"));
+        expect(resolveLsp(configWith(), root).value.enabled).toBe(false);
+
+        resetDetectionFor(root);
+        expect(resolveLsp(configWith(), root).value.enabled).toBe(true);
     });
 });
 

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { detectLspServers } from "../config/detect.ts";
+import { detectLspServers, resetDetectionFor } from "../config/detect.ts";
 import { CONFIG_FILE } from "../config/paths.ts";
 import { resolveProjectRoot } from "../storage/project.ts";
 
@@ -41,4 +41,12 @@ export const lspToolsAvailable = (): boolean => {
         cached = available(raw);
     }
     return cached;
+};
+
+// Called after an install: both caches are per-process, and the tools have to
+// appear on the next turn rather than the next launch. listTools() is consulted
+// every time assembleToolPool() runs, so dropping these two answers is enough.
+export const invalidateLspAvailability = (root?: string): void => {
+    cached = undefined;
+    resetDetectionFor(root ?? resolveProjectRoot());
 };

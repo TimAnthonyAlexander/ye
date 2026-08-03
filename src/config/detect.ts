@@ -1,5 +1,7 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { accessSync, constants, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { lspSearchDirs } from "../storage/paths.ts";
+import { CATALOGUE } from "../lsp/install/catalogue.ts";
 import type { Config, FormatConfig, LspConfig, LspServerConfig, VerifyConfig } from "./types.ts";
 
 export type Origin = "configured" | "detected";
@@ -85,30 +87,57 @@ const packageManagerFor = (entries: ReadonlySet<string>): PackageManager => {
     return "bun";
 };
 
+const hasSeparator = (command: string): boolean => command.includes("/") || command.includes("\\");
+
+const isExecutableFile = (path: string): boolean => {
+    try {
+        // statSync follows symlinks: node_modules/.bin entries are symlinks, and
+        // a dangling or non-executable one has to read as absent here rather
+        // than blow up at spawn time.
+        if (!statSync(path).isFile()) return false;
+        accessSync(path, constants.X_OK);
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+// A Ye-installed server beats a system one: the user asked Ye to install it, so
+// that is the binary they expect to run. The result is absolute so callers can
+// spawn it directly — a modified PATH is inherited by this process's children
+// but not by anything they re-exec.
 // Bun.which resolves against the PATH the process launched with unless one is
 // handed to it, and a hook or the user's own env can have changed it since.
-const onPath = (binary: string): boolean =>
-    Bun.which(binary, { PATH: process.env.PATH ?? "" }) !== null;
+export const resolveLspBinary = (command: string): string | undefined => {
+    if (hasSeparator(command)) return command;
+    for (const dir of lspSearchDirs()) {
+        const candidate = join(dir, command);
+        if (isExecutableFile(candidate)) return candidate;
+    }
+    return Bun.which(command, { PATH: process.env.PATH ?? "" }) ?? undefined;
+};
 
+const resolvable = (binary: string): boolean => resolveLspBinary(binary) !== undefined;
+
+// Derived from the install catalogue so a language added there is detectable
+// without a second edit here. Detection is the broader of the two: `alternates`
+// are servers Ye will happily use but never installs.
 const detectServers = (
     has: (name: string) => boolean,
 ): Readonly<Record<string, LspServerConfig>> => {
     const servers: Record<string, LspServerConfig> = {};
-    if ((has("tsconfig.json") || has("package.json")) && onPath("typescript-language-server")) {
-        servers["typescript"] = { command: "typescript-language-server", args: ["--stdio"] };
-    }
-    if (has("go.mod") && onPath("gopls")) {
-        servers["go"] = { command: "gopls" };
-    }
-    if (has("Cargo.toml") && onPath("rust-analyzer")) {
-        servers["rust"] = { command: "rust-analyzer" };
-    }
-    if (has("pyproject.toml") || has("requirements.txt")) {
-        if (onPath("pyright-langserver")) {
-            servers["python"] = { command: "pyright-langserver", args: ["--stdio"] };
-        } else if (onPath("pylsp")) {
-            servers["python"] = { command: "pylsp" };
-        }
+    for (const entry of CATALOGUE) {
+        if (!entry.markers.some(has)) continue;
+        const candidates = [
+            { binary: entry.binary, args: entry.args },
+            ...(entry.alternates ?? []),
+        ];
+        const found = candidates.find((c) => resolvable(c.binary));
+        if (found === undefined) continue;
+        servers[entry.language] = {
+            command: found.binary,
+            ...(found.args.length > 0 ? { args: found.args } : {}),
+        };
     }
     return servers;
 };
@@ -181,6 +210,12 @@ export const detectLspServers = (root: string): Readonly<Record<string, LspServe
 
 export const _resetDetectionCache = (): void => {
     cache.clear();
+};
+
+// Installing a language server changes what detection would find, and the
+// answer is cached for the whole process.
+export const resetDetectionFor = (root: string): void => {
+    cache.delete(root);
 };
 
 const detectionFor = (config: Config, root: string, vetoed: boolean): Detection =>
