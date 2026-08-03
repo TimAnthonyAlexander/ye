@@ -2,6 +2,7 @@ import { AgentsCommand } from "./agents.ts";
 import { BtwCommand } from "./btw.ts";
 import { ClearCommand } from "./clear.ts";
 import { CompactCommand } from "./compact.ts";
+import { ConfigCommand } from "./config.ts";
 import { ContextCommand } from "./context.ts";
 import { CopyCommand } from "./copy.ts";
 import { CostCommand } from "./cost.ts";
@@ -87,6 +88,7 @@ const buildBuiltins = (): readonly SlashCommand[] => {
         MonitorsCommand,
         DoctorCommand,
         LspCommand,
+        ConfigCommand,
         ModeCommand,
         ProviderCommand,
         ModelCommand,

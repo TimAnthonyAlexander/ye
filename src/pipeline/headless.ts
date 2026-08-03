@@ -6,9 +6,17 @@ import {
     type RunSummary,
     type RunUsage,
 } from "../cli/output.ts";
+import type { ResumeTarget } from "../cli/resume.ts";
 import type { LoadResult } from "../config/index.ts";
 import { runEventHooks } from "../hooks/index.ts";
-import { getProjectId, openSession, type SessionHandle } from "../storage/index.ts";
+import { restoredSessionRules } from "../permissions/index.ts";
+import {
+    getProjectId,
+    openExistingSession,
+    openSession,
+    replaySessionFile,
+    type SessionHandle,
+} from "../storage/index.ts";
 import { loadSessionUsage } from "../storage/usage.ts";
 import { getProvider, isMissingKeyError, type Provider } from "../providers/index.ts";
 import { destroyBackgroundManager } from "../tools/bash/background.ts";
@@ -32,6 +40,7 @@ export const runHeadless = async (
     config: LoadResult,
     prompt: string,
     format: OutputFormat = "text",
+    resume: ResumeTarget | null = null,
 ): Promise<void> => {
     const startedAt = Date.now();
     const cfg = config.config;
@@ -100,7 +109,11 @@ export const runHeadless = async (
 
     const proj = await getProjectId();
     projectId = proj.id;
-    const session: SessionHandle = await openSession(proj.id);
+    const replayed = resume === null ? null : await replaySessionFile(resume.path);
+    const session: SessionHandle =
+        resume === null
+            ? await openSession(proj.id)
+            : await openExistingSession(proj.id, resume.sessionId);
     sessionId = session.sessionId;
 
     let contextWindow = 128_000;
@@ -116,8 +129,8 @@ export const runHeadless = async (
         projectRoot: proj.root,
         mode: "AUTO",
         contextWindow,
-        history: [],
-        sessionRules: [],
+        history: replayed === null ? [] : [...replayed.history],
+        sessionRules: replayed === null ? [] : restoredSessionRules(cfg, replayed.sessionRules),
         denialTrail: null,
         compactedThisTurn: false,
         headless: true,
@@ -127,7 +140,7 @@ export const runHeadless = async (
             contextCollapse: false,
             autoCompact: false,
         },
-        globalTurnIndex: 0,
+        globalTurnIndex: replayed?.maxGlobalTurnIndex ?? 0,
         selectedMemory: null,
         turnState: { readFiles: new Map(), todos: [] },
     };

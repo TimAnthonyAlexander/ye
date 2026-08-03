@@ -18,9 +18,12 @@ describe("parseFlags", () => {
         expect(ok([])).toEqual({
             resume: false,
             resumeSessionId: null,
+            continueSession: false,
             update: false,
             prompt: null,
             mode: null,
+            model: null,
+            provider: null,
             maxBudgetUsd: null,
             outputFormat: "text",
             help: false,
@@ -80,6 +83,47 @@ describe("parseFlags", () => {
         expect(ok(["--resume", "-p"]).resumeSessionId).toBe("-p");
     });
 
+    test("--continue sets its own flag and leaves resume alone", () => {
+        const flags = ok(["--continue"]);
+        expect(flags.continueSession).toBe(true);
+        expect(flags.resume).toBe(false);
+        expect(flags.resumeSessionId).toBeNull();
+    });
+
+    test("--continue and --resume together are an error in either order", () => {
+        const message = "ye: --continue and --resume are mutually exclusive — pick one";
+        expect(err(["--continue", "--resume"])).toBe(message);
+        expect(err(["--resume", "--continue"])).toBe(message);
+        expect(err(["--resume", "abc123", "--continue"])).toBe(message);
+    });
+
+    test("--model takes any value — the provider owns the model list", () => {
+        expect(ok(["--model", "anthropic/claude-sonnet-4"]).model).toBe(
+            "anthropic/claude-sonnet-4",
+        );
+        expect(ok(["--model", "not-a-real-model"]).model).toBe("not-a-real-model");
+    });
+
+    test("--model without a value is an error", () => {
+        expect(err(["--model"])).toBe("ye: --model requires a value");
+    });
+
+    test("--provider accepts every known id", () => {
+        for (const id of ["openrouter", "anthropic", "openai", "deepseek", "ollama"]) {
+            expect(ok(["--provider", id]).provider).toBe(id);
+        }
+    });
+
+    test("--provider rejects missing and unknown values with the valid list", () => {
+        expect(err(["--provider"])).toBe(
+            "ye: --provider requires openrouter, anthropic, openai, deepseek, ollama",
+        );
+        expect(err(["--provider", "gemini"])).toBe(
+            'ye: unknown provider "gemini" — must be openrouter, anthropic, openai, deepseek, ollama',
+        );
+        expect(err(["--provider", "OpenAI"])).toContain('unknown provider "OpenAI"');
+    });
+
     test("--max-budget-usd takes a positive number", () => {
         expect(ok(["--max-budget-usd", "2.5"]).maxBudgetUsd).toBe(2.5);
         expect(ok(["--max-budget-usd", "10"]).maxBudgetUsd).toBe(10);
@@ -121,9 +165,12 @@ describe("parseFlags", () => {
         expect(flags).toEqual({
             resume: true,
             resumeSessionId: "sess-1",
+            continueSession: false,
             update: false,
             prompt: "do a thing",
             mode: "AUTO",
+            model: null,
+            provider: null,
             maxBudgetUsd: null,
             outputFormat: "text",
             help: false,
@@ -153,7 +200,10 @@ describe("parseFlags", () => {
             "-p, --prompt",
             "--output-format <fmt>",
             "--mode",
+            "--model <id>",
+            "--provider <id>",
             "--resume",
+            "--continue",
             "--max-budget-usd",
             "--update, --upgrade",
             "-h, --help",

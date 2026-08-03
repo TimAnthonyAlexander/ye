@@ -14,7 +14,7 @@ export interface LoadResult {
 // Temp file + rename: a crash mid-write leaves the previous config intact
 // instead of a truncated file that fails validation on next launch. The mode is
 // tightened on the temp file, before it becomes visible under the real name.
-const writeAtomic = async (path: string, contents: string): Promise<void> => {
+export const writeAtomic = async (path: string, contents: string): Promise<void> => {
     await mkdir(dirname(path), { recursive: true });
     const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
     try {

@@ -1,11 +1,15 @@
+import { PROVIDER_IDS } from "../providers/index.ts";
 import { OUTPUT_FORMATS, type OutputFormat } from "./output.ts";
 
 export interface CliFlags {
     readonly resume: boolean;
     readonly resumeSessionId: string | null;
+    readonly continueSession: boolean;
     readonly update: boolean;
     readonly prompt: string | null;
     readonly mode: string | null;
+    readonly model: string | null;
+    readonly provider: string | null;
     readonly maxBudgetUsd: number | null;
     readonly outputFormat: OutputFormat;
     readonly help: boolean;
@@ -24,7 +28,10 @@ Options:
   -p, --prompt <text>             Run one turn headlessly and exit
       --output-format <fmt>       Headless output: text (default), json, stream-json
       --mode <AUTO|NORMAL|PLAN>   Permission mode for the session
+      --model <id>                Use this model for this run only (never saved)
+      --provider <id>             Use this provider for this run only (never saved)
       --resume [sessionId]        Resume the most recent session, or a specific one
+      --continue                  Resume the most recent session without picking
       --max-budget-usd <n>        Stop the session once it has spent this much (USD)
       --update, --upgrade         Download and install the latest release binary
   -h, --help                      Show this help
@@ -38,9 +45,12 @@ object; stream-json prints one JSON object per line as events happen.
 export const parseFlags = (argv: readonly string[]): ParseFlagsResult => {
     let resume = false;
     let resumeSessionId: string | null = null;
+    let continueSession = false;
     let update = false;
     let prompt: string | null = null;
     let mode: string | null = null;
+    let model: string | null = null;
+    let provider: string | null = null;
     let maxBudgetUsd: number | null = null;
     let outputFormat: OutputFormat = "text";
     let help = false;
@@ -55,6 +65,31 @@ export const parseFlags = (argv: readonly string[]): ParseFlagsResult => {
                 resumeSessionId = next;
                 i += 1;
             }
+        } else if (a === "--continue") {
+            continueSession = true;
+        } else if (a === "--model") {
+            const next = argv[i + 1];
+            if (!next) {
+                return { ok: false, error: "ye: --model requires a value" };
+            }
+            model = next;
+            i += 1;
+        } else if (a === "--provider") {
+            const next = argv[i + 1];
+            if (!next) {
+                return {
+                    ok: false,
+                    error: `ye: --provider requires ${PROVIDER_IDS.join(", ")}`,
+                };
+            }
+            if (!PROVIDER_IDS.includes(next)) {
+                return {
+                    ok: false,
+                    error: `ye: unknown provider "${next}" — must be ${PROVIDER_IDS.join(", ")}`,
+                };
+            }
+            provider = next;
+            i += 1;
         } else if (a === "--update" || a === "--upgrade") {
             update = true;
         } else if (a === "-p" || a === "--prompt") {
@@ -120,14 +155,23 @@ export const parseFlags = (argv: readonly string[]): ParseFlagsResult => {
             };
         }
     }
+    if (continueSession && resume) {
+        return {
+            ok: false,
+            error: "ye: --continue and --resume are mutually exclusive — pick one",
+        };
+    }
     return {
         ok: true,
         flags: {
             resume,
             resumeSessionId,
+            continueSession,
             update,
             prompt,
             mode,
+            model,
+            provider,
             maxBudgetUsd,
             outputFormat,
             help,

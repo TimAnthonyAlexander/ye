@@ -28,7 +28,11 @@
 
 ## Architecture
 
-Entry: `src/cli.tsx`. Flag parsing lives in `src/cli/flags.ts` (separate module so it is testable — `cli.tsx` runs `main()` at import). Flags: `-p/--prompt`, `--mode`, `--resume [id]`, `--output-format text|json|stream-json`, `--max-budget-usd`, `--update`/`--upgrade`, `-h/--help`, `-v/--version`. An unrecognised flag errors and exits 1. With no `-p` and a non-TTY stdin the prompt is read from stdin (`echo "fix it" | ye`), capped at 10MB. Headless bypasses Ink and streams via `pipeline/headless.ts`; `src/cli/output.ts` holds the machine-readable serialisers.
+Entry: `src/cli.tsx`. Flag parsing lives in `src/cli/flags.ts` (separate module so it is testable — `cli.tsx` runs `main()` at import). Flags: `-p/--prompt`, `--mode`, `--model`, `--provider`, `--resume [id]`, `--continue`, `--output-format text|json|stream-json`, `--max-budget-usd`, `--update`/`--upgrade`, `-h/--help`, `-v/--version`. An unrecognised flag errors and exits 1. With no `-p` and a non-TTY stdin the prompt is read from stdin (`echo "fix it" | ye`), capped at 10MB. Headless bypasses Ink and streams via `pipeline/headless.ts`; `src/cli/output.ts` holds the machine-readable serialisers.
+
+`--model` and `--provider` (`src/cli/overrides.ts`) rewrite the in-memory config for one run and are never handed to `saveConfig`. A provider given without a model carries that provider's registry default, the rule `/provider` follows — the configured model id usually belongs to the provider being replaced. The provider id is validated in `parseFlags` against `PROVIDER_IDS`; a model id is not, because model lists are dynamic and the provider is the authority.
+
+`--resume` and `--continue` resolve to a concrete transcript in `src/cli/resume.ts` before anything opens, so a missing session errors instead of silently starting fresh. Bare `--resume` interactively still opens the picker; `--continue` never does — it resolves the newest session and hands `<App>` an explicit id. Both work headlessly: `runHeadless` replays the JSONL into the starting history, restores `sessionRules` and `maxGlobalTurnIndex`, re-opens the same file in append mode, and reports that session id in the `RunSummary`. Mode is not restored — headless is always AUTO.
 
 UI layer: `src/components/`. Home screen + recents picker, chat, input, status bar, todo panel, permission/key/user prompts, edit diff renderer. File index loaded once per session from `loadFileIndex()`.
 
@@ -107,7 +111,11 @@ A line that is exactly `@<path>` inlines that file, resolved relative to the imp
 
 Auto-memory: LLM-based selection from `~/.ye/projects/<hash>/memory/*.md`, `~/.ye/memory/*.md` and `~/.ye/MEMORY.md`. No embeddings, no vector DB.
 
-Slash commands: `src/commands/`. Built-ins: `/help /clear /context /compact /copy /cost /usage /diff /status /btw /export /memory /permissions /agents /monitors /doctor /lsp /mode /provider /model /routing /resume /rewind /init /exit`.
+Slash commands: `src/commands/`. Built-ins: `/help /clear /context /compact /copy /cost /usage /diff /status /btw /export /memory /permissions /agents /monitors /doctor /lsp /config /mode /provider /model /routing /resume /rewind /init /exit`.
+
+`/config` is a settings list: one line per setting, ↑↓ to move, ←→ to change the value on the current line, Enter to type an exact number or string, Esc to save, Ctrl+C to discard. The editable surface is pure data in `src/config/registry.ts` — dotted path, label, kind, range, default, description — and everything else (rendering, navigation, persistence) reads from it, so the whole thing is testable without Ink. Each line is tagged `(configured)`, `(detected)` or `(default)` in the same language `/doctor` and `/status` use.
+
+Persistence never round-trips the validated `Config`: `validate.ts` drops top-level keys it does not model, and serialising it back would silently delete anything the user hand-wrote. `src/config/edit.ts` re-reads the raw JSON, sets only the dotted paths that changed, and writes via temp file + rename. A key equal to its default is not written unless it was already there, so the file does not bloat with restated defaults; a delete prunes the block it emptied. `ensureInvariants()` fills the keys `validate.ts` demands of a block that exists (`maxTurns.subagent`, `permissions.rules`, `compact.threshold`) — writing one optional leaf into a block the file did not have would otherwise produce a config that fails to load. Blocks a one-line widget would misrepresent — `providers`, `hooks`, `permissions.rules`, `format.formatters`, `lsp.servers`, the model pairs — render as read-only summary rows so the editor never claims to be the whole surface.
 
 `/cost` is this session plus a lifetime total; `/usage` is the lifetime log split by provider and by model over three windows (24h, 7d, all time), from the same `~/.ye/usage.jsonl`. `/diff` renders `git diff HEAD` for the project root in the same red/green/`… N unchanged lines` language as the inline Edit diffs, capped so a large diff cannot flood the scrollback. `/help` lists commands **and** keybindings — the home-screen tip promises both.
 

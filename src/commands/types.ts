@@ -1,4 +1,6 @@
 import type { Config, PermissionMode, PermissionRule } from "../config/index.ts";
+import type { ConfigEdit } from "../config/edit.ts";
+import type { ConfigRow } from "../config/registry.ts";
 import type { ManualCompactResult } from "../pipeline/shapers/manualCompact.ts";
 import type { Message } from "../providers/index.ts";
 
@@ -69,6 +71,11 @@ export interface SlashCommandContext {
     // Open the interactive picker. Resolves with the chosen option's `id`,
     // or `null` if the user dismissed (Esc).
     pick(payload: PickerPayload): Promise<string | null>;
+    // Open the settings editor. Resolves with the edits the user wants kept,
+    // or `null` when they discarded (Ctrl+C).
+    editConfig(rows: readonly ConfigRow[]): Promise<readonly ConfigEdit[] | null>;
+    // Merge edits into the raw config file and adopt them for this session.
+    saveConfigEdits(edits: readonly ConfigEdit[]): Promise<void>;
     // Live conversation history and the permission rules granted during this
     // session (config rules live on `config`).
     getHistory(): readonly Message[];

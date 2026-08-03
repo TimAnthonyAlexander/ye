@@ -39,7 +39,11 @@ import {
     type MentionOption,
 } from "../mentions/index.ts";
 import {
+    applyConfigEdits,
     type Config,
+    type ConfigEdit,
+    type ConfigRow,
+    loadConfig,
     type LoadResult,
     type PermissionMode,
     persistPermissionRule,
@@ -123,6 +127,7 @@ import { KeyPrompt } from "./keyPrompt.tsx";
 import { MentionPicker } from "./mentionPicker.tsx";
 import { PermissionPrompt } from "./permissionPrompt.tsx";
 import { Picker } from "./picker.tsx";
+import { ConfigEditor } from "./configEditor.tsx";
 import { SubagentTabBar } from "./subagentTabBar.tsx";
 import { SlashPicker } from "./slashPicker.tsx";
 import { StatusBar } from "./statusBar.tsx";
@@ -172,6 +177,11 @@ interface PendingPicker {
 interface PendingKeyPrompt {
     readonly payload: KeyPromptPayload;
     readonly respond: (key: string | null) => void;
+}
+
+interface PendingConfigEditor {
+    readonly rows: readonly ConfigRow[];
+    readonly respond: (edits: readonly ConfigEdit[] | null) => void;
 }
 
 const prettyCwd = (): string => {
@@ -305,6 +315,9 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
     );
     const [pendingPicker, setPendingPicker] = useState<PendingPicker | null>(null);
     const [pendingKeyPrompt, setPendingKeyPrompt] = useState<PendingKeyPrompt | null>(null);
+    const [pendingConfigEditor, setPendingConfigEditor] = useState<PendingConfigEditor | null>(
+        null,
+    );
     // At most one language-server install offer, surfaced once per session
     // start. Never a queue: the second one waits for the next session.
     const [lspOffer, setLspOffer] = useState<InstallOffer | null>(null);
@@ -1012,6 +1025,26 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         });
     };
 
+    const editConfig = (rows: readonly ConfigRow[]): Promise<readonly ConfigEdit[] | null> => {
+        return new Promise<readonly ConfigEdit[] | null>((resolve) => {
+            setPendingConfigEditor({
+                rows,
+                respond: (edits) => {
+                    setPendingConfigEditor(null);
+                    resolve(edits);
+                },
+            });
+        });
+    };
+
+    // Re-reading beats patching cfgRef by hand: the merge happens against the
+    // file, so the live config is exactly what the next launch will load.
+    const saveConfigEdits = async (edits: readonly ConfigEdit[]): Promise<void> => {
+        await applyConfigEdits(edits);
+        const { config: fresh } = await loadConfig();
+        cfgRef.current = fresh;
+    };
+
     // The banner is an offer, not a gate — this only runs when the user asks
     // for the chooser, and only an explicit "install" installs anything. Esc,
     // "not now" and simply typing all leave the machine untouched.
@@ -1191,6 +1224,8 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                 return true;
             },
             pick,
+            editConfig,
+            saveConfigEdits,
             getHistory: () => stateRef.current?.history ?? [],
             getSessionRules: () => stateRef.current?.sessionRules ?? [],
             getBackgroundTaskCount: () => {
@@ -1411,6 +1446,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
             stateRef.current &&
             !pendingPrompt &&
             !pendingPicker &&
+            !pendingConfigEditor &&
             !pendingUserQuestion &&
             !pendingKeyPrompt
         ) {
@@ -1988,6 +2024,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         !pendingPrompt &&
         !pendingUserQuestion &&
         !pendingPicker &&
+        !pendingConfigEditor &&
         !pendingKeyPrompt &&
         termCols >= HOME_MIN_COLS &&
         termRows >= HOME_MIN_ROWS;
@@ -2000,6 +2037,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
         !pendingPrompt &&
         !pendingUserQuestion &&
         !pendingPicker &&
+        !pendingConfigEditor &&
         !pendingKeyPrompt;
 
     return (
@@ -2042,6 +2080,7 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                     !pendingPrompt &&
                     !pendingUserQuestion &&
                     !pendingPicker &&
+                    !pendingConfigEditor &&
                     !pendingKeyPrompt
                 }
                 committedCount={
@@ -2092,6 +2131,11 @@ export const App = ({ config, resumeOnStart, resumeSessionId, modeOnStart }: App
                         <KeyPrompt
                             payload={pendingKeyPrompt.payload}
                             onRespond={pendingKeyPrompt.respond}
+                        />
+                    ) : pendingConfigEditor ? (
+                        <ConfigEditor
+                            rows={pendingConfigEditor.rows}
+                            onClose={pendingConfigEditor.respond}
                         />
                     ) : (
                         <>

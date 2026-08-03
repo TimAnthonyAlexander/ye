@@ -4,11 +4,14 @@ import { render } from "ink";
 import { App } from "./components/app.tsx";
 import { HELP_TEXT, parseFlags } from "./cli/flags.ts";
 import { errorSummary, writeSummary, type OutputFormat } from "./cli/output.ts";
+import { applyModelOverrides } from "./cli/overrides.ts";
+import { resolveResumeTarget, type ResumeTarget } from "./cli/resume.ts";
 import { readStdinPrompt } from "./cli/stdin.ts";
 import { writeErr, writeOut } from "./cli/write.ts";
 import { ConfigValidationError, loadConfig, type LoadResult } from "./config/index.ts";
 import { runHeadless } from "./pipeline/headless.ts";
 import { resolveBudgetCap } from "./pipeline/stop.ts";
+import { getProjectId } from "./storage/index.ts";
 import { refreshUpdateStatus } from "./update/check.ts";
 import { cleanupWindowsOldBinary, runSelfUpdate, UpdateError } from "./update/install.ts";
 import { CURRENT_VERSION } from "./update/version.ts";
@@ -84,13 +87,34 @@ const main = async (): Promise<void> => {
         await cleanupWindowsOldBinary();
         const loaded = await loadConfig();
         const budgetCap = resolveBudgetCap(flags.maxBudgetUsd, loaded.config.budget?.maxUsd);
-        const config: LoadResult =
+        const budgeted: LoadResult =
             budgetCap === loaded.config.budget?.maxUsd
                 ? loaded
                 : { ...loaded, config: { ...loaded.config, budget: { maxUsd: budgetCap } } };
+        const config = applyModelOverrides(budgeted, flags.provider, flags.model);
+        const wantsResume = flags.resume || flags.continueSession;
         if (headlessPrompt !== null) {
-            await runHeadless(config, headlessPrompt, format);
+            let resume: ResumeTarget | null = null;
+            if (wantsResume) {
+                const proj = await getProjectId();
+                const resolved = await resolveResumeTarget(proj.id, flags.resumeSessionId);
+                if (resolved.ok) resume = resolved.target;
+                else await abort(format, resolved.error, `ye: ${resolved.error}`);
+            }
+            await runHeadless(config, headlessPrompt, format, resume);
             process.exit(0);
+        }
+        // --continue skips the picker the interactive resume flow would show,
+        // so the session is resolved here and handed over as an explicit id.
+        let startSessionId = flags.resumeSessionId;
+        if (flags.continueSession) {
+            const proj = await getProjectId();
+            const resolved = await resolveResumeTarget(proj.id, null);
+            if (!resolved.ok) {
+                writeErr(`ye: ${resolved.error}\n`);
+                process.exit(1);
+            }
+            startSessionId = resolved.target.sessionId;
         }
         // Background update check — fire-and-forget; status surfaces in StatusBar.
         void refreshUpdateStatus().catch(() => undefined);
@@ -98,8 +122,8 @@ const main = async (): Promise<void> => {
         const { waitUntilExit } = render(
             <App
                 config={config}
-                resumeOnStart={flags.resume}
-                resumeSessionId={flags.resumeSessionId}
+                resumeOnStart={wantsResume}
+                resumeSessionId={startSessionId}
                 modeOnStart={flags.mode}
             />,
             { exitOnCtrlC: false },

@@ -24,15 +24,26 @@ interface RunResult {
 
 const REPLY = ["Hello ", "world"];
 
+interface ChatMessage {
+    readonly role: string;
+    readonly content: string | null;
+}
+
+// The messages the CLI subprocess sent on its most recent chat call. The server
+// runs in the test process, so a resumed run's replayed history is observable.
+let lastChatMessages: readonly ChatMessage[] = [];
+
 // Minimal ollama /api/chat stand-in: NDJSON deltas plus the terminating
 // done chunk, so a headless run can succeed without a real model.
 const startFakeOllama = (): { readonly port: number; stop(): void } => {
     const server = Bun.serve({
         port: 0,
-        fetch(req) {
+        async fetch(req) {
             if (!new URL(req.url).pathname.endsWith("/api/chat")) {
                 return new Response("not found", { status: 404 });
             }
+            const body = (await req.json()) as { readonly messages?: readonly ChatMessage[] };
+            lastChatMessages = body.messages ?? [];
             const lines = [
                 ...REPLY.map((content) => ({ message: { role: "assistant", content } })),
                 { done: true, done_reason: "stop", prompt_eval_count: 11, eval_count: 5 },
@@ -51,6 +62,7 @@ let home = "";
 let work = "";
 let brokenHome = "";
 let liveHome = "";
+let resumeHome = "";
 let fake: { readonly port: number; stop(): void } | null = null;
 
 const makeHome = async (config: string): Promise<string> => {
@@ -66,14 +78,14 @@ beforeAll(async () => {
     await mkdir(work, { recursive: true });
     brokenHome = await makeHome(JSON.stringify({ defaultProvider: 7 }));
     fake = startFakeOllama();
-    liveHome = await makeHome(
-        JSON.stringify({
-            ...CONFIG,
-            providers: {
-                ollama: { baseUrl: `http://127.0.0.1:${fake.port}`, apiKeyEnv: "OLLAMA_API_KEY" },
-            },
-        }),
-    );
+    const liveConfig = JSON.stringify({
+        ...CONFIG,
+        providers: {
+            ollama: { baseUrl: `http://127.0.0.1:${fake.port}`, apiKeyEnv: "OLLAMA_API_KEY" },
+        },
+    });
+    liveHome = await makeHome(liveConfig);
+    resumeHome = await makeHome(liveConfig);
 });
 
 afterAll(async () => {
@@ -81,6 +93,7 @@ afterAll(async () => {
     await rm(home, { recursive: true, force: true });
     await rm(brokenHome, { recursive: true, force: true });
     await rm(liveHome, { recursive: true, force: true });
+    await rm(resumeHome, { recursive: true, force: true });
 });
 
 const run = async (
@@ -301,6 +314,169 @@ describe("headless stdin", () => {
             expect(res.stderr).toContain("no prompt on stdin");
             const summary = JSON.parse(res.stdout.trim()) as Record<string, unknown>;
             expect(summary["ok"]).toBe(false);
+        },
+        { timeout: 60_000 },
+    );
+});
+
+const summaryOf = (res: RunResult): Record<string, unknown> =>
+    JSON.parse(res.stdout.split("\n").filter((l) => l.length > 0)[0] as string) as Record<
+        string,
+        unknown
+    >;
+
+const transcriptOf = async (homeDir: string, summary: Record<string, unknown>): Promise<string> =>
+    readFile(
+        join(
+            homeDir,
+            ".ye",
+            "projects",
+            summary["projectId"] as string,
+            "sessions",
+            `${summary["sessionId"] as string}.jsonl`,
+        ),
+        "utf8",
+    );
+
+describe("headless resume", () => {
+    test(
+        "--continue appends to the most recent session and replays its history",
+        async () => {
+            const first = summaryOf(
+                await run(["--output-format", "json", "-p", "first prompt"], {
+                    home: resumeHome,
+                }),
+            );
+            expect(first["ok"]).toBe(true);
+
+            const second = summaryOf(
+                await run(["--output-format", "json", "--continue", "-p", "second prompt"], {
+                    home: resumeHome,
+                }),
+            );
+            expect(second["ok"]).toBe(true);
+            expect(second["sessionId"]).toBe(first["sessionId"] as string);
+
+            const sent = lastChatMessages.map((m) => m.content ?? "").join("\n");
+            expect(sent).toContain("first prompt");
+            expect(sent).toContain(REPLY.join(""));
+            expect(sent).toContain("second prompt");
+
+            const transcript = await transcriptOf(resumeHome, second);
+            expect(transcript).toContain("first prompt");
+            expect(transcript).toContain("second prompt");
+        },
+        { timeout: 60_000 },
+    );
+
+    test(
+        "--resume <id> continues that exact session",
+        async () => {
+            const first = summaryOf(
+                await run(["--output-format", "json", "-p", "named resume base"], {
+                    home: resumeHome,
+                }),
+            );
+            const sessionId = first["sessionId"] as string;
+            const second = summaryOf(
+                await run(
+                    ["--output-format", "json", "--resume", sessionId, "-p", "named resume next"],
+                    { home: resumeHome },
+                ),
+            );
+            expect(second["sessionId"]).toBe(sessionId);
+            const transcript = await transcriptOf(resumeHome, second);
+            expect(transcript).toContain("named resume base");
+            expect(transcript).toContain("named resume next");
+        },
+        { timeout: 60_000 },
+    );
+
+    test(
+        "--resume with an unknown id errors instead of starting fresh",
+        async () => {
+            const res = await run(
+                ["--output-format", "json", "--resume", "no-such-session", "-p", "hi"],
+                { home: resumeHome },
+            );
+            expect(res.code).toBe(1);
+            expect(res.stderr).toContain("session not found: no-such-session");
+            const summary = summaryOf(res);
+            expect(summary["ok"]).toBe(false);
+            expect(summary["sessionId"]).toBe("");
+        },
+        { timeout: 60_000 },
+    );
+
+    test(
+        "--continue with no prior session errors instead of starting fresh",
+        async () => {
+            const emptyHome = await makeHome(JSON.stringify(CONFIG));
+            try {
+                const res = await run(["--output-format", "json", "--continue", "-p", "hi"], {
+                    home: emptyHome,
+                });
+                expect(res.code).toBe(1);
+                expect(res.stderr).toContain("no previous session to resume");
+                expect(summaryOf(res)["ok"]).toBe(false);
+            } finally {
+                await rm(emptyHome, { recursive: true, force: true });
+            }
+        },
+        { timeout: 60_000 },
+    );
+
+    test(
+        "--continue and --resume together exit before anything runs",
+        async () => {
+            const res = await run(["--continue", "--resume", "-p", "hi"], { home: resumeHome });
+            expect(res.code).toBe(1);
+            expect(res.stdout).toBe("");
+            expect(res.stderr).toContain("mutually exclusive");
+        },
+        { timeout: 60_000 },
+    );
+});
+
+describe("model and provider overrides", () => {
+    test(
+        "--model and --provider are reported for the run",
+        async () => {
+            const res = await run([
+                "--output-format",
+                "json",
+                "--provider",
+                "ollama",
+                "--model",
+                "override-model",
+                "-p",
+                "hi",
+            ]);
+            const summary = summaryOf(res);
+            expect(summary["provider"]).toBe("ollama");
+            expect(summary["model"]).toBe("override-model");
+        },
+        { timeout: 60_000 },
+    );
+
+    test(
+        "an override is never written back to config.json",
+        async () => {
+            const before = await readFile(join(home, ".ye", "config.json"), "utf8");
+            await run(["--output-format", "json", "--model", "override-model", "-p", "hi"]);
+            expect(await readFile(join(home, ".ye", "config.json"), "utf8")).toBe(before);
+        },
+        { timeout: 60_000 },
+    );
+
+    test(
+        "an unknown provider exits before the pipeline with the valid ids",
+        async () => {
+            const res = await run(["--output-format", "json", "--provider", "gemini", "-p", "hi"]);
+            expect(res.code).toBe(1);
+            expect(res.stdout).toBe("");
+            expect(res.stderr).toContain('unknown provider "gemini"');
+            expect(res.stderr).toContain("openrouter");
         },
         { timeout: 60_000 },
     );
