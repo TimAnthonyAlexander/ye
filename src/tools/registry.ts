@@ -8,7 +8,9 @@ import { ExitPlanModeTool } from "./exitPlanMode/index.ts";
 import { GlobTool } from "./glob/index.ts";
 import { GrepTool } from "./grep/index.ts";
 import { KillAgentTool } from "./killAgent/index.ts";
+import { KillMonitorTool } from "./killMonitor/index.ts";
 import { KillShellTool } from "./killShell/index.ts";
+import { MonitorTool } from "./monitor/index.ts";
 import { lspToolsAvailable } from "../lsp/availability.ts";
 import { DefinitionTool, ReferencesTool, SymbolSearchTool } from "./lspTools/index.ts";
 import { ReadTool } from "./read/index.ts";
@@ -41,6 +43,8 @@ const TOOLS: readonly Tool[] = [
     TaskTool,
     TaskOutputTool,
     KillAgentTool,
+    MonitorTool,
+    KillMonitorTool,
     WebFetchTool,
     WebSearchTool,
     SkillTool,

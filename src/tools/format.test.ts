@@ -45,6 +45,7 @@ const makeCtx = (format?: FormatConfig): ToolContext => ({
     provider: stubProvider,
     config: format === undefined ? baseConfig : { ...baseConfig, format },
     activeModel: "stub-model",
+    headless: false,
     log: () => {},
 });
 

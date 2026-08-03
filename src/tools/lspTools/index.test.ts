@@ -53,6 +53,7 @@ const makeCtx = (lsp?: Config["lsp"]): ToolContext => ({
     provider: stubProvider,
     config: configWith(lsp),
     activeModel: "stub-model",
+    headless: false,
     log: () => {},
 });
 

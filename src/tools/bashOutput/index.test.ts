@@ -39,6 +39,7 @@ const makeCtx = (): ToolContext => ({
     provider: stubProvider,
     config: stubConfig,
     activeModel: "stub-model",
+    headless: false,
     log: () => {},
 });
 

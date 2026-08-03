@@ -44,6 +44,7 @@ const makeCtx = (provider: Provider, cfg: Config = baseConfig): ToolContext => (
     provider,
     config: cfg,
     activeModel: "x-ai/grok-foo",
+    headless: false,
     log: () => {},
 });
 

@@ -64,6 +64,7 @@ const makeCtx = (sessionId: string, providerId: string): ToolContext => ({
     provider: stubProvider(providerId),
     config: stubConfig,
     activeModel: "stub-model",
+    headless: false,
     log: () => {},
 });
 

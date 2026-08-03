@@ -57,6 +57,8 @@ export interface ToolContext {
     readonly provider: Provider;
     readonly config: Config;
     readonly activeModel: string;
+    // True for `-p` runs. A monitor whose deadline outlives the run would hang it.
+    readonly headless: boolean;
     readonly subagentContext?: SubagentToolContext;
     // Optional liveness hook. Tools that wrap a long-running sub-process (e.g.
     // Task) push a current snapshot of recent action lines here; the pipeline

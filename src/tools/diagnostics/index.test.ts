@@ -40,6 +40,7 @@ const makeCtx = (verify?: VerifySettings, overrides: Partial<ToolContext> = {}):
     provider: stubProvider,
     config: configWith(verify),
     activeModel: "stub-model",
+    headless: false,
     log: () => {},
     ...overrides,
 });

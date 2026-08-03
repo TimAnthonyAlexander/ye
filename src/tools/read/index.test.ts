@@ -36,6 +36,7 @@ const makeCtx = (overrides: Partial<ToolContext> = {}): ToolContext => ({
     provider: stubProvider,
     config: stubConfig,
     activeModel: "stub-model",
+    headless: false,
     log: () => {},
     ...overrides,
 });
