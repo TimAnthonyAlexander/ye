@@ -186,6 +186,7 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
                 const cb = evt.content_block;
                 if (cb && cb.type === "tool_use" && cb.id && cb.name) {
                     toolBlocks.set(idx, { id: cb.id, name: cb.name, args: "" });
+                    yield { type: "tool_call.starting", id: cb.id, name: cb.name };
                 }
                 break;
             }
