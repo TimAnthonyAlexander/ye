@@ -74,6 +74,28 @@ describe("Monitor documentation", () => {
     });
 });
 
+describe("question vs. work order", () => {
+    test("R14 both variants draw the bright line at the first state-modifying call", () => {
+        for (const out of [
+            buildSystemPrompt(env({ providerId: "openrouter", model: "gpt-5-codex" })),
+            buildSmallSystemPrompt(env({ providerId: "ollama", model: "llama3.1:70b" })),
+        ]) {
+            expect(out).toContain("is not an instruction to do it");
+            expect(out).toContain("bright line is your first state-modifying call");
+        }
+    });
+
+    test("R15 OpenAI persistence does not license unrequested implementation", () => {
+        for (const out of [
+            buildSystemPrompt(env({ providerId: "openai", model: "gpt-5-codex" })),
+            buildSmallSystemPrompt(env({ providerId: "openai", model: "gpt-5.1-codex-mini" })),
+        ]) {
+            expect(out).toContain(PERSISTENCE_MARKER);
+            expect(out).toMatch(/does not authorize/);
+        }
+    });
+});
+
 describe("buildSmallSystemPrompt — OpenAI persistence", () => {
     test("R6 OpenAI + NORMAL includes the persistence block", () => {
         const out = buildSmallSystemPrompt(env({ providerId: "openai", mode: "NORMAL" }));
