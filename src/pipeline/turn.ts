@@ -5,6 +5,7 @@ import type { Message, Provider, ReasoningDetail, ToolCallRequest } from "../pro
 import type { SessionHandle } from "../storage/index.ts";
 import { assembleToolPool, getTool, type ToolResult, type TurnState } from "../tools/index.ts";
 import { narrowAllowedTools } from "../tools/pool.ts";
+import { normalizePathArg } from "../tools/paths.ts";
 import { clearSkillScope, getSkillScope } from "../skills/scope.ts";
 import { getBackgroundManager, formatBackgroundNotice } from "../tools/bash/background.ts";
 import { getBackgroundSubagentManager } from "../subagents/background.ts";
@@ -319,8 +320,13 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     // runs in the sequential loop below. AskUserQuestion is read-only-annotated
     // but its result triggers an interactive userQuestion.prompt, so it stays
     // sequential.
+    // Resolve relative path args before anything reads them, so the gate, the
+    // tool and the transcript all name the same file. History keeps the model's
+    // verbatim arguments.
+    const gatedToolCalls = toolCalls.map((call) => normalizePathArg(call, state.projectRoot));
+
     const parallelIds = new Set<string>();
-    for (const call of toolCalls) {
+    for (const call of gatedToolCalls) {
         if (!isToolReadOnly(call.name)) continue;
         if (call.name === "AskUserQuestion") continue;
         const decision = decide({
@@ -334,7 +340,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     }
 
     const toolGen = executeToolCalls({
-        toolCalls,
+        toolCalls: gatedToolCalls,
         session,
         state,
         turnState,
