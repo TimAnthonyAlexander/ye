@@ -63,6 +63,7 @@ const makeState = (): SessionState =>
         sessionRules: [],
         denialTrail: null,
         compactedThisTurn: false,
+        ghostWaitFiredThisPrompt: false,
         selectedMemory: [],
         turnState: { readFiles: new Map(), todos: [] },
     }) as unknown as SessionState;

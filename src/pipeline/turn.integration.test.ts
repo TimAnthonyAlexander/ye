@@ -81,6 +81,7 @@ const makeState = (projectRoot: string, overrides: Partial<SessionState> = {}): 
     selectedMemory: [],
     turnState: newTurnState(),
     headless: false,
+    ghostWaitFiredThisPrompt: false,
     ...overrides,
 });
 

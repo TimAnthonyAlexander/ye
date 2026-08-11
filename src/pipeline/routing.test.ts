@@ -19,6 +19,7 @@ const makeState = (overrides: Partial<SessionState> = {}): SessionState => ({
     selectedMemory: null,
     headless: false,
     turnState: newTurnState(),
+    ghostWaitFiredThisPrompt: false,
     ...overrides,
 });
 

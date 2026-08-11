@@ -30,6 +30,7 @@ const state = (overrides: Partial<{ mode: string }> = {}) =>
         },
         globalTurnIndex: 0,
         selectedMemory: null,
+        ghostWaitFiredThisPrompt: false,
         turnState: {
             fileSeen: new Map(),
             todos: null,

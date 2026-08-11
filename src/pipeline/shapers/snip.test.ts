@@ -23,6 +23,7 @@ const makeState = (history: Message[], contextWindow = 1000): SessionState =>
         sessionRules: [],
         denialTrail: null,
         compactedThisTurn: false,
+        ghostWaitFiredThisPrompt: false,
         shapingFlags: newShapingFlags(),
         selectedMemory: [],
         turnState: { readFiles: new Map(), todos: [] },

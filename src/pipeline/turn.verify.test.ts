@@ -81,6 +81,7 @@ const makeState = (
     selectedMemory: [],
     turnState: newTurnState(),
     headless: false,
+    ghostWaitFiredThisPrompt: false,
     ...overrides,
 });
 

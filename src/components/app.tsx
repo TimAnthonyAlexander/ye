@@ -733,6 +733,7 @@ export const App = ({
         state.sessionRules = [];
         state.denialTrail = null;
         state.compactedThisTurn = false;
+        state.ghostWaitFiredThisPrompt = false;
         resetShapingFlags(state);
         setItems([]);
         setCommittedCount(0);
@@ -844,6 +845,7 @@ export const App = ({
         state.sessionRules = restoredSessionRules(cfgRef.current, replayed.sessionRules);
         state.denialTrail = null;
         state.compactedThisTurn = false;
+        state.ghostWaitFiredThisPrompt = false;
         resetShapingFlags(state);
         // Resume globalTurnIndex from the highest one observed in the JSONL
         // so post-resume edits don't collide with already-written checkpoints.
@@ -936,6 +938,7 @@ export const App = ({
         state.sessionRules = [];
         state.denialTrail = null;
         state.compactedThisTurn = false;
+        state.ghostWaitFiredThisPrompt = false;
         resetShapingFlags(state);
 
         // Replace UI items with the post-truncation projection. Easiest path:

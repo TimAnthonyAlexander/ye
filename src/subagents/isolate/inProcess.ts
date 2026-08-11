@@ -53,6 +53,7 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
         parentSessionId: input.parentSessionId,
         allowedTools: input.allowedTools,
         systemPromptOverride: input.systemPrompt,
+        ghostWaitFiredThisPrompt: false,
         ...(input.model !== undefined ? { activeModel: input.model } : {}),
     };
 

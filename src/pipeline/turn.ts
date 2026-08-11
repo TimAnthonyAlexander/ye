@@ -379,9 +379,10 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
 
     // The model said it is waiting but nothing is actually running. Nudge it:
     // either the work is done (report it) or verification is missing (spawn it).
-    if (stopReason === "end_turn") {
+    if (stopReason === "end_turn" && !state.ghostWaitFiredThisPrompt) {
         const ghostNudge = detectGhostWait(modelText, toolCalls, state);
         if (ghostNudge !== null) {
+            state.ghostWaitFiredThisPrompt = true;
             state.history.push({ role: "user", content: ghostNudge });
             stopReason = "continue";
         }

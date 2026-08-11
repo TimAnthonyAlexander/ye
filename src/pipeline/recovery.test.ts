@@ -37,6 +37,7 @@ const mkState = (): SessionState => ({
     selectedMemory: null,
     headless: false,
     turnState: newTurnState(),
+    ghostWaitFiredThisPrompt: false,
 });
 
 interface ScriptedAttempt {

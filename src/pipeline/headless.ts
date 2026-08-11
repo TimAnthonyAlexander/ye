@@ -143,6 +143,7 @@ export const runHeadless = async (
         globalTurnIndex: replayed?.maxGlobalTurnIndex ?? 0,
         selectedMemory: null,
         turnState: { readFiles: new Map(), todos: [] },
+        ghostWaitFiredThisPrompt: false,
     };
 
     const signal = new AbortController().signal;

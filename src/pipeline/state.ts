@@ -77,6 +77,10 @@ export interface SessionState {
     // output hashes to the same value, a short "nothing changed" note is injected
     // instead of repeating the full status. undefined = not yet injected.
     lastGitStatusHash?: string;
+    // Set when the ghost-wait nudge fires in a prompt's chain. Cleared at the
+    // start of each new queryLoop so it fires at most once per user message,
+    // across verify continuations and its own re-triggers.
+    ghostWaitFiredThisPrompt: boolean;
 }
 
 export const newTurnState = (): TurnState => ({

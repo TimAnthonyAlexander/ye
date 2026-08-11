@@ -72,6 +72,7 @@ const makeState = (projectRoot: string): SessionState => ({
     // Marks this as a subagent run, which is what keeps the verify loop out of
     // these tests the same way it stays out of real subagents.
     parentSessionId: "parent-session",
+    ghostWaitFiredThisPrompt: false,
 });
 
 const makeSession = (): SessionHandle => ({
