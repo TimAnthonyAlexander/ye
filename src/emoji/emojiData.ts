@@ -755,12 +755,32 @@ for (const entry of index) {
     deduped.push(entry);
 }
 
-// Prefix match, then sort by match length (shorter = better match).
+// Subsequence match: every character of `q` must appear in `target` in order,
+// not necessarily consecutively. `midfin` matches "middle_finger" because
+// m-i-d-f-i-n all exist in that order.
+const isSubsequence = (q: string, target: string): boolean => {
+    let ti = 0;
+    for (let qi = 0; qi < q.length; qi++) {
+        const qc = q[qi]!;
+        ti = target.indexOf(qc, ti);
+        if (ti < 0) return false;
+        ti++;
+    }
+    return true;
+};
+
+// Fuzzy match: subsequence of the query in the shortcode. Sort by match length
+// (shorter = tighter fit), with an exact prefix bonus so `:joy` ranks above
+// `:japanese_ogre` when query is "jo".
 export const searchEmojis = (query: string, maxResults: number): readonly IndexEntry[] => {
     const q = query.toLowerCase();
-    const matches = deduped.filter((e) => e.match.startsWith(q));
-    matches.sort((a, b) => a.match.length - b.match.length);
-    // Deduplicate by char, keeping the shortest match for each.
+    const matches = deduped.filter((e) => isSubsequence(q, e.match));
+    matches.sort((a, b) => {
+        const aExact = a.match.startsWith(q) ? 0 : 1;
+        const bExact = b.match.startsWith(q) ? 0 : 1;
+        if (aExact !== bExact) return aExact - bExact;
+        return a.match.length - b.match.length;
+    });
     const result: IndexEntry[] = [];
     const used = new Set<string>();
     for (const m of matches) {
