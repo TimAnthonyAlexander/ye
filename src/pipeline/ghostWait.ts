@@ -1,0 +1,31 @@
+import type { CollectedToolCall } from "./dispatch.ts";
+import type { SessionState } from "./state.ts";
+import { anyBackgroundRunning } from "./backgroundWakeup.ts";
+
+const WAIT_RE = /\bwait(?:ing)?\b/i;
+
+export const GHOST_WAIT_REMINDER = `<system-reminder>
+Your text says you are waiting, but nothing is actually running: 0 background bash tasks, 0 subagents, and 0 monitors. If you still need to verify your changes, spawn a verification subagent: Task { kind: "verification" }. If your work is done, just report it.
+</system-reminder>`;
+
+const startedBackgroundCallThisTurn = (calls: readonly CollectedToolCall[]): boolean =>
+    calls.some((c) => {
+        if (c.name === "Task") return true;
+        if (c.name === "Bash") {
+            const args = c.args as Record<string, unknown> | undefined;
+            return args?.run_in_background === true;
+        }
+        return false;
+    });
+
+export const detectGhostWait = (
+    modelText: string,
+    toolCalls: readonly CollectedToolCall[],
+    state: SessionState,
+): string | null => {
+    if (state.mode === "PLAN") return null;
+    if (!WAIT_RE.test(modelText)) return null;
+    if (anyBackgroundRunning(state.sessionId)) return null;
+    if (startedBackgroundCallThisTurn(toolCalls)) return null;
+    return GHOST_WAIT_REMINDER;
+};

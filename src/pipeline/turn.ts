@@ -26,6 +26,7 @@ import {
     shouldNudgePlanStart,
 } from "./stop.ts";
 import { loadSessionUsage } from "../storage/usage.ts";
+import { detectGhostWait } from "./ghostWait.ts";
 import {
     clearVerifyChain,
     effectiveVerify,
@@ -374,6 +375,16 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     if (shouldNudgePlanStart(planAcceptedComingIn, stopReason)) {
         state.history.push({ role: "user", content: PLAN_START_REMINDER });
         stopReason = "continue";
+    }
+
+    // The model said it is waiting but nothing is actually running. Nudge it:
+    // either the work is done (report it) or verification is missing (spawn it).
+    if (stopReason === "end_turn") {
+        const ghostNudge = detectGhostWait(modelText, toolCalls, state);
+        if (ghostNudge !== null) {
+            state.history.push({ role: "user", content: ghostNudge });
+            stopReason = "continue";
+        }
     }
 
     // Post-edit verification: once per chain, at the moment the model would
