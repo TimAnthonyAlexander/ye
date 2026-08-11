@@ -38,6 +38,7 @@ import {
     matchFiles,
     type MentionOption,
 } from "../mentions/index.ts";
+import { findActiveEmoji, matchEmojis } from "../emoji/index.ts";
 import {
     applyConfigEdits,
     type Config,
@@ -140,6 +141,7 @@ import { ConfigEditor } from "./configEditor.tsx";
 import { SubagentTabBar } from "./subagentTabBar.tsx";
 import { SubagentTranscript } from "./subagentTranscript.tsx";
 import { SlashPicker } from "./slashPicker.tsx";
+import { EmojiPicker } from "./emojiPicker.tsx";
 import { StatusBar } from "./statusBar.tsx";
 import { TodoPanel } from "./todoPanel.tsx";
 import type { ToolCallEntry } from "./toolCall.tsx";
@@ -358,6 +360,8 @@ export const App = ({
     const [dismissedMentionQuery, setDismissedMentionQuery] = useState<string | null>(null);
     const [slashActive, setSlashActive] = useState(0);
     const [dismissedSlashQuery, setDismissedSlashQuery] = useState<string | null>(null);
+    const [emojiActive, setEmojiActive] = useState(0);
+    const [dismissedEmojiQuery, setDismissedEmojiQuery] = useState<string | null>(null);
     // Index up to which `items` has been committed to Ink's <Static>
     // (scrollback). Advanced eagerly via useLayoutEffect below — every
     // stable, non-trailing-mergeable item is committed as soon as it
@@ -2069,6 +2073,28 @@ export const App = ({
         }
     }, [slashQuery, dismissedSlashQuery]);
 
+    const activeEmoji = useMemo(
+        () => findActiveEmoji(currentInput, currentCursor),
+        [currentInput, currentCursor],
+    );
+    const emojiQuery = activeEmoji?.query ?? null;
+    const emojiEnabled = activeEmoji !== null && dismissedEmojiQuery !== emojiQuery;
+    const emojiMatches = useMemo(
+        () => (emojiEnabled ? matchEmojis(activeEmoji.query) : []),
+        [emojiEnabled, activeEmoji?.query],
+    );
+    const emojiOpen = emojiMatches.length > 0;
+
+    useEffect(() => {
+        setEmojiActive(0);
+    }, [emojiQuery]);
+
+    useEffect(() => {
+        if (dismissedEmojiQuery !== null && dismissedEmojiQuery !== emojiQuery) {
+            setDismissedEmojiQuery(null);
+        }
+    }, [emojiQuery, dismissedEmojiQuery]);
+
     useEffect(() => {
         let cancelled = false;
         void refreshUpdateStatus()
@@ -2108,6 +2134,18 @@ export const App = ({
     };
     const handleSlashDismiss = (): void => {
         if (slashQuery !== null) setDismissedSlashQuery(slashQuery);
+    };
+    const handleEmojiMove = (delta: 1 | -1): void => {
+        if (emojiMatches.length === 0) return;
+        setEmojiActive((i) => (i + delta + emojiMatches.length) % emojiMatches.length);
+    };
+    const handleEmojiAccept = (): string | null => {
+        if (emojiMatches.length === 0) return null;
+        const safe = Math.min(Math.max(emojiActive, 0), emojiMatches.length - 1);
+        return emojiMatches[safe]?.char ?? null;
+    };
+    const handleEmojiDismiss = (): void => {
+        if (emojiQuery !== null) setDismissedEmojiQuery(emojiQuery);
     };
 
     if (bootError !== null) {
@@ -2261,6 +2299,9 @@ export const App = ({
                                     activeIndex={mentionActive}
                                 />
                             )}
+                            {emojiOpen && (
+                                <EmojiPicker matches={emojiMatches} activeIndex={emojiActive} />
+                            )}
                             <ChatInput
                                 ref={chatInputRef}
                                 onSubmit={send}
@@ -2279,6 +2320,10 @@ export const App = ({
                                 onSlashMove={handleSlashMove}
                                 onSlashAccept={handleSlashAccept}
                                 onSlashDismiss={handleSlashDismiss}
+                                emojiOpen={emojiOpen}
+                                onEmojiMove={handleEmojiMove}
+                                onEmojiAccept={handleEmojiAccept}
+                                onEmojiDismiss={handleEmojiDismiss}
                                 historyDisabled={showHome || tabBarFocused}
                                 onUnqueue={popQueuedForEdit}
                                 suggestion={suggestion.text}

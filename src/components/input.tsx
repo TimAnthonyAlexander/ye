@@ -1,6 +1,7 @@
 import { Box, Text, useInput, useStdin, useStdout, type Key } from "ink";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { findActiveMention } from "../mentions/index.ts";
+import { findActiveEmoji } from "../emoji/index.ts";
 import { visibleSuggestion } from "../suggest/index.ts";
 import { KITTY_KEYBOARD_ENABLE, editInEditor } from "../ui/editor.ts";
 import { cycleMatch, highlightMatch, previewEntry, searchHistory } from "../ui/historySearch.ts";
@@ -15,6 +16,16 @@ const toQueryText = (s: string): string => normalizePaste(s).replace(/\n/g, " ")
 // Word navigation helpers for Ctrl+Arrow and Ctrl/Meta+Backspace.
 // Word separators: newline, space, tab.
 const isWordSep = (ch: string): boolean => ch === " " || ch === "\t" || ch === "\n";
+
+// Step back one full Unicode code point — not one UTF-16 code unit. A surrogate
+// pair (😂 = U+1F602, two code units) must be treated as a single character,
+// otherwise backspace splits it into a lone surrogate (the � replacement char).
+export const prevCodePoint = (s: string, cursor: number): number => {
+    if (cursor <= 0) return 0;
+    const cu = s.charCodeAt(cursor - 1);
+    if (cu >= 0xdc00 && cu <= 0xdfff && cursor >= 2) return cursor - 2;
+    return cursor - 1;
+};
 
 export const prevWordStart = (value: string, cursor: number): number => {
     if (cursor <= 0) return 0;
@@ -99,6 +110,14 @@ interface ChatInputProps {
     // remains active even when historyDisabled is set.
     readonly historyDisabled?: boolean;
 
+    // Emoji picker integration. Same shape as mention/slash pickers. When
+    // `emojiOpen` is true, ↑/↓ drive the picker, Enter/Tab insert the active
+    // option, and Esc dismisses. `onEmojiAccept` returns the emoji character.
+    readonly emojiOpen?: boolean;
+    readonly onEmojiMove?: (delta: 1 | -1) => void;
+    readonly onEmojiAccept?: () => string | null;
+    readonly onEmojiDismiss?: () => void;
+
     // ↑ on an empty buffer pulls the most recently queued message back out of
     // the queue and into the input for editing. Returns its text, or null when
     // there is nothing queued — in which case ↑ falls through to history.
@@ -162,6 +181,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         suggestion,
         onSuggestionAccept,
         onSuggestionDismiss,
+        emojiOpen,
+        onEmojiMove,
+        onEmojiAccept,
+        onEmojiDismiss,
     },
     ref,
 ) {
@@ -264,6 +287,23 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         const completed = slashCompletion();
         if (completed === null) return false;
         apply(completed, completed.length);
+        return true;
+    };
+
+    const acceptEmoji = (): boolean => {
+        if (!onEmojiAccept) return false;
+        const replacement = onEmojiAccept();
+        if (replacement === null) return false;
+        // Replace the `:query` span with the emoji character. Re-parse from the
+        // live refs since the buffer may have been modified earlier this tick.
+        const activeEmoji = findActiveEmoji(valueRef.current, cursorRef.current);
+        if (!activeEmoji) return false;
+        apply(
+            valueRef.current.slice(0, activeEmoji.start) +
+                replacement +
+                valueRef.current.slice(activeEmoji.end),
+            activeEmoji.start + replacement.length,
+        );
         return true;
     };
 
@@ -390,6 +430,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             if (key.shift) return;
             if (mentionOpen && acceptMention()) return;
             if (slashOpen && acceptSlash()) return;
+            if (emojiOpen && acceptEmoji()) return;
             if (getCompletion) {
                 const completed = getCompletion(valueRef.current);
                 if (completed !== null) {
@@ -410,6 +451,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 return;
             }
             if (mentionOpen && acceptMention()) return;
+            if (emojiOpen && acceptEmoji()) return;
             // Enter on a highlighted command runs it — completing and waiting
             // for a second Enter is a keystroke nobody wants. Tab still just
             // completes, which is the way to reach a command's arguments.
@@ -529,7 +571,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             if (c === 0) return;
             exitHistoryNav();
             const v = valueRef.current;
-            apply(v.slice(0, c - 1) + v.slice(c), c - 1);
+            const prev = prevCodePoint(v, c);
+            apply(v.slice(0, prev) + v.slice(c), prev);
             return;
         }
 
@@ -556,6 +599,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             }
             if (slashOpen) {
                 onSlashMove?.(-1);
+                return;
+            }
+            if (emojiOpen) {
+                onEmojiMove?.(-1);
                 return;
             }
             if (historyDisabled) return;
@@ -590,6 +637,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 onSlashMove?.(1);
                 return;
             }
+            if (emojiOpen) {
+                onEmojiMove?.(1);
+                return;
+            }
             if (historyDisabled) return;
             if (historyIndex === null) return;
             if (historyIndex === 0) {
@@ -604,6 +655,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         if (key.escape) {
             if (mentionOpen) onMentionDismiss?.();
             if (slashOpen) onSlashDismiss?.();
+            if (emojiOpen) onEmojiDismiss?.();
             if (ghost !== null) onSuggestionDismiss?.();
             return;
         }
