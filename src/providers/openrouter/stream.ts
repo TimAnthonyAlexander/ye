@@ -482,7 +482,14 @@ export async function* parseStream(response: Response): AsyncGenerator<ProviderE
                 const idx = tc.index ?? 0;
                 const acc = toolCalls.get(idx) ?? { args: "" };
                 if (tc.id) acc.id = tc.id;
-                if (tc.function?.name) acc.name = tc.function.name;
+                if (tc.function?.name) {
+                    acc.name = tc.function.name;
+                    yield {
+                        type: "tool_call.starting",
+                        id: tc.id ?? `pending_${idx}`,
+                        name: tc.function.name,
+                    };
+                }
                 if (typeof tc.function?.arguments === "string") {
                     acc.args += tc.function.arguments;
                 }

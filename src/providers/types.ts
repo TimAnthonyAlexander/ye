@@ -140,6 +140,11 @@ export type ProviderEvent =
     | { readonly type: "reasoning.complete"; readonly details: readonly ReasoningDetail[] }
     | { readonly type: "citations"; readonly citations: readonly Citation[] }
     | {
+          readonly type: "tool_call.starting";
+          readonly id: string;
+          readonly name: string;
+      }
+    | {
           readonly type: "tool_call";
           readonly id: string;
           readonly name: string;

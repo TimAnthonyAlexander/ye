@@ -118,6 +118,9 @@ export async function* streamFromProvider(
                     reasoningDetails = evt.details;
                     yield { type: "model.reasoningDetails", details: evt.details };
                     break;
+                case "tool_call.starting":
+                    yield { type: "model.toolCall.starting", id: evt.id, name: evt.name };
+                    break;
                 case "tool_call":
                     toolCalls.push({ id: evt.id, name: evt.name, args: evt.args });
                     yield { type: "model.toolCall", id: evt.id, name: evt.name, args: evt.args };

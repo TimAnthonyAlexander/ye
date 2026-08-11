@@ -27,6 +27,11 @@ export type Event =
           readonly details: readonly ReasoningDetail[];
       }
     | {
+          readonly type: "model.toolCall.starting";
+          readonly id: string;
+          readonly name: string;
+      }
+    | {
           readonly type: "model.toolCall";
           readonly id: string;
           readonly name: string;
@@ -109,6 +114,10 @@ export const transcriptable = (event: Event): TranscriptEvent => {
     }
     if (event.type === "userQuestion.prompt") {
         return { type: event.type, id: event.id, payload: event.payload };
+    }
+    // Filter out model.toolCall.starting from the transcript by returning an empty object
+    if (event.type === "model.toolCall.starting") {
+        return {} as TranscriptEvent;
     }
     return event as unknown as TranscriptEvent;
 };

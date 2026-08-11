@@ -1670,6 +1670,18 @@ export const App = ({
                         scheduleStreamFlush();
                         break;
                     }
+                    case "model.toolCall.starting": {
+                        finalizeThinking();
+                        commitText();
+                        const entry: ToolCallEntry = {
+                            id: evt.id,
+                            name: evt.name,
+                            args: {},
+                            status: "running",
+                        };
+                        setItems((prev) => [...prev, { kind: "toolCall", entry }]);
+                        break;
+                    }
                     case "model.toolCall": {
                         finalizeThinking();
                         commitText();
@@ -1679,7 +1691,17 @@ export const App = ({
                             args: evt.args,
                             status: "running",
                         };
-                        setItems((prev) => [...prev, { kind: "toolCall", entry }]);
+                        setItems((prev) => {
+                            const existingIdx = prev.findIndex(
+                                (item) => item.kind === "toolCall" && item.entry.id === evt.id,
+                            );
+                            if (existingIdx >= 0) {
+                                const copy = [...prev];
+                                copy[existingIdx] = { kind: "toolCall", entry };
+                                return copy;
+                            }
+                            return [...prev, { kind: "toolCall", entry }];
+                        });
                         if (evt.name === "TodoWrite") {
                             const a = evt.args as { todos?: readonly TodoItem[] };
                             if (Array.isArray(a.todos)) pendingTodosRef.current = a.todos;
