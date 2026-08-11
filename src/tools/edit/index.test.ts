@@ -92,14 +92,17 @@ afterEach(async () => {
 });
 
 describe("EditTool", () => {
-    test("E1 rejects relative path", async () => {
+    test("E1 resolves a relative path against cwd, satisfied by an absolute Read", async () => {
+        const path = join(workDir, "rel.txt");
+        await writeFile(path, "a", "utf8");
         const ctx = makeCtx();
+        await readInto(ctx, path);
         const r = await EditTool.execute(
-            { path: "rel/path.txt", old_string: "a", new_string: "b" },
+            { path: "rel.txt", old_string: "a", new_string: "b" },
             ctx,
         );
-        expect(r.ok).toBe(false);
-        if (!r.ok) expect(r.error).toBe("path must be absolute");
+        expect(r.ok).toBe(true);
+        expect(await Bun.file(path).text()).toBe("b");
     });
 
     test("E2 rejects empty old_string", async () => {

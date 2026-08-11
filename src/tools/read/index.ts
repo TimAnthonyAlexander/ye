@@ -1,7 +1,7 @@
-import { isAbsolute } from "node:path";
 import { collectNestedNotes } from "../../memory/index.ts";
 import { prettyPath } from "../../ui/path.ts";
 import { hashContent } from "../fs.ts";
+import { toAbsolutePath } from "../paths.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
 
@@ -33,11 +33,8 @@ const nestedNotesReminder = async (path: string, ctx: ToolContext): Promise<stri
 const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
     const v = validateArgs<ReadArgs>(rawArgs, ReadTool.schema);
     if (!v.ok) return v;
-    const { path, offset = 0, limit = DEFAULT_LIMIT } = v.value;
-
-    if (!isAbsolute(path)) {
-        return { ok: false, error: "path must be absolute" };
-    }
+    const { offset = 0, limit = DEFAULT_LIMIT } = v.value;
+    const path = toAbsolutePath(v.value.path, ctx.cwd);
 
     const file = Bun.file(path);
     if (!(await file.exists())) {
@@ -63,7 +60,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 export const ReadTool: Tool = {
     name: "Read",
     description:
-        "Read a file from disk. With no offset/limit, returns the first 2000 lines — enough for most files in a single call. Use offset/limit only for files larger than that. Absolute paths only.",
+        "Read a file from disk. With no offset/limit, returns the first 2000 lines — enough for most files in a single call. Use offset/limit only for files larger than that. `path` may be absolute, `~`-prefixed, or relative to the working directory.",
     annotations: { readOnlyHint: true },
     schema: {
         type: "object",

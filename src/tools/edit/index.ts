@@ -1,8 +1,8 @@
-import { isAbsolute } from "node:path";
 import { checkpointFile } from "../../storage/index.ts";
 import { prettyPath } from "../../ui/path.ts";
 import { runFormatter } from "../format.ts";
 import { atomicWrite, hashContent } from "../fs.ts";
+import { toAbsolutePath } from "../paths.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
 import { evaluate as evaluateHeuristics } from "./heuristics.ts";
@@ -145,11 +145,9 @@ const formatEditResult = (
 const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
     const v = validateArgs<EditArgs>(rawArgs, EditTool.schema);
     if (!v.ok) return v;
-    const { path, old_string, new_string, replace_all = false } = v.value;
+    const { old_string, new_string, replace_all = false } = v.value;
+    const path = toAbsolutePath(v.value.path, ctx.cwd);
 
-    if (!isAbsolute(path)) {
-        return { ok: false, error: "path must be absolute" };
-    }
     if (old_string === "") {
         return { ok: false, error: "old_string must not be empty" };
     }

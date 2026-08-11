@@ -77,11 +77,12 @@ afterEach(async () => {
 });
 
 describe("WriteTool", () => {
-    test("W1 rejects relative path", async () => {
+    test("W1 resolves a relative path against cwd", async () => {
         const ctx = makeCtx();
-        const r = await WriteTool.execute({ path: "rel/path.txt", content: "x" }, ctx);
-        expect(r.ok).toBe(false);
-        if (!r.ok) expect(r.error).toBe("path must be absolute");
+        const r = await WriteTool.execute({ path: "rel.txt", content: "x" }, ctx);
+        expect(r.ok).toBe(true);
+        expect(await Bun.file(join(workDir, "rel.txt")).text()).toBe("x");
+        expect(ctx.turnState.readFiles.has(join(workDir, "rel.txt"))).toBe(true);
     });
 
     test("W2 rejects overwrite without prior Read", async () => {

@@ -1,8 +1,8 @@
-import { isAbsolute } from "node:path";
 import { checkpointFile } from "../../storage/index.ts";
 import { prettyPath } from "../../ui/path.ts";
 import { runFormatter } from "../format.ts";
 import { atomicWrite, hashContent } from "../fs.ts";
+import { toAbsolutePath } from "../paths.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { validateArgs } from "../validate.ts";
 
@@ -19,11 +19,8 @@ interface WriteValue {
 const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<WriteValue>> => {
     const v = validateArgs<WriteArgs>(rawArgs, WriteTool.schema);
     if (!v.ok) return v;
-    const { path, content } = v.value;
-
-    if (!isAbsolute(path)) {
-        return { ok: false, error: "path must be absolute" };
-    }
+    const { content } = v.value;
+    const path = toAbsolutePath(v.value.path, ctx.cwd);
 
     const file = Bun.file(path);
     const fileExists = await file.exists();

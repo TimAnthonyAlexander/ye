@@ -60,10 +60,13 @@ describe("ReadTool", () => {
         }
     });
 
-    test("R2 rejects relative path", async () => {
-        const r = await ReadTool.execute({ path: "rel.txt" }, makeCtx());
-        expect(r.ok).toBe(false);
-        if (!r.ok) expect(r.error).toBe("path must be absolute");
+    test("R2 resolves a relative path against cwd", async () => {
+        await writeFile(join(workDir, "rel.txt"), "hello\n", "utf8");
+        const ctx = makeCtx();
+        const r = await ReadTool.execute({ path: "rel.txt" }, ctx);
+        expect(r.ok).toBe(true);
+        if (r.ok) expect(r.value).toContain(`<read path="${join(workDir, "rel.txt")}"`);
+        expect(ctx.turnState.readFiles.has(join(workDir, "rel.txt"))).toBe(true);
     });
 
     test("R3 reports missing file", async () => {
