@@ -142,8 +142,7 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
             const isTrivial =
                 lastAssistant?.role === "assistant" &&
                 !lastAssistant.tool_calls?.length &&
-                typeof lastAssistant.content === "string" &&
-                lastAssistant.content.length < 50;
+                typeof lastAssistant.content === "string";
             if (isTrivial) {
                 input.state.history.pop();
                 // Pop the ghost-wait nudge user message that preceded it.

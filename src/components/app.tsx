@@ -1635,6 +1635,8 @@ export const App = ({
                 switch (evt.type) {
                     case "turn.start": {
                         noticesRef.current = NO_NOTICES;
+                        streamingRef.current = true;
+                        setStreaming(true);
                         break;
                     }
                     case "shaper.applied": {
@@ -1798,6 +1800,11 @@ export const App = ({
                     case "turn.end": {
                         finalizeThinking();
                         commitText();
+                        // Clear streaming between turns so the generic Thinking
+                        // spinner doesn't render during inter-turn gaps (especially
+                        // during ghost-wait suppression, which can take 15-30s).
+                        streamingRef.current = false;
+                        setStreaming(false);
                         const summary = flushNotices(noticesRef.current);
                         noticesRef.current = NO_NOTICES;
                         if (summary.length > 0) addSystemMessage(summary.join("\n"));

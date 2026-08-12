@@ -2,10 +2,10 @@ import type { CollectedToolCall } from "./dispatch.ts";
 import type { SessionState } from "./state.ts";
 import { anyBackgroundRunning } from "./backgroundWakeup.ts";
 
-const WAIT_RE = /\bwait(?:ing)?\b/i;
+const WAIT_RE = /\bwait(?:ing)?\s+(?:for|on)\b/i;
 
 export const GHOST_WAIT_REMINDER = `<system-reminder>
-Your text says you are waiting, but nothing is actually running: 0 background bash tasks, 0 subagents, and 0 monitors. If your work is already done, just report it. Only continue if there is genuinely unfinished work.
+Your text says you are waiting, but nothing is actually running: 0 background bash tasks, 0 subagents, and 0 monitors. If your work is already done, say "done." Only continue if there is genuinely unfinished work.
 </system-reminder>`;
 
 const startedBackgroundCallThisTurn = (calls: readonly CollectedToolCall[]): boolean =>
