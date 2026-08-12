@@ -3,6 +3,7 @@ import type { Message, Provider } from "../providers/index.ts";
 import { openSession, type SessionHandle } from "../storage/index.ts";
 import type { MailboxDrain } from "../subagents/mailbox.ts";
 import type { Event, StopReason } from "./events.ts";
+import { dropGhostWaitNudge } from "./ghostWait.ts";
 import { newShapingFlags, newTurnState, type SessionState } from "./state.ts";
 import { runTurn } from "./turn.ts";
 
@@ -123,6 +124,13 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
         input.state.ghostWaitSuppressNext = false;
 
         const buf: Event[] = [];
+        // The reply to a ghost-wait nudge is held back, not discarded: a tool
+        // call proves the turn is real work, and from that moment everything
+        // held — the text before the call, the call, and the rest of the turn —
+        // has to reach the UI live. Holding past the first tool call would also
+        // deadlock outright, since permission.prompt carries the callback the
+        // turn is blocked on.
+        let holding = suppress;
         let stopReason: StopReason | undefined;
         while (true) {
             const next = await turn.next();
@@ -130,26 +138,34 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
                 stopReason = next.value;
                 break;
             }
-            if (suppress) {
-                buf.push(next.value);
-            } else {
+            if (!holding) {
                 yield next.value;
+                continue;
+            }
+            buf.push(next.value);
+            if (
+                next.value.type === "model.toolCall" ||
+                next.value.type === "model.toolCall.starting"
+            ) {
+                holding = false;
+                for (const event of buf) yield event;
+                buf.length = 0;
             }
         }
 
-        if (suppress && stopReason === "end_turn") {
-            const lastAssistant = input.state.history[input.state.history.length - 1];
+        if (holding) {
+            const last = input.state.history[input.state.history.length - 1];
             const isTrivial =
-                lastAssistant?.role === "assistant" &&
-                !lastAssistant.tool_calls?.length &&
-                typeof lastAssistant.content === "string";
+                stopReason === "end_turn" &&
+                last?.role === "assistant" &&
+                !last.tool_calls?.length &&
+                typeof last.content === "string";
             if (isTrivial) {
                 input.state.history.pop();
-                // Pop the ghost-wait nudge user message that preceded it.
-                input.state.history.pop();
-                break;
+                dropGhostWaitNudge(input.state.history);
+            } else {
+                for (const event of buf) yield event;
             }
-            for (const event of buf) yield event;
         }
 
         if (stopReason !== "continue") {
