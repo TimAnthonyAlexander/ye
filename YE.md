@@ -55,7 +55,7 @@ Pipeline: `src/pipeline/`
 
 Providers: `src/providers/` — `openrouter` (default), `anthropic`, `openai`, `deepseek`, `ollama`.
 
-- `openrouter` — SSE, OpenAI-compatible tool calls, context window from `/models`, routing via `providerSort`, server-side web search/fetch, per-model reasoning policy in `reasoningPolicy.ts`.
+- `openrouter` — SSE, OpenAI-compatible tool calls, context window from `/models`, routing via `providerSort`, server-side web search/fetch, per-model reasoning policy in `reasoningPolicy.ts`, explicit cache breakpoints for Anthropic routes in `cacheControl.ts`.
 - `anthropic` — native tool-use blocks, three `cache_control` breakpoints.
 - `openai` — Responses API, `store:false`, strict tool schemas, encrypted reasoning round-trip.
 - `deepseek` — implicit prefix caching, native reasoning round-trip.

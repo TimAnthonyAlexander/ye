@@ -45,7 +45,7 @@ export const createOpenRouterProvider = (deps: OpenRouterDeps): Provider => {
     return {
         id: "openrouter",
         capabilities: {
-            promptCache: false,
+            promptCache: true,
             toolUse: true,
             vision: false,
             serverSideWebSearch: true,

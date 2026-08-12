@@ -1,4 +1,5 @@
 import type { ProviderInput, ToolDefinition } from "../types.ts";
+import { applyCacheControl, type WireMessage } from "./cacheControl.ts";
 import { applyInputPolicy, getReasoningPolicy } from "./reasoningPolicy.ts";
 
 interface OpenRouterToolDef {
@@ -25,7 +26,7 @@ type OpenRouterAnyTool = OpenRouterToolDef | OpenRouterBuiltinTool;
 
 interface OpenRouterRequestBody {
     model: string;
-    messages: ProviderInput["messages"];
+    messages: readonly WireMessage[];
     stream: boolean;
     tools?: OpenRouterAnyTool[];
     tool_choice?: "auto" | "none";
@@ -76,7 +77,7 @@ const buildReasoningParam = (
 export const buildRequestBody = (input: ProviderInput): OpenRouterRequestBody => {
     const body: OpenRouterRequestBody = {
         model: input.model,
-        messages: applyInputPolicy(input.model, input.messages),
+        messages: applyCacheControl(input.model, applyInputPolicy(input.model, input.messages)),
         stream: input.stream !== false,
     };
 
