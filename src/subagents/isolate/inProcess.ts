@@ -54,7 +54,7 @@ export const runInProcess = async (input: InProcessRun): Promise<SubagentResult>
         allowedTools: input.allowedTools,
         systemPromptOverride: input.systemPrompt,
         ghostWaitFiredThisPrompt: false,
-    ghostWaitSuppressNext: false,
+        ghostWaitSuppressNext: false,
         ...(input.model !== undefined ? { activeModel: input.model } : {}),
     };
 

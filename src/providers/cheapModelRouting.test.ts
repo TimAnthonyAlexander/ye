@@ -64,7 +64,7 @@ const makeState = (): SessionState =>
         denialTrail: null,
         compactedThisTurn: false,
         ghostWaitFiredThisPrompt: false,
-    ghostWaitSuppressNext: false,
+        ghostWaitSuppressNext: false,
         selectedMemory: [],
         turnState: { readFiles: new Map(), todos: [] },
     }) as unknown as SessionState;
