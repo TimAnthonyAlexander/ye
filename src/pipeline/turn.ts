@@ -383,6 +383,7 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
         const ghostNudge = detectGhostWait(modelText, toolCalls, state);
         if (ghostNudge !== null) {
             state.ghostWaitFiredThisPrompt = true;
+            state.ghostWaitSuppressNext = true;
             state.history.push({ role: "user", content: ghostNudge });
             stopReason = "continue";
         }

@@ -73,6 +73,7 @@ const makeState = (projectRoot: string): SessionState => ({
     // these tests the same way it stays out of real subagents.
     parentSessionId: "parent-session",
     ghostWaitFiredThisPrompt: false,
+    ghostWaitSuppressNext: false,
 });
 
 const makeSession = (): SessionHandle => ({

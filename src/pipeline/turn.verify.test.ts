@@ -82,6 +82,7 @@ const makeState = (
     turnState: newTurnState(),
     headless: false,
     ghostWaitFiredThisPrompt: false,
+    ghostWaitSuppressNext: false,
     ...overrides,
 });
 

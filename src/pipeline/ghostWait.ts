@@ -5,7 +5,7 @@ import { anyBackgroundRunning } from "./backgroundWakeup.ts";
 const WAIT_RE = /\bwait(?:ing)?\b/i;
 
 export const GHOST_WAIT_REMINDER = `<system-reminder>
-Your text says you are waiting, but nothing is actually running: 0 background bash tasks, 0 subagents, and 0 monitors. If you still need to verify your changes, spawn a verification subagent: Task { kind: "verification" }. If your work is done, just report it.
+Your text says you are waiting, but nothing is actually running: 0 background bash tasks, 0 subagents, and 0 monitors. If your work is already done, just report it. Only continue if there is genuinely unfinished work.
 </system-reminder>`;
 
 const startedBackgroundCallThisTurn = (calls: readonly CollectedToolCall[]): boolean =>

@@ -81,6 +81,11 @@ export interface SessionState {
     // start of each new queryLoop so it fires at most once per user message,
     // across verify continuations and its own re-triggers.
     ghostWaitFiredThisPrompt: boolean;
+    // When the nudge fired this prompt, queryLoop sets this to buffer the very
+    // next turn's events. After that turn completes, if it was a trivial ack
+    // the events are suppressed and the user sees nothing. Cleared at the
+    // start of each new queryLoop.
+    ghostWaitSuppressNext: boolean;
 }
 
 export const newTurnState = (): TurnState => ({

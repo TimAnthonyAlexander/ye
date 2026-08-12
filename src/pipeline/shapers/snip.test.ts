@@ -24,6 +24,7 @@ const makeState = (history: Message[], contextWindow = 1000): SessionState =>
         denialTrail: null,
         compactedThisTurn: false,
         ghostWaitFiredThisPrompt: false,
+    ghostWaitSuppressNext: false,
         shapingFlags: newShapingFlags(),
         selectedMemory: [],
         turnState: { readFiles: new Map(), todos: [] },

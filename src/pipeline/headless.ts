@@ -144,6 +144,7 @@ export const runHeadless = async (
         selectedMemory: null,
         turnState: { readFiles: new Map(), todos: [] },
         ghostWaitFiredThisPrompt: false,
+    ghostWaitSuppressNext: false,
     };
 
     const signal = new AbortController().signal;

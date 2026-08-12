@@ -50,6 +50,7 @@ export const createSessionState = async (
         selectedMemory: null,
         turnState: newTurnState(),
         ghostWaitFiredThisPrompt: false,
+        ghostWaitSuppressNext: false,
     };
     return { state, session };
 };
@@ -75,6 +76,7 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
     const userMessage: Message = { role: "user", content: input.userPrompt };
     input.state.history.push(userMessage);
     input.state.ghostWaitFiredThisPrompt = false;
+    input.state.ghostWaitSuppressNext = false;
     // The first runTurn inside this prompt will bump globalTurnIndex by 1.
     // Recording it now lets /rewind map "user message N" → "first turn that
     // ran for it = checkpoint to revert against".
@@ -117,6 +119,10 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
             signal,
         });
 
+        const suppress = input.state.ghostWaitSuppressNext;
+        input.state.ghostWaitSuppressNext = false;
+
+        const buf: Event[] = [];
         let stopReason: StopReason | undefined;
         while (true) {
             const next = await turn.next();
@@ -124,7 +130,27 @@ export async function* queryLoop(input: QueryLoopInput): AsyncGenerator<Event> {
                 stopReason = next.value;
                 break;
             }
-            yield next.value;
+            if (suppress) {
+                buf.push(next.value);
+            } else {
+                yield next.value;
+            }
+        }
+
+        if (suppress && stopReason === "end_turn") {
+            const lastAssistant = input.state.history[input.state.history.length - 1];
+            const isTrivial =
+                lastAssistant?.role === "assistant" &&
+                !lastAssistant.tool_calls?.length &&
+                typeof lastAssistant.content === "string" &&
+                lastAssistant.content.length < 50;
+            if (isTrivial) {
+                input.state.history.pop();
+                // Pop the ghost-wait nudge user message that preceded it.
+                input.state.history.pop();
+                break;
+            }
+            for (const event of buf) yield event;
         }
 
         if (stopReason !== "continue") {

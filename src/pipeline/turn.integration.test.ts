@@ -82,6 +82,7 @@ const makeState = (projectRoot: string, overrides: Partial<SessionState> = {}): 
     turnState: newTurnState(),
     headless: false,
     ghostWaitFiredThisPrompt: false,
+    ghostWaitSuppressNext: false,
     ...overrides,
 });
 
