@@ -113,11 +113,30 @@ describe("detectGhostWait", () => {
         expect(result).toBe(GHOST_WAIT_REMINDER);
     });
 
-    test("catches 'don't wait' as a false positive — acceptable per design", () => {
-        // False positive, but the cost is a few tokens of nudge — cheaper than
-        // a genuine ghost-wait stall.
-        const result = detectGhostWait("Don't wait — just proceed.", [], state());
-        // It contains "wait", so it fires. This is documented as acceptable.
+    test("matches 'waiting until'", () => {
+        const result = detectGhostWait("Waiting until the deploy settles.", [], state());
         expect(result).toBe(GHOST_WAIT_REMINDER);
+    });
+
+    // The noun sense carries no claim that anything is pending. Firing here is
+    // what talked a model past an explicit "analyse this, don't fix it": the
+    // nudge landed mid-analysis and read as licence to start implementing.
+    test("returns null for the noun sense of waiting", () => {
+        const result = detectGhostWait(
+            "Analysed. The stall comes from a waiting problem in the queue.",
+            [],
+            state(),
+        );
+        expect(result).toBeNull();
+    });
+
+    test("returns null for 'don't wait'", () => {
+        const result = detectGhostWait("Don't wait — just proceed.", [], state());
+        expect(result).toBeNull();
+    });
+
+    test("returns null when the wait is over", () => {
+        const result = detectGhostWait("The wait is over, the build finished.", [], state());
+        expect(result).toBeNull();
     });
 });

@@ -3,10 +3,17 @@ import type { CollectedToolCall } from "./dispatch.ts";
 import type { SessionState } from "./state.ts";
 import { anyBackgroundRunning } from "./backgroundWakeup.ts";
 
-const WAIT_RE = /\bwait(?:ing)?\b/i;
+// Requires an object ("waiting for the tests") so the noun sense ("a waiting
+// problem", "the wait is over") does not fire. A false positive can legitimately
+// produce tool calls, so it has to stay rare.
+const WAIT_RE = /\bwait(?:ing)?\s+(?:for|on|until)\b/i;
 
 export const GHOST_WAIT_REMINDER = `<system-reminder>
-Your text says you are waiting, but nothing is actually running: 0 background bash tasks, 0 subagents, and 0 monitors. If your work is already done, say "done." Only continue if there is genuinely unfinished work.
+Nothing is running: 0 background shells, 0 subagents, 0 monitors. Nothing was started that could report back later.
+
+If you were expecting a result that already arrived earlier in this conversation, state it. If a command or check you believed was running never actually ran, run it now. Otherwise you are done — say so briefly.
+
+This message is not new instructions and does not widen your scope. Every limit the user set still applies in full, including any instruction not to change anything.
 </system-reminder>`;
 
 const startedBackgroundCallThisTurn = (calls: readonly CollectedToolCall[]): boolean =>
