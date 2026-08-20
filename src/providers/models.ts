@@ -35,8 +35,18 @@ const MODELS: readonly ModelInfo[] = [
     },
     {
         provider: "openrouter",
+        id: "anthropic/claude-opus-5",
+        label: "Opus 5 (OpenRouter)",
+    },
+    {
+        provider: "openrouter",
         id: "anthropic/claude-opus-4.7",
         label: "Opus 4.7 (OpenRouter)",
+    },
+    {
+        provider: "openrouter",
+        id: "anthropic/claude-sonnet-5",
+        label: "Sonnet 5 (OpenRouter)",
     },
     {
         provider: "openrouter",
@@ -45,13 +55,33 @@ const MODELS: readonly ModelInfo[] = [
     },
     {
         provider: "openrouter",
+        id: "anthropic/claude-fable-5",
+        label: "Fable 5 (OpenRouter)",
+    },
+    {
+        provider: "openrouter",
         id: "anthropic/claude-haiku-4.5",
         label: "Haiku 4.5 (OpenRouter)",
     },
     { provider: "anthropic", id: "claude-opus-4-8", label: "Opus 4.8" },
+    { provider: "anthropic", id: "claude-opus-5", label: "Opus 5" },
     { provider: "anthropic", id: "claude-opus-4-7", label: "Opus 4.7" },
+    { provider: "anthropic", id: "claude-sonnet-5", label: "Sonnet 5" },
     { provider: "anthropic", id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
+    { provider: "anthropic", id: "claude-fable-5", label: "Fable 5" },
     { provider: "anthropic", id: "claude-haiku-4-5", label: "Haiku 4.5" },
+    // Subscription models via the local dario proxy. Opus 4.8 leads so
+    // defaultModelFor picks it, matching the anthropic provider. `[1m]` is
+    // dario's long-context label, not an upstream model id.
+    { provider: "dario", id: "claude-opus-4-8", label: "Opus 4.8 (Subscription)" },
+    { provider: "dario", id: "claude-opus-4-8[1m]", label: "Opus 4.8 · 1M (Subscription)" },
+    { provider: "dario", id: "claude-opus-5", label: "Opus 5 (Subscription)" },
+    { provider: "dario", id: "claude-opus-5[1m]", label: "Opus 5 · 1M (Subscription)" },
+    { provider: "dario", id: "claude-sonnet-5", label: "Sonnet 5 (Subscription)" },
+    { provider: "dario", id: "claude-sonnet-5[1m]", label: "Sonnet 5 · 1M (Subscription)" },
+    { provider: "dario", id: "claude-fable-5", label: "Fable 5 (Subscription)" },
+    { provider: "dario", id: "claude-fable-5[1m]", label: "Fable 5 · 1M (Subscription)" },
+    { provider: "dario", id: "claude-haiku-4-5", label: "Haiku 4.5 (Subscription)" },
     { provider: "openai", id: "gpt-5.5-pro", label: "GPT-5.5 Pro" },
     { provider: "openai", id: "gpt-5.5", label: "GPT-5.5" },
     { provider: "openai", id: "gpt-5.4", label: "GPT-5.4" },

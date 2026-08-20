@@ -1,5 +1,5 @@
 import type { Message, ProviderInput, ToolDefinition } from "../types.ts";
-import { isOpusWithNoTemp } from "./models.ts";
+import { rejectsSampling } from "./models.ts";
 
 interface AnthropicTextBlock {
     type: "text";
@@ -221,7 +221,7 @@ export const buildRequestBody = (input: ProviderInput): AnthropicRequestBody => 
         body.tools = combined;
     }
 
-    if (input.temperature !== undefined && !isOpusWithNoTemp(input.model)) {
+    if (input.temperature !== undefined && !rejectsSampling(input.model)) {
         body.temperature = input.temperature;
     }
 

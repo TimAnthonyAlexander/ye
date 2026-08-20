@@ -19,7 +19,13 @@ export interface ModelPricing {
     readonly cacheWrite?: number;
 }
 
+// Deliberately no `dario` table: that provider bills against a flat-fee
+// subscription, so per-token dollars would be fabricated. lookupPricing returns
+// undefined for it and callers store null cost rather than zero.
 const ANTHROPIC_PRICING: Readonly<Record<string, ModelPricing>> = {
+    "claude-fable-5": { input: 10.0, output: 50.0, cacheRead: 1.0, cacheWrite: 12.5 },
+    "claude-opus-5": { input: 5.0, output: 25.0, cacheRead: 0.5, cacheWrite: 6.25 },
+    "claude-sonnet-5": { input: 3.0, output: 15.0, cacheRead: 0.3, cacheWrite: 3.75 },
     "claude-opus-4-8": { input: 5.0, output: 25.0, cacheRead: 0.5, cacheWrite: 6.25 },
     "claude-opus-4-7": { input: 5.0, output: 25.0, cacheRead: 0.5, cacheWrite: 6.25 },
     "claude-sonnet-4-6": { input: 3.0, output: 15.0, cacheRead: 0.3, cacheWrite: 3.75 },
