@@ -146,8 +146,42 @@ One canonical `Provider` interface; vendor differences live behind it. Tool-call
 - **OpenAI** — latest **Responses API v1** (GPT-4.1/5 family). Interleaved reasoning & strict schema. Uses `OPENAI_API_KEY`.
 - **DeepSeek direct** — native V4 Pro / V4 Flash at `api.deepseek.com`. Full 1M context, full `reasoning_content` round-trip on tool-call sub-loops (the canonical path for V4 Pro reasoning; OpenRouter strips reasoning fields on every V4 Pro upstream except DeepInfra at 66k ctx — see [`docs/REASONING_STORING.md`](docs/REASONING_STORING.md) for the empirical matrix). Uses `DEEPSEEK_API_KEY`.
 - **Ollama** — local models via `http://localhost:11434`. NDJSON streaming, native tool calling on supported models (qwen3, llama3.1+, mistral-nemo, etc.), context size discovered via `/api/show`. `/model` lists locally pulled models via `/api/tags`. No API key required for local; `OLLAMA_API_KEY` honored for cloud routes. Local models receive a compact system prompt (~5.8× smaller) tuned for their tighter instruction-following budget.
+- **Anthropic (Subscription)** — Claude on a Pro/Max plan instead of a per-token API bill, through [dario](https://github.com/askalf/dario). No API key. See below.
 
 Set the active provider and model in `~/.ye/config.json`, or switch mid-session with `/provider` and `/model`. Reasoning traces captured from any provider are persisted as `Message.reasoning_details` in the session transcript and replayed on `/resume` and `/rewind`; stripped on `/model` and `/provider` switches because signatures and encrypted blobs are model-version-bound.
+
+### Anthropic (Subscription)
+
+If you already pay for Claude Pro or Max, `/provider` → **Anthropic (Subscription)** runs Ye on that plan rather than on a separate per-token API bill.
+
+It works through [dario](https://github.com/askalf/dario), a local proxy that speaks the standard Anthropic Messages API on `http://localhost:3456` and re-authenticates each request with your own subscription OAuth token. Because its client-facing surface is the standard API, Ye reuses the Anthropic adapter and stream parser unchanged — the provider differs only in base URL, key handling, model namespace, context sizes and capabilities.
+
+Selecting it walks the whole setup, one confirmation per step:
+
+```
+/provider → Anthropic (Subscription)
+  dario missing?      → install it        (npm install -g @askalf/dario)
+  proxy not running?  → start it          (dario proxy, detached)
+  no usable account?  → log in            (dario login, terminal handed over)
+```
+
+Nothing is installed, started or authenticated without an explicit yes, and every step shows the exact command first. If dario already has credentials — it reads Claude Code's, from `~/.claude/.credentials.json` or your OS keychain — the login step never fires. Declining the install cancels the switch; declining anything after it still switches and leaves you a one-line hint, the same way Ye treats a dead Ollama daemon. The install goes to your global npm prefix rather than `~/.ye`, because `dario` has to be on your `PATH` to be usable outside Ye.
+
+Models are dario's namespace, not the raw API's: Fable 5, Opus 5, Opus 4.8, Sonnet 5 and Haiku 4.5, each of the non-Haiku families also offered as a `[1m]` long-context variant. `[1m]` is a client-side label — the proxy strips it and rides the `context-1m` beta — so a plain id is 200K and a `[1m]` id is 1M.
+
+Two deliberate differences from the API-key provider. `WebSearch` falls through to Ye's own Brave/DuckDuckGo engines, because the subscription OAuth path carries no server-side `web_search` tool. And these turns are absent from the pricing table on purpose: a flat-fee plan has no per-token dollars, so `/cost` and `/usage` record nothing rather than inventing a number, and `/cost` says why.
+
+**Verifying it's actually on your subscription.** Anthropic classifies every response with an `anthropic-ratelimit-unified-representative-claim` header, and dario surfaces it:
+
+```bash
+dario usage
+# or, for just the number that matters:
+curl -s localhost:3456/analytics | jq .allTime.billingBucketBreakdown
+```
+
+`subscription` counts requests billed to your 5h/7d plan window. `api` and `extra_usage` are the two you want pinned at zero. dario's overage guard is on by default and halts the proxy with a 503 on the first `overage` response until `dario resume` or a 30-minute cooldown, so a drift into paid billing stops traffic instead of quietly running up a bill.
+
+dario is independent, unofficial and third-party — not an Anthropic product, and not affiliated with Ye. Using a subscription from tools other than Claude Code is outside what Anthropic's own client does, and only Anthropic can say whether that carries account risk. Ye states this in the consent prompt before installing anything.
 
 ## Configuration
 

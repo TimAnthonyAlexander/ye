@@ -127,7 +127,7 @@ New capabilities are added as boolean flags rather than `if (provider.id === ...
 - Stream events: `message_start` → `content_block_start` (text or tool_use) → `content_block_delta` (`text_delta` / `input_json_delta` / thinking deltas — last two ignored in v1) → `content_block_stop` → `message_delta` (carries `stop_reason`) → `message_stop`. Errors arrive as `event: error` mid-stream.
 - Tool-use blocks accumulate `input_json_delta` chunks per content-block index and are emitted as `tool_call` events once `stop_reason: tool_use` is seen.
 - **Prompt caching:** `capabilities.promptCache = true`. The adapter places a single `cache_control: { type: "ephemeral" }` marker on the system block — the system body is the largest stable prefix in any turn. Pipeline-side cache markers (memory blocks, tool defs) are a follow-up.
-- **Opus 4.7 sharp edges (handled in `adapt.ts`):** `temperature` is rejected on `claude-opus-4-7*` and is dropped from the request. `top_p`/`top_k` are not currently emitted by Ye.
+- **Sampling params (handled in `adapt.ts`):** `temperature` is rejected — a 400, not a silent ignore — from Opus 4.7 onward and across the whole 5 family, so `rejectsSampling()` drops it for `claude-opus-4-7*`, `claude-opus-4-8*`, `claude-opus-5*`, `claude-sonnet-5*` and `claude-fable-5*`. The 4.6 line still accepts it. `top_p`/`top_k` are not currently emitted by Ye.
 - **Message conversion:** Ye's canonical OpenAI-style messages → Anthropic shape. Adjacent `tool` results merge into a single `user` message with multiple `tool_result` blocks (Anthropic's required shape). Assistant turns with tool calls become content arrays of `[text?, tool_use, ...]`. `system` messages are pulled out and concatenated into the top-level `system` field.
 
 ## OpenAI (Phase 3 — shipped)
@@ -167,6 +167,19 @@ New capabilities are added as boolean flags rather than `if (provider.id === ...
 - **Provider options:** `think` (boolean, default false), `numCtx` (override `options.num_ctx`), `keepAlive` (string or number — passed verbatim), `format` (string `"json"` or a JSON Schema object).
 - **Model picker is dynamic.** Unlike the other providers, the registered static list is just three popular tool-capable defaults (`qwen3`, `llama3.2`, `gpt-oss:20b`). When `/model` opens with the active provider as `ollama`, it calls `GET /api/tags` and lists locally pulled models under "installed locally", with the static defaults under "popular (pull to use)". Transport failure (server not running) surfaces a friendly message and falls back to the defaults.
 
+## Anthropic (Subscription) via dario (shipped)
+
+Provider id `dario`, labelled "Anthropic (Subscription)" in `/provider`.
+
+- POST `${baseUrl}/v1/messages` (default `baseUrl` = `http://localhost:3456`).
+- [dario](https://github.com/askalf/dario) is an unofficial, third-party local proxy. Its client-facing surface is the **standard Anthropic Messages API**; it re-auths each request with the subscriber's own Pro/Max OAuth token and rebuilds it into Claude Code's wire shape before forwarding to `api.anthropic.com`. So this is not a new protocol — `adapt.ts` and `stream.ts` are shared with the `anthropic` provider verbatim, and `src/providers/dario/wire.test.ts` pins that against a `Bun.serve` stand-in.
+- `createAnthropicProvider` takes optional `id`, `contextSizes` and `capabilities`; omitting all three reproduces `api.anthropic.com` exactly, which is what `buildAnthropicFromConfig` still does.
+- Auth: **no key required**, like Ollama. `resolveApiKey` falls back to the placeholder `"dario"` — the proxy ignores the client key unless the operator set `DARIO_API_KEY` on the daemon, in which case the same value is sent. `DARIO_API_KEY` is deliberately distinct from `ANTHROPIC_API_KEY`, which stays with the per-token provider.
+- **Capabilities:** `promptCache: true`, `toolUse: true`, `vision: true`, `serverSideWebSearch: false`. The OAuth path carries no `web_search` server tool, so `WebSearch` falls through to Ye's own Brave/DuckDuckGo engines.
+- **Model namespace is dario's, not the raw API's.** A trailing `[1m]` is a client-side label: the proxy strips it and rides the `context-1m-2025-08-07` beta instead, because the literal `X[1m]` id 404s upstream. Plain ids are therefore 200K and `[1m]` ids are 1M. Every family except haiku has a `[1m]` variant — real Claude Code never offers a 1M haiku.
+- **Absent from `pricing.ts` on purpose.** `lookupPricing` returns `undefined` for any id it does not name, so subscription turns record null cost. Adding them to `ANTHROPIC_PRICING` would invent per-token dollars for a flat-fee plan and corrupt lifetime totals.
+- **Setup lives in `src/dario/`, not here.** Selecting the provider offers, with explicit consent at each step, to install dario, start the proxy detached, and run `dario login` with the terminal handed over. See YE.md for the flow; nothing there is implicit and only a declined install aborts the switch.
+
 ## System prompt variant for local models
 
 Local Ollama models (typically 7B–30B params) have weaker instruction-following and tighter context budgets than frontier hosted models. The full system prompt (~11k tokens — skills/hooks blocks, deep tool docs, tone philosophy) overwhelms them.
@@ -194,12 +207,16 @@ Current entries (full list lives in `src/providers/models.ts`):
 | openrouter | `deepseek/deepseek-v4-pro` | DeepSeek v4 Pro (OpenRouter) |
 | deepseek | `deepseek-v4-pro` | DeepSeek V4 Pro |
 | deepseek | `deepseek-v4-flash` | DeepSeek V4 Flash |
-| openrouter | `anthropic/claude-opus-4.7` | Opus 4.7 (OpenRouter) |
-| openrouter | `anthropic/claude-sonnet-4.6` | Sonnet 4.6 (OpenRouter) |
+| openrouter | `anthropic/claude-opus-4.8`, `anthropic/claude-opus-5`, `anthropic/claude-opus-4.7` | Opus 4.8 / 5 / 4.7 (OpenRouter) |
+| openrouter | `anthropic/claude-sonnet-5`, `anthropic/claude-sonnet-4.6` | Sonnet 5 / 4.6 (OpenRouter) |
+| openrouter | `anthropic/claude-fable-5` | Fable 5 (OpenRouter) |
 | openrouter | `anthropic/claude-haiku-4.5` | Haiku 4.5 (OpenRouter) |
-| anthropic | `claude-opus-4-7` | Opus 4.7 |
-| anthropic | `claude-sonnet-4-6` | Sonnet 4.6 |
+| anthropic | `claude-opus-4-8`, `claude-opus-5`, `claude-opus-4-7` | Opus 4.8 / 5 / 4.7 |
+| anthropic | `claude-sonnet-5`, `claude-sonnet-4-6` | Sonnet 5 / 4.6 |
+| anthropic | `claude-fable-5` | Fable 5 |
 | anthropic | `claude-haiku-4-5` | Haiku 4.5 |
+| dario | `claude-opus-4-8`, `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5` (each also as `…[1m]`) | … (Subscription) |
+| dario | `claude-haiku-4-5` | Haiku 4.5 (Subscription) |
 | openai | `gpt-5.5-pro`, `gpt-5.5`, `gpt-5.4`, `gpt-5.3-codex` | GPT-5.5 / 5.4 / 5.3-codex |
 | openai | `gpt-5.2-pro`, `gpt-5.2-codex`, `gpt-5.2`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`, `gpt-5.1` | GPT-5.2 / 5.1 family |
 | openai | `gpt-5-codex-mini`, `gpt-5`, `gpt-5-mini`, `codex-mini-latest` | GPT-5 family + codex-mini |
@@ -218,6 +235,8 @@ The first OpenRouter entry (`~google/gemini-flash-latest`) is also the configure
 src/providers/
 ├── index.ts            # registry: getProvider(), PROVIDER_IDS, isMissingKeyError, re-exports model registry
 ├── build.ts            # tryBuildProvider() — handles missing-key prompts and config persistence
+├── apiKey.ts           # resolveApiKey / setProviderApiKey — split from build.ts so a provider
+│                       # module can resolve its key without importing the registry cycle
 ├── models.ts           # cross-provider model registry (id, label) + defaultModelFor()
 ├── pricing.ts          # per-call USD cost estimation; consumed by status bar + usage.jsonl
 ├── errors.ts           # ProviderError taxonomy + classifyHttpError / isRetryable helpers
@@ -231,7 +250,10 @@ src/providers/
 │   ├── index.ts        # Provider impl, MissingAnthropicKeyError
 │   ├── adapt.ts        # Ye Message[] → Anthropic body (system split, tool_use/tool_result blocks, cache marker)
 │   ├── stream.ts       # event: + data: SSE → ProviderEvent
-│   └── models.ts       # per-model context-size table + isOpus47() guard
+│   └── models.ts       # per-model context-size table + rejectsSampling() guard
+├── dario/              # Anthropic (Subscription) — shipped
+│   ├── index.ts        # thin builder over createAnthropicProvider (no MissingKeyError — keyless)
+│   └── models.ts       # dario's namespace: plain ids 200K, generated [1m] ids 1M
 ├── openai/             # Phase 3 — shipped
 │   ├── index.ts        # Provider impl, MissingOpenAIKeyError
 │   ├── adapt.ts        # Ye Message[] → Responses API body (recursive strict schema, instruction split)
