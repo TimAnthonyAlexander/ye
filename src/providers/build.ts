@@ -1,6 +1,9 @@
-import type { Config, ProviderConfig } from "../config/index.ts";
+import type { Config } from "../config/index.ts";
+import { setProviderApiKey } from "./apiKey.ts";
 import { getProvider, isMissingKeyError } from "./index.ts";
 import type { Provider } from "./types.ts";
+
+export { resolveApiKey, setProviderApiKey } from "./apiKey.ts";
 
 // Shape consumed by the Ink-side KeyPrompt component. Defined here so build.ts
 // has no React/Ink dependency and the component imports the type from us.
@@ -8,32 +11,6 @@ export interface KeyPromptPayload {
     readonly title: string;
     readonly description: string;
 }
-
-// Single resolution rule. Env wins; persisted apiKey is the fallback. Treats
-// empty strings as absent — guards against shells that export VAR= without a
-// value, and against future hand-edits to config.json.
-export const resolveApiKey = (provCfg: ProviderConfig): string | undefined => {
-    const fromEnv = process.env[provCfg.apiKeyEnv];
-    if (fromEnv && fromEnv.length > 0) return fromEnv;
-    if (provCfg.apiKey && provCfg.apiKey.length > 0) return provCfg.apiKey;
-    return undefined;
-};
-
-// Immutable update. Returns a new Config with the key persisted under
-// `providers[providerId].apiKey`. Caller is responsible for saveConfig().
-export const setProviderApiKey = (cfg: Config, providerId: string, key: string): Config => {
-    const current = cfg.providers[providerId];
-    if (!current) {
-        throw new Error(`provider ${providerId} not found in config.providers`);
-    }
-    return {
-        ...cfg,
-        providers: {
-            ...cfg.providers,
-            [providerId]: { ...current, apiKey: key },
-        },
-    };
-};
 
 export interface TryBuildArgs {
     readonly cfg: Config;

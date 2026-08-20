@@ -1,5 +1,5 @@
 import type { Config } from "../../config/index.ts";
-import { resolveApiKey } from "../build.ts";
+import { resolveApiKey } from "../apiKey.ts";
 import { classifyHttpError, networkError, streamError } from "../errors.ts";
 import type { Provider, ProviderEvent, ProviderInput } from "../types.ts";
 import { buildRequestBody } from "./adapt.ts";
