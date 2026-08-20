@@ -1,4 +1,5 @@
 import { formatK, formatUsd } from "../components/statusBar.tsx";
+import { DARIO_PROVIDER_ID } from "../providers/dario/index.ts";
 import { loadSessionUsage, loadUsageTotals, type CallKindTotals } from "../storage/index.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
 
@@ -48,6 +49,17 @@ export const CostCommand: SlashCommand = {
                 lifetime.outputTokens,
             )} ↻${formatK(lifetime.cacheReadTokens)}  ${formatUsd(lifetime.costUsd)}`,
         );
+
+        // Subscription turns are recorded with no cost at all, so they land as
+        // $0.00 here. That is true — the marginal per-token cost is zero — but
+        // a screen of zeros reads like broken accounting without saying why.
+        if (ctx.providerId === DARIO_PROVIDER_ID) {
+            lines.push(
+                "",
+                "Anthropic (Subscription) turns are not billed per token — they draw on your",
+                "Claude plan, so they contribute $0.00 to these totals.",
+            );
+        }
 
         ctx.addSystemMessage(lines.join("\n"));
         return { kind: "ok" };

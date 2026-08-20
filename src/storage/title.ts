@@ -51,6 +51,7 @@ export const titleModelFor = (providerId: string): string | null => {
         case "openrouter":
             return "~google/gemini-flash-latest";
         case "anthropic":
+        case "dario":
             return "claude-haiku-4-5";
         default:
             return null;

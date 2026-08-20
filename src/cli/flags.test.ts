@@ -109,17 +109,17 @@ describe("parseFlags", () => {
     });
 
     test("--provider accepts every known id", () => {
-        for (const id of ["openrouter", "anthropic", "openai", "deepseek", "ollama"]) {
+        for (const id of ["openrouter", "anthropic", "openai", "deepseek", "ollama", "dario"]) {
             expect(ok(["--provider", id]).provider).toBe(id);
         }
     });
 
     test("--provider rejects missing and unknown values with the valid list", () => {
         expect(err(["--provider"])).toBe(
-            "ye: --provider requires openrouter, anthropic, openai, deepseek, ollama",
+            "ye: --provider requires openrouter, anthropic, openai, deepseek, ollama, dario",
         );
         expect(err(["--provider", "gemini"])).toBe(
-            'ye: unknown provider "gemini" — must be openrouter, anthropic, openai, deepseek, ollama',
+            'ye: unknown provider "gemini" — must be openrouter, anthropic, openai, deepseek, ollama, dario',
         );
         expect(err(["--provider", "OpenAI"])).toContain('unknown provider "OpenAI"');
     });

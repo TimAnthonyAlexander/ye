@@ -1,4 +1,4 @@
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { Box, Text, useApp, useInput, useStdin, useStdout } from "ink";
 import { existsSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
@@ -19,6 +19,9 @@ import {
 } from "../commands/index.ts";
 import { runAside } from "../commands/aside.ts";
 import { runInstall } from "../commands/lsp.ts";
+import { ensureDarioReady } from "../dario/setup.ts";
+import { DARIO_PROVIDER_ID } from "../providers/dario/index.ts";
+import { KITTY_KEYBOARD_ENABLE } from "../ui/editor.ts";
 import { type InstallOffer, pendingOffers, recordDecline } from "../lsp/install/index.ts";
 import { runManualCompact } from "../pipeline/shapers/manualCompact.ts";
 import {
@@ -503,6 +506,23 @@ export const App = ({
     // re-emits to scrollback at the new width. Debounced so a slow drag of
     // the terminal corner doesn't fire dozens of clears.
     const { stdout } = useStdout();
+    const { stdin, setRawMode, isRawModeSupported } = useStdin();
+
+    // Same handoff Ctrl+G uses for $EDITOR: the callback runs synchronously so
+    // Ink's event loop is blocked while the child owns the terminal.
+    const suspendTty = <T,>(fn: () => T): T => {
+        const tty = stdin.isTTY === true;
+        if (isRawModeSupported) setRawMode(false);
+        if (tty) stdin.setRawMode(false);
+        try {
+            return fn();
+        } finally {
+            if (tty) stdin.setRawMode(true);
+            if (isRawModeSupported) setRawMode(true);
+            if (process.stdout.isTTY) process.stdout.write(KITTY_KEYBOARD_ENABLE);
+        }
+    };
+
     const [termCols, setTermCols] = useState(stdout?.columns ?? 80);
     const [termRows, setTermRows] = useState(stdout?.rows ?? 24);
     useEffect(() => {
@@ -981,6 +1001,19 @@ export const App = ({
     const switchProvider = async (nextId: string): Promise<void> => {
         const state = stateRef.current;
         if (!state) throw new Error("session not ready");
+        // dario is a local daemon, not a key: it has its own consent flow and
+        // its own failure message, so it must not fall through to "key required".
+        let darioNote: string | undefined;
+        if (nextId === DARIO_PROVIDER_ID) {
+            const ready = await ensureDarioReady({
+                pick,
+                addSystemMessage,
+                streamOutput,
+                suspendTty,
+            });
+            if (!ready.ok) throw new Error(ready.error ?? "dario setup cancelled");
+            darioNote = ready.note;
+        }
         const built = await tryBuildProvider({
             cfg: cfgRef.current,
             providerId: nextId,
@@ -1027,6 +1060,7 @@ export const App = ({
         };
         cfgRef.current = nextCfg;
         await saveConfig(nextCfg);
+        if (darioNote !== undefined) addSystemMessage(darioNote);
     };
 
     const switchModel = async (nextModel: string): Promise<void> => {

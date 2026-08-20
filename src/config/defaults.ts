@@ -23,6 +23,14 @@ export const DEFAULT_CONFIG: Config = {
             baseUrl: "http://localhost:11434",
             apiKeyEnv: "OLLAMA_API_KEY",
         },
+        // DARIO_API_KEY is dario's own proxy-auth variable: when the operator
+        // sets it on the daemon, the client has to send the same value. It must
+        // stay distinct from ANTHROPIC_API_KEY, which belongs to the per-token
+        // provider and keeps working independently.
+        dario: {
+            baseUrl: "http://localhost:3456",
+            apiKeyEnv: "DARIO_API_KEY",
+        },
     },
     defaultModel: {
         provider: "openrouter",

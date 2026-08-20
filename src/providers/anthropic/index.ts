@@ -1,8 +1,8 @@
 import { FALLBACK_CONTEXT_WINDOW } from "../../config/index.ts";
 import type { Config } from "../../config/index.ts";
-import { resolveApiKey } from "../build.ts";
+import { resolveApiKey } from "../apiKey.ts";
 import { classifyHttpError, networkError, streamError } from "../errors.ts";
-import type { Provider, ProviderEvent, ProviderInput } from "../types.ts";
+import type { Provider, ProviderCapabilities, ProviderEvent, ProviderInput } from "../types.ts";
 import { buildRequestBody } from "./adapt.ts";
 import { ANTHROPIC_CONTEXT_SIZES } from "./models.ts";
 import { parseBatch, parseStream } from "./stream.ts";
@@ -10,13 +10,26 @@ import { parseBatch, parseStream } from "./stream.ts";
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const ANTHROPIC_VERSION = "2023-06-01";
 
+export const ANTHROPIC_CAPABILITIES: ProviderCapabilities = {
+    promptCache: true,
+    toolUse: true,
+    vision: true,
+    serverSideWebSearch: true,
+};
+
+// Anything reachable at a Messages-API-shaped endpoint shares this adapter and
+// stream parser; only these four differ. Defaults reproduce api.anthropic.com.
 export interface AnthropicDeps {
     readonly apiKey: string;
     readonly baseUrl?: string;
+    readonly id?: string;
+    readonly contextSizes?: Readonly<Record<string, number>>;
+    readonly capabilities?: ProviderCapabilities;
 }
 
 export const createAnthropicProvider = (deps: AnthropicDeps): Provider => {
     const baseUrl = deps.baseUrl ?? DEFAULT_BASE_URL;
+    const contextSizes = deps.contextSizes ?? ANTHROPIC_CONTEXT_SIZES;
 
     const headers: Record<string, string> = {
         "x-api-key": deps.apiKey,
@@ -25,13 +38,8 @@ export const createAnthropicProvider = (deps: AnthropicDeps): Provider => {
     };
 
     return {
-        id: "anthropic",
-        capabilities: {
-            promptCache: true,
-            toolUse: true,
-            vision: true,
-            serverSideWebSearch: true,
-        },
+        id: deps.id ?? "anthropic",
+        capabilities: deps.capabilities ?? ANTHROPIC_CAPABILITIES,
 
         async *stream(input: ProviderInput): AsyncIterable<ProviderEvent> {
             const body = buildRequestBody(input);
@@ -91,7 +99,7 @@ export const createAnthropicProvider = (deps: AnthropicDeps): Provider => {
         },
 
         async getContextSize(model: string): Promise<number> {
-            return ANTHROPIC_CONTEXT_SIZES[model] ?? FALLBACK_CONTEXT_WINDOW;
+            return contextSizes[model] ?? FALLBACK_CONTEXT_WINDOW;
         },
     };
 };

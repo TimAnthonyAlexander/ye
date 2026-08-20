@@ -1,5 +1,6 @@
 import type { Config } from "../config/index.ts";
 import { buildAnthropicFromConfig, MissingAnthropicKeyError } from "./anthropic/index.ts";
+import { buildDarioFromConfig } from "./dario/index.ts";
 import { buildDeepSeekFromConfig, MissingDeepSeekKeyError } from "./deepseek/index.ts";
 import { buildOllamaFromConfig } from "./ollama/index.ts";
 import { buildOpenAIFromConfig, MissingOpenAIKeyError } from "./openai/index.ts";
@@ -56,6 +57,7 @@ const builders: Record<string, (config: Config) => Provider> = {
     openai: buildOpenAIFromConfig,
     deepseek: buildDeepSeekFromConfig,
     ollama: buildOllamaFromConfig,
+    dario: buildDarioFromConfig,
 };
 
 export const PROVIDER_IDS: readonly string[] = [
@@ -64,6 +66,7 @@ export const PROVIDER_IDS: readonly string[] = [
     "openai",
     "deepseek",
     "ollama",
+    "dario",
 ];
 
 // Surfaced for command-layer error handling: the missing-key error types

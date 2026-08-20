@@ -29,6 +29,11 @@ const PROVIDER_LABELS: Readonly<Record<string, { label: string; description?: st
         description:
             "Local models via http://localhost:11434. No key needed for local; OLLAMA_API_KEY for cloud.",
     },
+    dario: {
+        label: "Anthropic (Subscription)",
+        description:
+            "Claude on your Pro/Max subscription via a local dario proxy at http://localhost:3456. No API key.",
+    },
 };
 
 const buildOptions = (): readonly PickerOption[] =>
@@ -60,7 +65,7 @@ const applyChoice = async (next: string, ctx: SlashCommandContext): Promise<Slas
 export const ProviderCommand: SlashCommand = {
     name: "provider",
     description: "Show or switch the active LLM provider.",
-    usage: "/provider [openrouter|anthropic|openai|deepseek|ollama]",
+    usage: "/provider [openrouter|anthropic|openai|deepseek|ollama|dario]",
     execute: async (args: string, ctx: SlashCommandContext): Promise<SlashCommandResult> => {
         const arg = args.trim().toLowerCase();
         if (arg.length === 0) {
