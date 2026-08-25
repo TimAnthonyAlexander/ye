@@ -21,7 +21,14 @@ interface Captured {
     path: string;
     apiKey: string | null;
     version: string | null;
-    body: { model?: string; messages?: unknown[]; stream?: boolean };
+    userAgent: string | null;
+    body: {
+        model?: string;
+        messages?: unknown[];
+        stream?: boolean;
+        system?: { type: string; text: string }[];
+        tools?: { name: string }[];
+    };
 }
 
 let server: ReturnType<typeof Bun.serve>;
@@ -36,6 +43,7 @@ beforeAll(() => {
                 path: url.pathname,
                 apiKey: req.headers.get("x-api-key"),
                 version: req.headers.get("anthropic-version"),
+                userAgent: req.headers.get("user-agent"),
                 body: (await req.json()) as Captured["body"],
             };
             return new Response(SSE, {
@@ -115,6 +123,37 @@ describe("dario wire compatibility", () => {
         // The text itself still has to arrive — renaming the tag, not dropping it.
         expect(wire).toContain("Nothing is running.");
         expect(wire).toContain("system-note");
+    });
+
+    // dario replaces the tool array with Claude Code's unless the request is
+    // shaped like a CC one: system must be an array of 2+ blocks, block 0
+    // carrying the billing-header marker and block 1 naming the Claude Agent
+    // SDK. Miss it and the model never sees Ye's schemas — it sees CC's, and
+    // answers Read(file_path), AskUserQuestion(questions), TodoWrite(string).
+    test("the request carries dario's passthrough discriminator", async () => {
+        const provider = buildDarioFromConfig(configAt(server.url.origin));
+        for await (const _ of provider.stream({
+            model: "claude-opus-4-8",
+            messages: [
+                { role: "system", content: "You are Ye." },
+                { role: "user", content: "go" },
+            ],
+            tools: [{ name: "Read", description: "read a file", parameters: { type: "object" } }],
+            maxTokens: 16,
+        })) {
+            // drain
+        }
+
+        const system = captured.body.system ?? [];
+        expect(system.length).toBe(3);
+        expect(system[0]?.text).toContain("x-anthropic-billing-header:");
+        expect(system[1]?.text).toContain("Claude Agent SDK");
+        expect(system[2]?.text).toBe("You are Ye.");
+        // Ye's own tools, unremapped — the point of the whole exercise.
+        expect(captured.body.tools?.map((t) => t.name)).toEqual(["Read"]);
+        // Blank, so dario forwards its own captured Claude Code user-agent
+        // rather than Bun's default.
+        expect(captured.userAgent).toBe("");
     });
 
     test("a configured key overrides the placeholder", async () => {

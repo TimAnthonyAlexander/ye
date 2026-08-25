@@ -3,6 +3,7 @@ import { createAnthropicProvider } from "../anthropic/index.ts";
 import { resolveApiKey } from "../apiKey.ts";
 import type { Message, Provider, ProviderEvent, ProviderInput } from "../types.ts";
 import { DARIO_CONTEXT_SIZES } from "./models.ts";
+import { DARIO_HEADERS, withPassthroughSystem } from "./passthrough.ts";
 import { rewriteReminders } from "./reminders.ts";
 
 export const DARIO_PROVIDER_ID = "dario";
@@ -24,6 +25,7 @@ export const buildDarioFromConfig = (config: Config): Provider => {
         baseUrl: provCfg.baseUrl,
         id: DARIO_PROVIDER_ID,
         contextSizes: DARIO_CONTEXT_SIZES,
+        headers: DARIO_HEADERS,
         capabilities: {
             promptCache: true,
             toolUse: true,
@@ -34,15 +36,20 @@ export const buildDarioFromConfig = (config: Config): Provider => {
         },
     });
 
-    // The one place dario's wire format differs from Anthropic's in a way the
-    // shared adapter cannot see: the proxy deletes `<system-reminder>` blocks
-    // on the way out. Rename them here, before the adapter builds the body, so
-    // every reminder Ye injects survives the hop. See ./reminders.ts.
+    // Two places dario's wire format differs from Anthropic's in a way the
+    // shared adapter cannot see. The proxy deletes `<system-reminder>` blocks
+    // on the way out, so they are renamed here (./reminders.ts); and it replaces
+    // the whole tool array with Claude Code's unless the request is shaped like
+    // a CC one, so two marker system blocks go in front (./passthrough.ts).
+    // Both run before the adapter builds the body.
     return {
         id: inner.id,
         capabilities: inner.capabilities,
         stream: (input: ProviderInput): AsyncIterable<ProviderEvent> =>
-            inner.stream({ ...input, messages: rewriteReminders(input.messages) }),
+            inner.stream({
+                ...input,
+                messages: withPassthroughSystem(rewriteReminders(input.messages)),
+            }),
         getContextSize: (model: string) => inner.getContextSize(model),
         ...(inner.countTokens
             ? { countTokens: (messages: readonly Message[]) => inner.countTokens!(messages) }

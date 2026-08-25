@@ -82,23 +82,27 @@ const toAnthropicTool = (t: ToolDefinition): AnthropicTool => ({
 });
 
 interface SplitResult {
-    readonly systemText: string;
+    readonly systemTexts: readonly string[];
     readonly rest: readonly Message[];
 }
 
+// One system message becomes one system block. Joining them would be
+// equivalent to Anthropic, but dario reads the block *structure* to tell a
+// Claude-Code-shaped client from one it has to dress up as CC — see
+// providers/dario/passthrough.ts.
 const splitSystem = (messages: readonly Message[]): SplitResult => {
-    const systemParts: string[] = [];
+    const systemTexts: string[] = [];
     const rest: Message[] = [];
     for (const m of messages) {
         if (m.role === "system") {
             if (typeof m.content === "string" && m.content.length > 0) {
-                systemParts.push(m.content);
+                systemTexts.push(m.content);
             }
             continue;
         }
         rest.push(m);
     }
-    return { systemText: systemParts.join("\n\n"), rest };
+    return { systemTexts, rest };
 };
 
 const buildAssistantContent = (msg: Message): AnthropicContentBlock[] => {
@@ -179,11 +183,16 @@ const ensureUserTail = (messages: AnthropicMessage[]): void => {
     messages.push({ role: "user", content: CONTINUATION_MARKER });
 };
 
-// Single cache marker on the system prompt. The whole system body becomes a
+// Single cache marker, on the last block: the whole system body becomes one
 // cacheable prefix — typically the largest static segment of the request.
-const buildSystem = (text: string): AnthropicSystemBlock[] | undefined => {
-    if (!hasText(text)) return undefined;
-    return [{ type: "text", text, cache_control: { type: "ephemeral" } }];
+const buildSystem = (texts: readonly string[]): AnthropicSystemBlock[] | undefined => {
+    const blocks: AnthropicSystemBlock[] = texts
+        .filter(hasText)
+        .map((text) => ({ type: "text", text }));
+    const last = blocks[blocks.length - 1];
+    if (!last) return undefined;
+    last.cache_control = { type: "ephemeral" };
+    return blocks;
 };
 
 const isMarkable = (block: AnthropicContentBlock | undefined): boolean => {
@@ -223,11 +232,11 @@ const markLastMessageCacheable = (messages: AnthropicMessage[]): void => {
 };
 
 export const buildRequestBody = (input: ProviderInput): AnthropicRequestBody => {
-    const { systemText, rest } = splitSystem(input.messages);
+    const { systemTexts, rest } = splitSystem(input.messages);
     const messages = convertMessages(rest);
     ensureUserTail(messages);
     markLastMessageCacheable(messages);
-    const system = buildSystem(systemText);
+    const system = buildSystem(systemTexts);
 
     const body: AnthropicRequestBody = {
         model: input.model,

@@ -25,6 +25,9 @@ export interface AnthropicDeps {
     readonly id?: string;
     readonly contextSizes?: Readonly<Record<string, number>>;
     readonly capabilities?: ProviderCapabilities;
+    // Extra request headers, merged last. dario uses it to blank the
+    // user-agent Bun would otherwise send — see dario/passthrough.ts.
+    readonly headers?: Readonly<Record<string, string>>;
 }
 
 export const createAnthropicProvider = (deps: AnthropicDeps): Provider => {
@@ -35,6 +38,7 @@ export const createAnthropicProvider = (deps: AnthropicDeps): Provider => {
         "x-api-key": deps.apiKey,
         "anthropic-version": ANTHROPIC_VERSION,
         "content-type": "application/json",
+        ...deps.headers,
     };
 
     return {
