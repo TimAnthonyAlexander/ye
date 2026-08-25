@@ -5,6 +5,7 @@ import { DiagnosticsTool } from "./diagnostics/index.ts";
 import { EditTool } from "./edit/index.ts";
 import { EnterPlanModeTool } from "./enterPlanMode/index.ts";
 import { ExitPlanModeTool } from "./exitPlanMode/index.ts";
+import { ForgetMemoryTool } from "./forgetMemory/index.ts";
 import { GlobTool } from "./glob/index.ts";
 import { GrepTool } from "./grep/index.ts";
 import { KillAgentTool } from "./killAgent/index.ts";
@@ -49,6 +50,7 @@ const TOOLS: readonly Tool[] = [
     WebSearchTool,
     SkillTool,
     SaveMemoryTool,
+    ForgetMemoryTool,
     KillShellTool,
 ];
 

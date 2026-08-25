@@ -24,6 +24,24 @@ const parseLines = (text: string, baseDir: string): MemoryEntry[] => {
     return out;
 };
 
+// Drop every index entry pointing at `filename`. Index-format knowledge stays
+// in this module, so removing a memory cannot invent a second parser that
+// disagrees with the one auto-selection reads with.
+export const removeMemoryEntry = (
+    text: string,
+    filename: string,
+): { readonly text: string; readonly removed: number } => {
+    let removed = 0;
+    const kept = text.split("\n").filter((rawLine) => {
+        const m = ENTRY_RE.exec(rawLine.trim());
+        const target = m?.[2]?.trim();
+        if (target === undefined || target !== filename) return true;
+        removed += 1;
+        return false;
+    });
+    return { text: kept.join("\n"), removed };
+};
+
 export const parseMemoryIndex = async (indexPath: string): Promise<readonly MemoryEntry[]> => {
     const file = Bun.file(indexPath);
     if (!(await file.exists())) return [];

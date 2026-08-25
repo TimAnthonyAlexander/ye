@@ -16,7 +16,8 @@ interface SaveMemoryResult {
     readonly indexPath: string;
 }
 
-const slugify = (title: string): string => {
+// Exported so ForgetMemory resolves a title to the same file this wrote.
+export const memorySlug = (title: string): string => {
     const slug = title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "_")
@@ -46,7 +47,7 @@ const execute = async (
     const dir = getProjectMemoryDir(ctx.projectId);
     await mkdir(dir, { recursive: true });
 
-    const filename = `${slugify(title)}.md`;
+    const filename = `${memorySlug(title)}.md`;
     const path = join(dir, filename);
     if (await Bun.file(path).exists()) {
         return {

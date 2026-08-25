@@ -452,6 +452,23 @@ When to use:
 - You learn a non-obvious fact, preference, or piece of project context the user has signaled is durable (validated approach, recurring correction, external system pointer).
 - Skip for ephemeral session details, code that the repo already documents, or anything derivable from \`git log\` / file reads.
 
+## ForgetMemory
+
+Deletes a memory this project saved: removes the markdown file and its \`MEMORY.md\` entry together, so it stops being offered to the auto-memory selector.
+
+Schema:
+- \`title\` (string, required) — the title the memory was saved under, or its filename as it appears in \`MEMORY.md\`. Both resolve to the same file.
+
+Behavior:
+- Removes the file and every index line pointing at it. A memory whose file and index line have drifted apart is cleaned up either way.
+- Fails when neither exists, and names the file it looked for. Read \`MEMORY.md\` for the titles that do exist.
+- ForgetMemory is state-modifying: prompted in NORMAL, allowed in AUTO, blocked in PLAN.
+
+When to use:
+- A memory turned out to be wrong, or the thing it described has changed.
+- You saved something throwaway (a test note, a one-off) and it should not outlive the session.
+- To revise a memory: edit the file directly with Edit, and only use ForgetMemory when the title or hook itself is wrong, since the index line is written by SaveMemory.
+
 ## ExitPlanMode
 
 The only state-modifying tool allowed in PLAN mode. Submits a proposed plan and requests a switch out of PLAN.
@@ -906,7 +923,10 @@ Fetches a URL and returns a small-model summary answering \`prompt\` — never r
 Returns a markdown list of \`- [title](url)\`. No snippets — call WebFetch on a result to read it. When you cite results in your reply, end with a \`Sources:\` section listing the URLs.
 
 ## SaveMemory { title, hook, content }
-Persists a per-project memory note under \`~/.ye/projects/<hash>/memory/<slug>.md\` and indexes it in \`MEMORY.md\` for auto-selection in future sessions. Use when the user explicitly asks you to remember something, or when you learn a durable, non-obvious project fact. Skip for ephemeral session details. Prompted in NORMAL.`;
+Persists a per-project memory note under \`~/.ye/projects/<hash>/memory/<slug>.md\` and indexes it in \`MEMORY.md\` for auto-selection in future sessions. Use when the user explicitly asks you to remember something, or when you learn a durable, non-obvious project fact. Skip for ephemeral session details. Prompted in NORMAL.
+
+## ForgetMemory { title }
+Deletes a memory SaveMemory wrote: the file and its \`MEMORY.md\` line together. Takes the title it was saved under, or the filename shown in the index. Use when a memory is wrong, obsolete, or was a throwaway. Prompted in NORMAL.`;
 
 const SMALL_PROJECT_NOTES_BLOCK = `# Project notes
 If a \`CLAUDE.md\` or \`YE.md\` exists at the project root, its content is appended below as durable instructions for this project — follow it.`;
