@@ -8,6 +8,7 @@ import type { ToolResult } from "./types.ts";
 interface PropertySchema {
     readonly type?: "string" | "number" | "integer" | "boolean" | "object" | "array";
     readonly enum?: readonly unknown[];
+    readonly items?: ObjectSchema;
 }
 
 interface ObjectSchema {
@@ -47,7 +48,11 @@ export const validateArgs = <T>(args: unknown, schema: object): ToolResult<T> =>
 
     for (const key of obj.required ?? []) {
         if (!(key in a)) {
-            return { ok: false, error: `missing required arg: ${key}` };
+            // Naming what did arrive is what lets a model that guessed the wrong
+            // key correct itself instead of retrying the same call.
+            const got = Object.keys(a);
+            const received = got.length > 0 ? ` (received: ${got.join(", ")})` : " (received none)";
+            return { ok: false, error: `missing required arg: ${key}${received}` };
         }
     }
 
@@ -58,6 +63,13 @@ export const validateArgs = <T>(args: unknown, schema: object): ToolResult<T> =>
         }
         if (prop.enum && !prop.enum.includes(a[key])) {
             return { ok: false, error: `arg ${key} must be one of: ${prop.enum.join(", ")}` };
+        }
+        if (prop.items && Array.isArray(a[key])) {
+            const items = a[key] as readonly unknown[];
+            for (let i = 0; i < items.length; i++) {
+                const item = validateArgs<unknown>(items[i], prop.items);
+                if (!item.ok) return { ok: false, error: `arg ${key}[${i}]: ${item.error}` };
+            }
         }
     }
 
