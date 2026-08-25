@@ -25,6 +25,10 @@ describe("applyArgAliases", () => {
         expect(applyArgAliases(call("Skill", { skill: "release" })).args).toEqual({
             command: "release",
         });
+        expect(applyArgAliases(call("Grep", { pattern: "todo", "-i": true })).args).toEqual({
+            pattern: "todo",
+            case_insensitive: true,
+        });
         expect(applyArgAliases(call("KillShell", { shell_id: "bash_1" })).args).toEqual({
             bash_id: "bash_1",
         });

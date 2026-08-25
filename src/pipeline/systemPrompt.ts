@@ -330,9 +330,11 @@ Schema:
 - \`output_mode\` (string, optional) — \`"content"\` (matching lines, default), \`"files_with_matches"\` (paths only), \`"count"\` (matches per file)
 - \`type\` (string, optional) — ripgrep \`--type\` filter, e.g. \`"ts"\`
 - \`glob\` (string, optional) — path glob filter, e.g. \`"*.tsx"\`
+- \`case_insensitive\` (boolean, optional) — ripgrep \`-i\`
+- \`multiline\` (boolean, optional) — let the pattern span lines (\`-U --multiline-dotall\`); needs \`rg\`
 
 Notes:
-- Requires \`rg\` on PATH. If missing, the call returns an error.
+- Falls back to a built-in scanner when \`rg\` is missing. The fallback is line-based, so \`multiline\` returns an error there rather than silently matching nothing.
 - Output is truncated at 32KB. The result is a header line (\`<grep exit_code="N">\`) followed by ripgrep's output. A bare \`<grep exit_code="1">\` means no matches.
 - Exit code 1 means no matches (not an error).
 - Read-only.
@@ -847,7 +849,7 @@ Stops a running background subagent. No effect on already-completed tasks. Promp
 ## Monitor { reason, condition?, capture?, at?, intervalSec?, giveUpAfterSec? }
 Waits on state you do NOT own — a job on a remote host, a CI run, a file appearing, a clock time — which nothing else will ever wake you for. \`condition\` is shell, polled every \`intervalSec\` (default 30, floor 5): exit 0 = met, 1 = not yet, anything else = broken. \`at\` is an ISO 8601 timestamp or \`"HH:MM"\`; \`at\` and \`condition\` combine as OR. \`capture\` runs once when met and its stdout comes back to you, so keep \`condition\` quiet (\`grep -q\`) and put the payload there. Returns an id immediately and wakes you with a \`<system-reminder>\` — start it and END YOUR TURN. **This is what you use instead of an \`echo\`/\`sleep\` loop.** The condition runs unattended, possibly hundreds of times, so it must be cheap and side-effect-free — approving the monitor approves every future poll. Outcomes: \`condition_met\`, \`time_reached\`, \`gave_up\` (default after 86400s — means the condition was never seen true, NOT that the thing failed), \`broken\`, \`killed\`. Monitors die with the session. \`KillMonitor { monitor_id }\` stops one. Prompted in NORMAL.
 
-## Grep { pattern, path?, output_mode?, type?, glob? }
+## Grep { pattern, path?, output_mode?, type?, glob?, case_insensitive?, multiline? }
 Ripgrep regex. \`output_mode\`: \`"content"\` (default), \`"files_with_matches"\`, \`"count"\`. Exit 1 = no matches (not error). Read-only.
 
 ## Glob { pattern, path? }

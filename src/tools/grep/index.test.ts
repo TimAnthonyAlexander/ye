@@ -58,6 +58,26 @@ describe("GrepTool", () => {
         if (r.ok) expect(typeof r.value).toBe("string");
     });
 
+    test("G1b case_insensitive and multiline reach ripgrep", async () => {
+        const fixture = join(workDir, "f.txt");
+        await writeFile(fixture, "NEEDLE\nalpha\nbeta\n", "utf8");
+
+        const sensitive = await GrepTool.execute({ pattern: "needle", path: workDir }, makeCtx());
+        expect(sensitive.ok && (sensitive.value as string)).toContain('exit_code="1"');
+
+        const insensitive = await GrepTool.execute(
+            { pattern: "needle", path: workDir, case_insensitive: true },
+            makeCtx(),
+        );
+        expect(insensitive.ok && (insensitive.value as string)).toContain("NEEDLE");
+
+        const across = await GrepTool.execute(
+            { pattern: "alpha\\nbeta", path: workDir, multiline: true },
+            makeCtx(),
+        );
+        expect(across.ok && (across.value as string)).toContain("alpha");
+    });
+
     test("G2 success with matches: header is exit_code 0 and body has the match line", async () => {
         const fixture = join(workDir, "f.txt");
         await writeFile(fixture, "alpha\nneedle\ngamma\n", "utf8");

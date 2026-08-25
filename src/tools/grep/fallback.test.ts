@@ -28,6 +28,36 @@ describe("grepFallback", () => {
         expect(out).toBe("a.ts:2:needle here");
     });
 
+    test("F1b case_insensitive matches, multiline refuses instead of missing", async () => {
+        await writeFile(join(workDir, "a.ts"), "NEEDLE here\n", "utf8");
+        const sensitive = await grepFallback({
+            pattern: "needle",
+            root: workDir,
+            mode: "content",
+            signal,
+        });
+        expect(sensitive).toBe("");
+
+        const insensitive = await grepFallback({
+            pattern: "needle",
+            root: workDir,
+            mode: "content",
+            case_insensitive: true,
+            signal,
+        });
+        expect(insensitive).toBe("a.ts:1:NEEDLE here");
+
+        await expect(
+            grepFallback({
+                pattern: "a\\nb",
+                root: workDir,
+                mode: "content",
+                multiline: true,
+                signal,
+            }),
+        ).rejects.toThrow("multiline search needs ripgrep");
+    });
+
     test("F2 no matches returns empty string", async () => {
         await writeFile(join(workDir, "a.ts"), "alpha\nbeta\n", "utf8");
         const out = await grepFallback({

@@ -3,12 +3,13 @@
 // out the right one — Read was called with `file_path` four times in one turn.
 // Where our name differs from Claude Code's, theirs is folded onto ours before
 // the permission gate or the tool reads the args. Tools whose names already
-// agree (Bash, Glob, Grep, WebFetch, WebSearch, TaskOutput, KillAgent) are
-// absent; an extra key Claude Code has and we don't is dropped by validateArgs.
+// agree (Bash, Glob, WebFetch, WebSearch, TaskOutput, KillAgent) are absent; an
+// extra key Claude Code has and we don't is dropped by validateArgs.
 const ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     Read: { file_path: "path" },
     Edit: { file_path: "path" },
     Write: { file_path: "path" },
+    Grep: { "-i": "case_insensitive" },
     Task: { subagent_type: "kind" },
     Skill: { skill: "command" },
     BashOutput: { shell_id: "bash_id", task_id: "bash_id" },

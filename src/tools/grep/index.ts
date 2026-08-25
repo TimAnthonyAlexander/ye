@@ -11,6 +11,8 @@ interface GrepArgs {
     readonly output_mode?: GrepMode;
     readonly type?: string; // ripgrep --type filter, e.g. "ts"
     readonly glob?: string; // path glob filter
+    readonly case_insensitive?: boolean;
+    readonly multiline?: boolean;
 }
 
 const OUTPUT_CAP = 32_000;
@@ -38,20 +40,18 @@ const isMissingRipgrep = (e: unknown): boolean =>
     e instanceof Error && /not found|ENOENT/i.test(e.message);
 
 const runRipgrep = async (
-    pattern: string,
-    path: string,
-    mode: GrepMode,
-    type: string | undefined,
-    glob: string | undefined,
+    opts: GrepArgs & { readonly path: string; readonly mode: GrepMode },
     ctx: ToolContext,
 ): Promise<{ stdout: string; exitCode: number }> => {
-    const args = ["rg", "--no-heading", "--color", "never", ...flagsForMode(mode)];
-    if (type) args.push("-t", type);
-    if (glob) args.push("-g", glob);
-    args.push(pattern, path);
+    const argv = ["rg", "--no-heading", "--color", "never", ...flagsForMode(opts.mode)];
+    if (opts.type) argv.push("-t", opts.type);
+    if (opts.glob) argv.push("-g", opts.glob);
+    if (opts.case_insensitive) argv.push("-i");
+    if (opts.multiline) argv.push("-U", "--multiline-dotall");
+    argv.push(opts.pattern, opts.path);
 
     const proc = Bun.spawn({
-        cmd: args,
+        cmd: argv,
         cwd: ctx.cwd,
         stdout: "pipe",
         stderr: "pipe",
@@ -74,12 +74,23 @@ const runRipgrep = async (
 const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<string>> => {
     const v = validateArgs<GrepArgs>(rawArgs, GrepTool.schema);
     if (!v.ok) return v;
-    const { pattern, path = ctx.cwd, output_mode = "content", type, glob } = v.value;
+    const {
+        pattern,
+        path = ctx.cwd,
+        output_mode = "content",
+        type,
+        glob,
+        case_insensitive,
+        multiline,
+    } = v.value;
 
     let stdout: string;
     let exitCode: number;
     try {
-        ({ stdout, exitCode } = await runRipgrep(pattern, path, output_mode, type, glob, ctx));
+        ({ stdout, exitCode } = await runRipgrep(
+            { pattern, path, mode: output_mode, type, glob, case_insensitive, multiline },
+            ctx,
+        ));
     } catch (e) {
         if (!isMissingRipgrep(e)) {
             return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -92,6 +103,8 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
                 mode: output_mode,
                 type,
                 glob,
+                case_insensitive,
+                multiline,
                 signal: ctx.signal,
             });
         } catch (fe) {
@@ -111,7 +124,8 @@ export const GrepTool: Tool = {
     description:
         "Search file contents using ripgrep (falls back to a built-in scanner when `rg` is not installed). " +
         "Modes: content (matching lines, default), " +
-        "files_with_matches (paths only), count (matches per file). Supports type/glob filters.",
+        "files_with_matches (paths only), count (matches per file). Supports type/glob filters, " +
+        "`case_insensitive` (rg -i), and `multiline` for patterns that span lines (needs ripgrep).",
     annotations: { readOnlyHint: true },
     schema: {
         type: "object",
@@ -125,6 +139,8 @@ export const GrepTool: Tool = {
             },
             type: { type: "string" },
             glob: { type: "string" },
+            case_insensitive: { type: "boolean" },
+            multiline: { type: "boolean" },
         },
     },
     execute,

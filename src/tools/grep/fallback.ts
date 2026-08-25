@@ -10,6 +10,8 @@ export interface FallbackArgs {
     readonly mode: GrepMode;
     readonly type?: string;
     readonly glob?: string;
+    readonly case_insensitive?: boolean;
+    readonly multiline?: boolean;
     readonly signal: AbortSignal;
 }
 
@@ -145,9 +147,14 @@ const searchFile = async (full: string, display: string, re: RegExp): Promise<Fi
 };
 
 export const grepFallback = async (args: FallbackArgs): Promise<string> => {
+    // This scanner is line-based, so a cross-line pattern would silently report
+    // no matches. Saying so beats answering wrongly.
+    if (args.multiline) {
+        throw new Error("multiline search needs ripgrep; install rg or drop multiline");
+    }
     let re: RegExp;
     try {
-        re = new RegExp(args.pattern);
+        re = new RegExp(args.pattern, args.case_insensitive ? "i" : "");
     } catch (e) {
         throw new Error(`invalid regex: ${e instanceof Error ? e.message : String(e)}`);
     }
