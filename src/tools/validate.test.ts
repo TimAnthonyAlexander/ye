@@ -39,7 +39,7 @@ describe("validateArgs", () => {
 
         const missing = validateArgs({ todos: [{ content: "a" }, { status: "pending" }] }, schema);
         expect(missing.ok === false && missing.error).toBe(
-            "arg todos[1]: missing required arg: content (received: status)",
+            'arg todos[1]: missing required arg: content (received: status). Expected {"content":"string"}',
         );
 
         const badEnum = validateArgs({ todos: [{ content: "a", status: "nope" }] }, schema);
@@ -49,6 +49,38 @@ describe("validateArgs", () => {
 
         const badType = validateArgs({ todos: ["a"] }, schema);
         expect(badType.ok === false && badType.error).toBe("arg todos[0]: args must be an object");
+    });
+
+    test("V4 parses an array that arrived as a JSON string", () => {
+        const stringified = validateArgs<{ todos: unknown[] }>(
+            { todos: '[{"content": "a", "status": "pending"}]' },
+            schema,
+        );
+        expect(stringified.ok).toBe(true);
+        expect(stringified.ok === true && stringified.value.todos).toEqual([
+            { content: "a", status: "pending" },
+        ]);
+
+        const notJson = validateArgs({ todos: "just text" }, schema);
+        expect(notJson.ok === false && notJson.error).toBe(
+            'arg todos must be array (got string). Expected {"todos":[{"content":"string"}]}',
+        );
+    });
+
+    test("V5 repairs scalars and enum spellings the model got close", () => {
+        const numeric = { type: "object", properties: { limit: { type: "integer" } } } as const;
+        const n = validateArgs<{ limit: number }>({ limit: "40" }, numeric);
+        expect(n.ok === true && n.value.limit).toBe(40);
+
+        const flag = { type: "object", properties: { all: { type: "boolean" } } } as const;
+        const b = validateArgs<{ all: boolean }>({ all: "true" }, flag);
+        expect(b.ok === true && b.value.all).toBe(true);
+
+        const cased = validateArgs<{ todos: { status: string }[] }>(
+            { todos: [{ content: "a", status: "Pending" }] },
+            schema,
+        );
+        expect(cased.ok === true && cased.value.todos[0]?.status).toBe("pending");
     });
 
     test("V3 accepts Claude Code's todo shape and rejects a bad status", () => {

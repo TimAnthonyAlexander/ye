@@ -41,7 +41,8 @@ export const ExitPlanModeTool: Tool = {
     description:
         "Submit a proposed plan and request a flip out of PLAN mode. Writes the plan to a " +
         "persistent file and triggers a permission prompt asking the user to accept the plan " +
-        "and switch to NORMAL mode. The only state-modifying tool allowed in PLAN mode.",
+        "and switch to NORMAL mode. The only state-modifying tool allowed in PLAN mode. " +
+        "Pass the full plan as the `plan` argument, in markdown — it is not read from a file.",
     annotations: { readOnlyHint: false },
     schema: {
         type: "object",

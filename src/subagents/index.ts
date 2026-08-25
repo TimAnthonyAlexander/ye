@@ -23,6 +23,7 @@ export {
     listAgents,
     resetAgentCatalogue,
     resolveAgent,
+    resolveKind,
     unknownKindError,
     type AgentCatalogue,
     type AgentEntry,

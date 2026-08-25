@@ -3,7 +3,7 @@ import type { RequestModeFlipResult } from "../exitPlanMode/index.ts";
 import { validateArgs } from "../validate.ts";
 
 interface EnterPlanModeArgs {
-    readonly reason: string;
+    readonly reason?: string;
 }
 
 const execute = async (
@@ -27,9 +27,11 @@ export const EnterPlanModeTool: Tool = {
         "switch from the current mode to PLAN. The reason argument should briefly explain " +
         "why you want to plan first. No-op when already in PLAN.",
     annotations: { readOnlyHint: false },
+    // `reason` is optional: Claude Code's EnterPlanMode takes no arguments at
+    // all, so a Claude model calls this one with `{}`. The reason is worth
+    // asking for and not worth failing a turn over.
     schema: {
         type: "object",
-        required: ["reason"],
         properties: {
             reason: { type: "string" },
         },

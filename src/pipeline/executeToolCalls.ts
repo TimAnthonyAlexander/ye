@@ -439,24 +439,34 @@ export async function* executeToolCalls(deps: ExecuteToolCallsDeps): AsyncGenera
 
         // AskUserQuestion: surface the question to the UI, replace the tool's
         // payload-shaped result with the user's answer string before pushing it
-        // into history. The model only sees the answer.
+        // into history. The model only sees the answer. A call carrying several
+        // questions is put to the user one at a time — the prompt UI holds one
+        // question, and each answer is labelled so the model can tell them apart.
         let finalResult: ToolResult = result;
         if (result.ok && isUserQuestion(result.value)) {
-            const d = deferred<string>();
-            const qEvent: Event = {
-                type: "userQuestion.prompt",
-                id: call.id,
-                payload: {
-                    question: result.value.question,
-                    options: result.value.options,
-                    multiSelect: result.value.multiSelect,
-                },
-                respond: (answer) => d.resolve(answer),
-            };
-            yield qEvent;
-            await session.appendEvent(transcriptable(qEvent));
-            const answer = await d.promise;
-            finalResult = { ok: true, value: answer };
+            const questions = result.value.questions;
+            const answers: string[] = [];
+            for (const q of questions) {
+                const d = deferred<string>();
+                const qEvent: Event = {
+                    type: "userQuestion.prompt",
+                    id: call.id,
+                    payload: {
+                        question: q.question,
+                        options: q.options,
+                        multiSelect: q.multiSelect,
+                    },
+                    respond: (answer) => d.resolve(answer),
+                };
+                yield qEvent;
+                await session.appendEvent(transcriptable(qEvent));
+                answers.push(await d.promise);
+            }
+            const value =
+                questions.length === 1
+                    ? (answers[0] ?? "")
+                    : questions.map((q, i) => `${q.question}: ${answers[i] ?? ""}`).join("\n");
+            finalResult = { ok: true, value };
         }
 
         const endEvent: Event = {

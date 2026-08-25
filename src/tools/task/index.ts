@@ -3,6 +3,7 @@ import type { ExploreThoroughness, SubagentKind, SubagentSpec } from "../../suba
 import {
     isKnownKind,
     listAgents,
+    resolveKind,
     spawn,
     SubagentError,
     unknownKindError,
@@ -94,7 +95,8 @@ const execute = async (
         };
     }
 
-    const { kind, prompt } = v.value;
+    const { prompt } = v.value;
+    const kind = resolveKind(v.value.kind, subagentCtx.projectRoot) as SubagentKind;
     if (!isKnownKind(kind, subagentCtx.projectRoot)) {
         return { ok: false, error: unknownKindError(kind, subagentCtx.projectRoot) };
     }

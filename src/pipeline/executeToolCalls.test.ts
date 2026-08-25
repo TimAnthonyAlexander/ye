@@ -32,9 +32,11 @@ mock.module("../tools/index.ts", () => ({
         value: unknown,
     ): value is {
         kind: "user_question";
-        question: string;
-        options: readonly { label: string; description?: string }[];
-        multiSelect: boolean;
+        questions: readonly {
+            question: string;
+            options: readonly { label: string; description?: string }[];
+            multiSelect: boolean;
+        }[];
     } =>
         typeof value === "object" &&
         value !== null &&
@@ -748,9 +750,13 @@ describe("AskUserQuestion", () => {
                     ok: true,
                     value: {
                         kind: "user_question",
-                        question: "Pick one",
-                        options: [{ label: "A" }, { label: "B" }],
-                        multiSelect: false,
+                        questions: [
+                            {
+                                question: "Pick one",
+                                options: [{ label: "A" }, { label: "B" }],
+                                multiSelect: false,
+                            },
+                        ],
                     },
                 }) as ToolResult,
         });

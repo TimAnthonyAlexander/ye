@@ -7,6 +7,7 @@ import {
     CUSTOM_AGENT_TOOL_CEILING,
     resetAgentCatalogue,
     resolveAgent,
+    resolveKind,
     unknownKindError,
 } from "./index.ts";
 import { loadCustomAgents } from "./custom/load.ts";
@@ -166,6 +167,15 @@ describe("custom agents", () => {
             }
             expect(written).toEqual([]);
         });
+    });
+
+    // Claude Code's kinds are `general-purpose` and `Explore`; ours are
+    // `general` and `explore`. Same agents, so name them rather than fail.
+    test("Claude Code's agent names resolve to ours", () => {
+        expect(resolveKind("general-purpose", root)).toBe("general");
+        expect(resolveKind("Explore", root)).toBe("explore");
+        expect(resolveKind("explore", root)).toBe("explore");
+        expect(resolveKind("nope", root)).toBe("nope");
     });
 
     test("an unknown kind reports the valid ones", () => {

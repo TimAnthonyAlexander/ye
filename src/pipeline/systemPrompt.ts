@@ -130,6 +130,7 @@ const TONE_BLOCK = `# Tone and style
 - KISS. When in doubt between a simple solution and a clever one, pick the simple one. Future-you will thank you.`;
 
 const TOOL_DISCIPLINE_BLOCK = `# Using your tools
+- **The tool list in this request is the whole truth.** Call tools by the exact names and parameter names declared there — Ye's tools are not Claude Code's, and a tool that is absent does not exist here however familiar it feels. \`Read\` takes \`path\`, not \`file_path\`; \`Task\` takes \`kind\`, not \`subagent_type\`; \`Skill\` takes \`command\`, not \`skill\`; \`ExitPlanMode\` takes the plan text in \`plan\`. An array parameter takes a JSON array, never a string holding one.
 - Prefer dedicated tools (Read, Edit, Write) over Bash when one fits. Reserve Bash for shell-only operations.
 - Use TodoWrite to plan and track non-trivial multi-step work. Keep **exactly one** todo \`in_progress\` at a time — never flip several to \`in_progress\` at once (that returns an error). When you first create the list, only the task you're starting is \`in_progress\` and the rest are \`pending\`; then mark the current one \`completed\` before you promote the next from \`pending\` to \`in_progress\`. Mark each task completed as soon as it's done; don't batch.
 - If multiple tool calls are independent (no call depends on another's result), issue them in parallel — maximize parallelism where possible to keep turns fast. If a call must consume another's output, sequence them.

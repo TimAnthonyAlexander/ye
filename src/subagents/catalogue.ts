@@ -131,6 +131,29 @@ export const listAgents = (projectRoot?: string): readonly AgentEntry[] =>
 export const isKnownKind = (kind: unknown, projectRoot?: string): kind is string =>
     typeof kind === "string" && getAgentCatalogue(projectRoot).byName.has(kind);
 
+// Claude Code's built-in agent names for the same two agents Ye has. Applied
+// only when the name given is not itself a catalogue entry, so a markdown agent
+// that claims one of these names still wins.
+const KIND_SYNONYMS: Readonly<Record<string, string>> = {
+    "general-purpose": "general",
+    general_purpose: "general",
+};
+
+// A kind that differs from a real one only in case, separators or Claude Code's
+// spelling names that agent. Anything else is returned unchanged, so the caller
+// still reports it as unknown.
+export const resolveKind = (kind: string, projectRoot?: string): string => {
+    const { byName } = getAgentCatalogue(projectRoot);
+    if (byName.has(kind)) return kind;
+    const key = kind.toLowerCase().replace(/[-_\s]/g, "");
+    const synonym = KIND_SYNONYMS[kind.toLowerCase()];
+    if (synonym !== undefined && byName.has(synonym)) return synonym;
+    for (const name of byName.keys()) {
+        if (name.toLowerCase().replace(/[-_\s]/g, "") === key) return name;
+    }
+    return kind;
+};
+
 export const unknownKindError = (kind: unknown, projectRoot?: string): string => {
     const valid = listAgents(projectRoot)
         .map((a) => a.name)
