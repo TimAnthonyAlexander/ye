@@ -177,6 +177,7 @@ Provider id `dario`, labelled "Anthropic (Subscription)" in `/provider`.
 - Auth: **no key required**, like Ollama. `resolveApiKey` falls back to the placeholder `"dario"` — the proxy ignores the client key unless the operator set `DARIO_API_KEY` on the daemon, in which case the same value is sent. `DARIO_API_KEY` is deliberately distinct from `ANTHROPIC_API_KEY`, which stays with the per-token provider.
 - **Capabilities:** `promptCache: true`, `toolUse: true`, `vision: true`, `serverSideWebSearch: false`. The OAuth path carries no `web_search` server tool, so `WebSearch` falls through to Ye's own Brave/DuckDuckGo engines.
 - **Model namespace is dario's, not the raw API's.** A trailing `[1m]` is a client-side label: the proxy strips it and rides the `context-1m-2025-08-07` beta instead, because the literal `X[1m]` id 404s upstream. Plain ids are therefore 200K and `[1m]` ids are 1M. Every family except haiku has a `[1m]` variant — real Claude Code never offers a 1M haiku.
+- **Two marker system blocks buy Ye's own tools back.** dario's default path replaces the request with Claude Code's — CC's ~25KB system prompt and CC's canonical tool definitions, with anything CC lacks (Task, TodoWrite, BashOutput, Kill*, Diagnostics, SaveMemory, the LSP tools) round-robined onto a fallback slot and never advertised. Its `isGenuineCCClient()` passthrough forwards `system` and `tools` byte-faithfully instead, and the discriminator is structural: `system` an array of 2+ blocks, block 0 containing `x-anthropic-billing-header:`, block 1 opening with a CC system-prompt opener or naming the Claude Agent SDK. `providers/dario/passthrough.ts` prepends exactly those two blocks (dario overwrites block 0 with its own billing tag) and sends an empty `user-agent`, because that header is forwarded verbatim on this path and Bun's default is not what a CC request looks like. `anthropic/adapt.ts` emits one system block per system message so the shape is expressible at all. Measured on dario 5.5.32: without the markers the model answers `Read{file_path}`; with them, `Read{path}`. Both classify `five_hour` at `GET /analytics`.
 - **Absent from `pricing.ts` on purpose.** `lookupPricing` returns `undefined` for any id it does not name, so subscription turns record null cost. Adding them to `ANTHROPIC_PRICING` would invent per-token dollars for a flat-fee plan and corrupt lifetime totals.
 - **Setup lives in `src/dario/`, not here.** Selecting the provider offers, with explicit consent at each step, to install dario, start the proxy detached, and run `dario login` with the terminal handed over. See YE.md for the flow; nothing there is implicit and only a declined install aborts the switch.
 
@@ -253,6 +254,8 @@ src/providers/
 │   └── models.ts       # per-model context-size table + rejectsSampling() guard
 ├── dario/              # Anthropic (Subscription) — shipped
 │   ├── index.ts        # thin builder over createAnthropicProvider (no MissingKeyError — keyless)
+│   ├── passthrough.ts  # marker system blocks + blank user-agent → dario forwards Ye's own tools
+│   ├── reminders.ts    # <system-reminder> → <system-note>, which dario does not scrub
 │   └── models.ts       # dario's namespace: plain ids 200K, generated [1m] ids 1M
 ├── openai/             # Phase 3 — shipped
 │   ├── index.ts        # Provider impl, MissingOpenAIKeyError
