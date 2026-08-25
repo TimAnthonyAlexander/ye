@@ -15,9 +15,19 @@ const execute = async (
     const v = validateArgs<TodoWriteArgs>(rawArgs, TodoWriteTool.schema);
     if (!v.ok) return v;
 
-    const inProgress = v.value.todos.filter((t) => t.status === "in_progress").length;
-    if (inProgress > 1) {
-        return { ok: false, error: "exactly one todo can be in_progress at a time" };
+    // Naming the offenders and the repair: the whole list is rejected, so a
+    // model that only knows "one may be in_progress" has to guess which of its
+    // own items to demote and resend everything.
+    const inProgress = v.value.todos.filter((t) => t.status === "in_progress");
+    if (inProgress.length > 1) {
+        const names = inProgress.map((t) => `"${t.content.slice(0, 40)}"`).join(", ");
+        return {
+            ok: false,
+            error:
+                `exactly one todo can be in_progress at a time; ${inProgress.length} are: ${names}. ` +
+                "Leave the one you are working on now as in_progress, set the others to pending " +
+                "or completed, and send the whole list again.",
+        };
     }
 
     ctx.turnState.todos = v.value.todos.map<TodoItem>((t) => ({
