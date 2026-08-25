@@ -13,6 +13,21 @@ interface ReadArgs {
 
 const DEFAULT_LIMIT = 2000;
 
+// A lossy UTF-8 decode of a PNG is still a string, so nothing upstream of here
+// notices. One 388KB screenshot decoded to 386k chars of U+FFFD and cost ~96k
+// tokens in a single tool result, and the model — having "read" it — went on to
+// critique a design it had never seen.
+const BINARY_REPLACEMENT_RATIO = 0.01;
+
+const isBinary = (text: string): boolean => {
+    if (text.includes("\0")) return true;
+    let replacements = 0;
+    for (let i = 0; i < text.length; i++) {
+        if (text.charCodeAt(i) === 0xfffd) replacements += 1;
+    }
+    return replacements / text.length > BINARY_REPLACEMENT_RATIO;
+};
+
 // Nested notes are injected at most once per session, so the set outlives any
 // single turn — turnState resets every turn and cannot hold this.
 const injectedNotes = new Set<string>();
@@ -42,6 +57,14 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     }
 
     const text = await file.text();
+    if (isBinary(text)) {
+        const kb = Math.max(1, Math.round(file.size / 1024));
+        return {
+            ok: false,
+            error: `cannot read ${prettyPath(path, ctx.cwd)}: binary file (${kb} KB). Read decodes text only, and no tool here renders an image, PDF or archive. You cannot see this file. Ask the user to describe it, or convert it to text first.`,
+        };
+    }
+
     const allLines = text.split("\n");
     const sliced = allLines.slice(offset, offset + limit);
     const numbered = sliced
@@ -60,7 +83,7 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
 export const ReadTool: Tool = {
     name: "Read",
     description:
-        "Read a file from disk. With no offset/limit, returns the first 2000 lines — enough for most files in a single call. Use offset/limit only for files larger than that. `path` may be absolute, `~`-prefixed, or relative to the working directory.",
+        "Read a file from disk as text. Binary files (images, PDFs, archives) are rejected — you cannot see an image, so do not try to read one. With no offset/limit, returns the first 2000 lines — enough for most files in a single call. Use offset/limit only for files larger than that. `path` may be absolute, `~`-prefixed, or relative to the working directory.",
     annotations: { readOnlyHint: true },
     schema: {
         type: "object",

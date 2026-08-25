@@ -192,7 +192,47 @@ describe("ReadTool", () => {
         expect(ctx.turnState.readFiles.get(path)?.hash.length ?? 0).toBeGreaterThan(0);
     });
 
-    test("R13 empty file produces a header with range 1-1 and a single numbered empty line", async () => {
+    test("R13 rejects a PNG instead of decoding it lossily", async () => {
+        const path = join(workDir, "shot.png");
+        const png = new Uint8Array(4096);
+        png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+        for (let i = 8; i < png.length; i++) png[i] = (i * 37) % 256;
+        await writeFile(path, png);
+        const r = await ReadTool.execute({ path }, makeCtx());
+        expect(r.ok).toBe(false);
+        if (!r.ok) {
+            expect(r.error).toContain("binary file");
+            expect(r.error).toContain("cannot see this file");
+        }
+    });
+
+    test("R14 a rejected binary file is not recorded as read", async () => {
+        const path = join(workDir, "blob.bin");
+        await writeFile(path, new Uint8Array([0x00, 0x01, 0x02, 0x00, 0xff]));
+        const ctx = makeCtx();
+        const r = await ReadTool.execute({ path }, ctx);
+        expect(r.ok).toBe(false);
+        expect(ctx.turnState.readFiles.has(path)).toBe(false);
+    });
+
+    test("R15 accepts UTF-8 text with multi-byte characters", async () => {
+        const path = join(workDir, "utf8.txt");
+        await writeFile(path, "Grüße aus Münster 🌊\nzweite Zeile\n", "utf8");
+        const r = await ReadTool.execute({ path }, makeCtx());
+        expect(r.ok).toBe(true);
+        if (r.ok && typeof r.value === "string") {
+            expect(r.value).toContain("Grüße aus Münster 🌊");
+        }
+    });
+
+    test("R16 accepts text carrying a stray replacement char below the ratio", async () => {
+        const path = join(workDir, "stray.txt");
+        await writeFile(path, `${"a".repeat(500)}�${"b".repeat(500)}\n`, "utf8");
+        const r = await ReadTool.execute({ path }, makeCtx());
+        expect(r.ok).toBe(true);
+    });
+
+    test("R17 empty file produces a header with range 1-1 and a single numbered empty line", async () => {
         const path = join(workDir, "empty.txt");
         await writeFile(path, "", "utf8");
         const r = await ReadTool.execute({ path }, makeCtx());
