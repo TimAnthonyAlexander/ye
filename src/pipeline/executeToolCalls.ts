@@ -519,6 +519,13 @@ export async function* executeToolCalls(deps: ExecuteToolCallsDeps): AsyncGenera
             if (response === "allow_once" || response === "allow_session") {
                 state.mode = result.value.target;
                 resetDenialTrail(state);
+                // The tool result the model reads back is the bare
+                // `{"kind":"request_mode_flip",...}` payload — it says a prompt
+                // was *requested*, never that the user answered it. Without
+                // this flag the model's next turn has no way to know the plan
+                // was approved, and it asks "shall I start?". turn.ts turns the
+                // flag into an explicit go-ahead before the next model call.
+                if (result.value.target === "NORMAL") state.planJustAccepted = true;
                 const modeEvent: Event = { type: "mode.changed", mode: state.mode };
                 yield modeEvent;
                 await session.appendEvent(transcriptable(modeEvent));

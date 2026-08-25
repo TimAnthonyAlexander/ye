@@ -20,6 +20,7 @@ import {
 } from "../monitors/index.ts";
 import type { Event, StopReason } from "./events.ts";
 import { newShapingFlags, newTurnState, type SessionState } from "./state.ts";
+import { PLAN_APPROVED_REMINDER } from "./stop.ts";
 import { runTurn } from "./turn.ts";
 
 // ---------------------------------------------------------------------------
@@ -307,6 +308,84 @@ describe("runTurn integration", () => {
         // No actual Edit execution happened; stopReason is "continue" (tool calls
         // were present so evaluateStop returns null → "continue").
         expect(stopReason).toBe("continue");
+    });
+
+    // The ExitPlanMode tool result records that a prompt was *requested*, never
+    // the user's answer. Without the reminder the model reads that back and
+    // asks "shall I start?" after the user already accepted.
+    test("IT4 plan just accepted: the go-ahead reaches the model before it replies", async () => {
+        const provider = new MockProvider([
+            { type: "text.delta", text: "starting" },
+            { type: "stop", reason: "end_turn" },
+        ]);
+
+        let seen: readonly Message[] = [];
+        const recordingProvider: Provider = {
+            id: provider.id,
+            capabilities: provider.capabilities,
+            async *stream(input: ProviderInput) {
+                seen = input.messages;
+                yield* provider.stream(input);
+            },
+            getContextSize: (model: string) => provider.getContextSize(model),
+        };
+
+        const state = makeState(workDir, {
+            history: [
+                { role: "user", content: "write the plan" },
+                { role: "tool", tool_call_id: "ep1", content: '{"kind":"request_mode_flip"}' },
+            ],
+            planJustAccepted: true,
+        });
+
+        await collect(
+            runTurn({
+                provider: recordingProvider,
+                config: makeConfig(),
+                session: makeSession(),
+                state,
+                turnState: newTurnState(),
+                turnIndex: 0,
+                maxTurns: 100,
+                signal: new AbortController().signal,
+            }),
+        );
+
+        const reminder = seen.find(
+            (m) => m.role === "user" && m.content === PLAN_APPROVED_REMINDER,
+        );
+        expect(reminder).toBeDefined();
+        // It has to follow the tool result, or the model reads the go-ahead
+        // before the call it answers.
+        const reminderIdx = seen.findIndex((m) => m.content === PLAN_APPROVED_REMINDER);
+        const toolIdx = seen.findIndex((m) => m.role === "tool");
+        expect(reminderIdx).toBeGreaterThan(toolIdx);
+        // One acceptance, one reminder.
+        expect(state.planJustAccepted).toBe(false);
+    });
+
+    test("IT5 no acceptance pending: no go-ahead is injected", async () => {
+        const provider = new MockProvider([
+            { type: "text.delta", text: "hi" },
+            { type: "stop", reason: "end_turn" },
+        ]);
+
+        const state = makeState(workDir, { history: [{ role: "user", content: "hello" }] });
+
+        await collect(
+            runTurn({
+                provider,
+                config: makeConfig(),
+                session: makeSession(),
+                state,
+                turnState: newTurnState(),
+                turnIndex: 0,
+                maxTurns: 100,
+                signal: new AbortController().signal,
+            }),
+        );
+
+        expect(state.history.some((m) => m.content === PLAN_APPROVED_REMINDER)).toBe(false);
     });
 });
 

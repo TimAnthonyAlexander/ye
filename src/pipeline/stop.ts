@@ -57,8 +57,16 @@ export const evaluateBudgetStop = ({ maxUsd, spentUsd }: BudgetInput): string | 
     );
 };
 
-// Injected as a pseudo-user turn when the model stalls right after a plan is
-// approved. Approval IS the go-ahead — the model must not wait for more.
+// Injected at the top of the turn that follows an approved plan. ExitPlanMode's
+// tool result only records that a prompt was *requested*, so without this the
+// model reads back an unresolved request and asks whether it should start —
+// after the user already said yes. The reminder is the answer to that prompt.
+export const PLAN_APPROVED_REMINDER = `<system-reminder>
+The user accepted your plan and you are now out of plan mode. Acceptance is the go-ahead: start executing the plan now, beginning with its first step. Do not acknowledge, summarise, restate the plan, or ask whether to begin — that question is already answered.
+</system-reminder>`;
+
+// Injected as a pseudo-user turn when the model stalls anyway right after a plan
+// is approved. Approval IS the go-ahead — the model must not wait for more.
 export const PLAN_START_REMINDER = `<system-reminder>
 The user approved your plan and switched you out of plan mode. Approval of the plan is the go-ahead to act — begin executing it now, starting with the first step. Do not reply with only an acknowledgement, restate the plan, or ask for further confirmation.
 </system-reminder>`;

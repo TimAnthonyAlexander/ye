@@ -23,6 +23,7 @@ import { executeToolCalls } from "./executeToolCalls.ts";
 import {
     evaluateBudgetStop,
     evaluateStop,
+    PLAN_APPROVED_REMINDER,
     PLAN_START_REMINDER,
     shouldNudgePlanStart,
 } from "./stop.ts";
@@ -154,6 +155,13 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
                 config,
             });
         }
+    }
+
+    // The plan was accepted during the previous turn. Say so before the model
+    // call, not after it stalls: the ExitPlanMode tool result the model reads
+    // back records a *requested* prompt, never the user's answer.
+    if (planAcceptedComingIn) {
+        state.history.push({ role: "user", content: PLAN_APPROVED_REMINDER });
     }
 
     // Drain completed background bash tasks and inject their output into

@@ -848,6 +848,37 @@ describe("mode flip — ExitPlanMode / EnterPlanMode", () => {
         expect(modeChanges[0]).toMatchObject({ mode: "NORMAL" });
 
         expect(state.mode).toBe("NORMAL");
+        // The next turn needs this to tell the model the plan was accepted;
+        // the tool result alone only says a prompt was requested.
+        expect(state.planJustAccepted).toBe(true);
+    });
+
+    test("exit plan mode denied: mode stays PLAN and no acceptance is recorded", async () => {
+        const state = mkState({ mode: "PLAN" });
+        const t = mkTool({
+            name: "ExitPlanMode",
+            execute: async () =>
+                ({
+                    ok: true,
+                    value: { kind: "request_mode_flip", target: "NORMAL" as const },
+                }) as ToolResult,
+        });
+        toolMap.set("ExitPlanMode", t);
+
+        const gen = executeToolCalls(
+            baseDeps({ toolCalls: [mkCall("ep2", "ExitPlanMode")], state }),
+        );
+        for await (const ev of gen) {
+            if (
+                ev.type === "permission.prompt" &&
+                (ev as { payload: { reason: string } }).payload.reason === "exit_plan_mode"
+            ) {
+                (ev as Event & { respond: (r: PromptResponse) => void }).respond("deny");
+            }
+        }
+
+        expect(state.mode).toBe("PLAN");
+        expect(state.planJustAccepted).toBeUndefined();
     });
 
     test("enter plan mode: yields permission.prompt with reason enter_plan_mode", async () => {
@@ -896,6 +927,8 @@ describe("mode flip — ExitPlanMode / EnterPlanMode", () => {
         expect(modeChanges[0]).toMatchObject({ mode: "PLAN" });
 
         expect(state.mode).toBe("PLAN");
+        // Entering PLAN is not an accepted plan — nothing to start executing.
+        expect(state.planJustAccepted).toBeUndefined();
     });
 
     test("no-op when already in target mode (already NORMAL, ExitPlanMode target NORMAL)", async () => {
