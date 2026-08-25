@@ -11,13 +11,19 @@ interface SubagentTranscriptProps {
     readonly rejected: readonly MailboxMessage[];
     // Returns "" when the message was queued, otherwise the reason it was not.
     readonly onSend: (text: string) => string;
-    readonly onBack: () => void;
+    // Rows the agent list below this view occupies, so the window this view
+    // fills leaves room for it. The list is one row per agent plus its hint.
+    readonly listRows: number;
+    // True while the list is asking whether to stop an agent. The confirm key
+    // is a bare letter, so the composer has to stand down or it would swallow
+    // the answer into the draft.
+    readonly composerDisabled: boolean;
     readonly verbose: boolean;
 }
 
-// Rows reserved for the header, the scroll markers, the composer, the hint,
-// and everything App draws below the transcript (cwd line, status bar, tabs).
-const CHROME_ROWS = 14;
+// Rows reserved for the header, the truncation marker, the composer, the hint,
+// and everything App draws below the transcript (cwd line, status bar).
+const CHROME_ROWS = 12;
 
 const estimateHeight = (item: ChatItem, cols: number): number => {
     if (item.kind === "message" || item.kind === "system") {
@@ -58,30 +64,23 @@ export const SubagentTranscript = ({
     queued,
     rejected,
     onSend,
-    onBack,
+    listRows,
+    composerDisabled,
     verbose,
 }: SubagentTranscriptProps) => {
     const { stdout } = useStdout();
     const cols = stdout?.columns ?? 80;
     const rows = stdout?.rows ?? 24;
-    const [offset, setOffset] = useState(0);
     const [draft, setDraft] = useState("");
     const [notice, setNotice] = useState("");
 
-    const maxOffset = Math.max(0, items.length - 1);
-    const clampedOffset = Math.min(offset, maxOffset);
-
     useInput((input, key) => {
-        if (key.escape) {
-            onBack();
-            return;
-        }
-        if (key.upArrow) {
-            setOffset((o) => Math.min(maxOffset, o + 1));
-            return;
-        }
-        if (key.downArrow) {
-            setOffset((o) => Math.max(0, o - 1));
+        if (composerDisabled) return;
+        // The arrows belong to the agent list below — they switch agents, the
+        // same movement that opened this view. This transcript follows the
+        // newest output and is never scrolled, so it has nothing to spend them
+        // on. Escape is deliberately unbound: it reads as "stop this agent".
+        if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow || key.escape) {
             return;
         }
         if (key.return) {
@@ -95,18 +94,17 @@ export const SubagentTranscript = ({
             setDraft((d) => d.slice(0, -1));
             return;
         }
-        // Ctrl/Meta chords belong to App (Ctrl+C aborts, Ctrl+O toggles verbose).
+        // Ctrl/Meta chords belong to App (Ctrl+C aborts, Ctrl+O toggles
+        // verbose) and to the agent list (Ctrl+K stops the selected agent).
         if (key.ctrl || key.meta || key.tab || input.length === 0) return;
         setNotice("");
         setDraft((d) => d + input);
     });
 
     const heights = items.map((item) => estimateHeight(item, cols));
-    const { start, end } = windowFromBottom(
-        heights,
-        clampedOffset,
-        Math.max(4, rows - CHROME_ROWS),
-    );
+    // Always the newest output — the view follows the agent instead of being
+    // scrolled, so offset is pinned at 0.
+    const { start, end } = windowFromBottom(heights, 0, Math.max(4, rows - CHROME_ROWS - listRows));
     const visible = items.slice(start, end);
 
     return (
@@ -114,9 +112,8 @@ export const SubagentTranscript = ({
             <Box>
                 <Text bold>{title}</Text>
                 <Text dimColor> · {status}</Text>
-                {clampedOffset > 0 && <Text dimColor> · scrolled back {clampedOffset}</Text>}
             </Box>
-            {start > 0 && <Text dimColor>↑ {start} earlier</Text>}
+            {start > 0 && <Text dimColor>… {start} earlier off screen</Text>}
             {visible.length === 0 ? (
                 <Text dimColor>(no output yet)</Text>
             ) : (
@@ -124,7 +121,6 @@ export const SubagentTranscript = ({
                     <RenderItem key={itemKey(item)} item={item} verbose={verbose} />
                 ))
             )}
-            {end < items.length && <Text dimColor>↓ {items.length - end} newer</Text>}
             {rejected.length > 0 && (
                 <Box flexDirection="column">
                     {rejected.map((message) => (
@@ -150,7 +146,7 @@ export const SubagentTranscript = ({
                 <Text color="cyan">{"› "}</Text>
                 {draft.length > 0 ? <Text>{draft}</Text> : <Text dimColor>steer this agent…</Text>}
             </Box>
-            <Text dimColor>↑↓ scroll · type to steer · enter send · esc back</Text>
+            <Text dimColor>type to steer · enter send · ↑↓ switch agent</Text>
         </Box>
     );
 };

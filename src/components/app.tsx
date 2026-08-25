@@ -432,6 +432,9 @@ export const App = ({
     // null = normal chat view, "main" = tabs visible, task id = inside subagent
     const [subagentView, setSubagentView] = useState<string | null>(null);
     const [subagentTasks, setSubagentTasks] = useState<readonly BackgroundSubagentTask[]>([]);
+    // Lives here rather than in the tab list because the steer composer runs
+    // alongside it and must not eat the confirm keystroke.
+    const [pendingKill, setPendingKill] = useState<string | null>(null);
     // When true, arrow keys go to the tab bar instead of history.
     const [tabBarFocused, setTabBarFocused] = useState(false);
     const [tokenUsage, setTokenUsage] = useState<{
@@ -598,6 +601,23 @@ export const App = ({
         }, 500);
         return () => clearInterval(id);
     }, [subagentView]);
+
+    // <Static> writes committed items into the terminal's own scrollback, so
+    // blanking Chat's props cannot unprint them: without this the whole main
+    // conversation stayed on screen and the subagent transcript drew *under*
+    // it. Clear on the way in; on the way out repaint exactly the way resize
+    // and Ctrl+O do, so <Static> re-emits the conversation at full length.
+    const viewingTranscript = subagentView !== null && subagentView !== "main";
+    const wasViewingTranscript = useRef(false);
+    useEffect(() => {
+        if (viewingTranscript === wasViewingTranscript.current) return;
+        wasViewingTranscript.current = viewingTranscript;
+        process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+        if (!viewingTranscript) {
+            setCommittedCount(0);
+            bumpChatKey();
+        }
+    }, [viewingTranscript]);
 
     const recordHistory = (text: string): void => {
         if (historyRef.current[0] === text) return;
@@ -2276,10 +2296,8 @@ export const App = ({
                     queued={viewedSubagent.mailbox.queued()}
                     rejected={viewedSubagent.mailbox.rejected()}
                     onSend={(text) => steerSubagent(viewedSubagent.id, text)}
-                    onBack={() => {
-                        setSubagentView("main");
-                        setTabBarFocused(true);
-                    }}
+                    listRows={subagentTasks.length + 2}
+                    composerDisabled={pendingKill !== null}
                     verbose={verbose}
                 />
             )}
@@ -2403,17 +2421,17 @@ export const App = ({
                         setSubagentView(tab);
                         setTabBarFocused(true);
                     }}
-                    onEnter={(tab) => {
-                        setSubagentView(tab);
-                        // Entering a transcript hands ↑↓/enter/esc to it — the
-                        // tab bar must stop competing for them.
-                        setTabBarFocused(tab === "main");
-                    }}
                     onKill={killSubagent}
-                    focused={tabBarFocused && !viewedSubagent}
+                    pendingKill={pendingKill}
+                    onPendingKill={setPendingKill}
+                    // The list keeps the arrows even while a transcript is
+                    // open: selecting a row is what opens it, so ↑↓ move
+                    // between agents from anywhere in the panel. The
+                    // transcript takes only the keys the composer needs.
+                    focused={tabBarFocused}
                     onFocusBack={() => {
                         setTabBarFocused(false);
-                        setSubagentView("main");
+                        setSubagentView(null);
                     }}
                 />
             )}
