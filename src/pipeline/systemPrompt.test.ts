@@ -96,6 +96,45 @@ describe("question vs. work order", () => {
     });
 });
 
+describe("PLAN plan.md override", () => {
+    const TEMPLATE_MARKER = "## Required plan template";
+    const SKELETON_MARKER = "This is the user's planning style. Follow it exactly:";
+    const full = (overrides: Partial<SystemPromptEnv> = {}) =>
+        buildSystemPrompt(env({ providerId: "openrouter", model: "gpt-5-codex", ...overrides }));
+
+    test("R16 PLAN without an override keeps the built-in template", () => {
+        const out = full({ mode: "PLAN" });
+        expect(out).toContain(TEMPLATE_MARKER);
+        expect(out).not.toContain(SKELETON_MARKER);
+    });
+
+    test("R17 PLAN with an override swaps the template for the skeleton and wraps the text", () => {
+        const out = full({ mode: "PLAN", planOverride: "Explain each step simply." });
+        expect(out).not.toContain(TEMPLATE_MARKER);
+        expect(out).toContain(SKELETON_MARKER);
+        expect(out).toContain(">>>\nExplain each step simply.\n<<<");
+    });
+
+    test("R18 the skeleton keeps the survey-first and verification guarantees", () => {
+        const out = full({ mode: "PLAN", planOverride: "Keep it casual." });
+        expect(out).toContain("Survey before drafting");
+        expect(out).toContain("End on verification");
+        expect(out).toContain("ExitPlanMode");
+    });
+
+    test("R19 a blank override is treated as no override", () => {
+        const out = full({ mode: "PLAN", planOverride: "   \n  " });
+        expect(out).toContain(TEMPLATE_MARKER);
+        expect(out).not.toContain(SKELETON_MARKER);
+    });
+
+    test("R20 an override outside PLAN mode changes nothing", () => {
+        const out = full({ mode: "NORMAL", planOverride: "Explain each step simply." });
+        expect(out).not.toContain(SKELETON_MARKER);
+        expect(out).not.toContain(TEMPLATE_MARKER);
+    });
+});
+
 describe("buildSmallSystemPrompt — OpenAI persistence", () => {
     test("R6 OpenAI + NORMAL includes the persistence block", () => {
         const out = buildSmallSystemPrompt(env({ providerId: "openai", mode: "NORMAL" }));

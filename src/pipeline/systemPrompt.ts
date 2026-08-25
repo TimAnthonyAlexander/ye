@@ -16,6 +16,10 @@ export interface SystemPromptEnv {
     // OpenAI-specific persistence wording is appended to either variant when
     // env.providerId === "openai".
     readonly providerId: string;
+    // User-supplied PLAN-mode planning style (from .ye/plan.md or ~/.ye/plan.md).
+    // When non-empty, PLAN swaps its fixed template for a skeleton that keeps
+    // only the hard guarantees and wraps this text as the planning style.
+    readonly planOverride?: string;
 }
 
 const HEADER = `You are Ye, a local CLI coding assistant. You run in the user's terminal as an interactive agent that helps with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
@@ -139,7 +143,28 @@ const TOOL_DISCIPLINE_BLOCK = `# Using your tools
 - Tool errors come back as results, not crashes. If a tool fails, you'll see the error in its result and decide what to do next.
 - **Verification (typecheck, tests, lint) goes through a verification subagent, never through sequential foreground Bash.** Running \`Bash(bun run typecheck)\` then \`Bash(bun test)\` blocks the turn twice for tens of seconds each, and after the second one exits there is nothing left running — the foreground Bash result is already in your hands and the \`</bash>\` tag means it finished. Use \`Task { kind: "verification" }\` which runs typecheck + tests + git diff concurrently in the background. It is faster and cannot leave you waiting on a ghost.`;
 
-const PERMISSION_MODES_BLOCK = (mode: PermissionMode): string => {
+// Used in PLAN when the user supplies their own planning style via plan.md.
+// Drops the fixed five-header template but keeps the guarantees that make a plan
+// trustworthy — survey first, verification last, submit via ExitPlanMode — and
+// hands the presentation over to the user's text, wrapped so the model can't
+// confuse it with the surrounding instructions.
+const PLAN_SKELETON = (override: string): string => `# How to plan in PLAN mode
+
+You are in PLAN. Produce a plan the user can read, understand, and approve before any file changes. The user has defined their own planning style below — follow it exactly for how the plan reads and is structured.
+
+Two things are required regardless of that style, because they are what make a plan trustworthy, not matters of format:
+- **Survey before drafting.** Issue parallel Read/Glob/Grep calls in a single turn to ground the plan in the real code — aim for 8–15 file reads across the relevant surface before you draft. A plan built without reading the code is a guess.
+- **End on verification.** The plan's final step must be to spawn a verification subagent to run typecheck, tests, and a git diff review.
+
+Submit the finished plan by calling ExitPlanMode with the \`plan\` argument. A vague plan will be denied and the orphan file will sit on disk.
+
+This is the user's planning style. Follow it exactly:
+
+>>>
+${override}
+<<<`;
+
+const PERMISSION_MODES_BLOCK = (mode: PermissionMode, planOverride?: string): string => {
     const base = `# Permission modes
 
 The user is currently in **${mode}** mode. The mode is shown in the bottom status bar. The user can cycle modes with Shift+Tab (NORMAL → AUTO → PLAN → NORMAL).
@@ -155,6 +180,9 @@ If a tool is blocked in PLAN mode, do exactly one of:
 Two consecutive denials of the same tool in PLAN mode terminate the turn (loop guard). Don't keep retrying a tool after a PLAN denial.`;
 
     if (mode !== "PLAN") return base;
+
+    const override = planOverride?.trim();
+    if (override) return `${base}\n\n${PLAN_SKELETON(override)}`;
 
     return `${base}
 
@@ -938,7 +966,7 @@ export const buildSystemPrompt = (env: SystemPromptEnv): string => {
         ACTING_CAREFULLY_BLOCK,
         TONE_BLOCK,
         TOOL_DISCIPLINE_BLOCK,
-        PERMISSION_MODES_BLOCK(env.mode),
+        PERMISSION_MODES_BLOCK(env.mode, env.planOverride),
         TOOLS_BLOCK,
         WEB_TOOLS_BLOCK,
         SKILLS_BLOCK,

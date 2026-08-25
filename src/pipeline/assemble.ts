@@ -1,6 +1,8 @@
 import { userInfo } from "node:os";
+import { join } from "node:path";
 import { readNotesHierarchy } from "../memory/index.ts";
 import type { Message } from "../providers/index.ts";
+import { USER_PLAN_FILE } from "../storage/paths.ts";
 import type { SelectedMemoryEntry, SessionState } from "./state.ts";
 import { buildSystemPrompt } from "./systemPrompt.ts";
 
@@ -17,6 +19,25 @@ const buildNotesBlock = async (projectRoot: string): Promise<string | null> => {
     const hierarchy = await readNotesHierarchy(projectRoot);
     if (hierarchy.length === 0) return null;
     return `# Project notes\n\n${hierarchy}`;
+};
+
+const readPlanFile = async (path: string): Promise<string | null> => {
+    try {
+        const text = (await Bun.file(path).text()).trim();
+        return text.length > 0 ? text : null;
+    } catch {
+        return null;
+    }
+};
+
+// User-supplied PLAN-mode planning style. Project `.ye/plan.md` wins over the
+// global `~/.ye/plan.md`, mirroring the notes hierarchy's project-over-user
+// precedence. Absent, empty, or unreadable files fall through to null so PLAN
+// keeps its built-in template.
+const readPlanOverride = async (projectRoot: string): Promise<string | null> => {
+    return (
+        (await readPlanFile(join(projectRoot, ".ye", "plan.md"))) ?? readPlanFile(USER_PLAN_FILE)
+    );
 };
 
 const buildMemoryBlock = (selected: readonly SelectedMemoryEntry[] | null): string | null => {
@@ -43,6 +64,7 @@ export const assemble = async ({ state, model, providerId }: AssembleInput): Pro
     }
 
     const username = safeUsername();
+    const planOverride = state.mode === "PLAN" ? await readPlanOverride(state.projectRoot) : null;
     const systemBody = buildSystemPrompt({
         cwd: state.projectRoot,
         mode: state.mode,
@@ -51,6 +73,7 @@ export const assemble = async ({ state, model, providerId }: AssembleInput): Pro
         date: new Date().toISOString().slice(0, 10),
         providerId,
         ...(username ? { username } : {}),
+        ...(planOverride ? { planOverride } : {}),
     });
     const notes = await buildNotesBlock(state.projectRoot);
     const memory = buildMemoryBlock(state.selectedMemory);

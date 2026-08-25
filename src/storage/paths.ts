@@ -8,6 +8,7 @@ export const USAGE_FILE = join(YE_DIR, "usage.jsonl");
 export const GLOBAL_MEMORY_FILE = join(YE_DIR, "MEMORY.md");
 export const GLOBAL_MEMORY_DIR = join(YE_DIR, "memory");
 export const USER_NOTES_FILE = join(YE_DIR, "CLAUDE.md");
+export const USER_PLAN_FILE = join(YE_DIR, "plan.md");
 export const MANAGED_NOTES_FILE = "/etc/ye/CLAUDE.md";
 export const FREE_MODELS_CACHE_FILE = join(YE_DIR, "free-models.json");
 
