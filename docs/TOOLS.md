@@ -40,7 +40,7 @@ type ToolResult<T = unknown> =
 
 ## Registered tools
 
-Fifteen tools. Subagents, web tools, skills, and memory tools shipped; MCP deferred.
+Sixteen tools below. Subagents, web tools, skills, and memory tools shipped; MCP deferred. `src/tools/registry.ts` is the live list and has since grown past this table (the LSP trio, Diagnostics, Monitor, and the background-task tools).
 
 | Tool | readOnly | Notes |
 |------|----------|-------|
@@ -57,6 +57,7 @@ Fifteen tools. Subagents, web tools, skills, and memory tools shipped; MCP defer
 | WebSearch | yes | Web search. Anthropic server-side when available, Brave / DuckDuckGo fallback. Title + URL only; follow up with WebFetch to read content. |
 | Skill | yes | Invoke a registered skill by name. Read-only metadata load; the skill body may instruct the model to call other tools. |
 | SaveMemory | no | Persist a memory note under the project's memory dir; auto-selected in future sessions. |
+| ForgetMemory | no | Delete a memory: its file and its `MEMORY.md` entry together. Takes the saved title or the filename from the index. |
 | EnterPlanMode | no | Model-initiated request to flip *into* PLAN mode. Triggers a permission prompt. |
 | ExitPlanMode | no | Writes the proposed plan to `getProjectPlansDir(projectId)/<word>-<word>.md`, then fires a permission prompt to flip out of PLAN mode. The **only state-modifying tool allowed in PLAN mode** (alongside Skill, which is read-only). |
 
@@ -117,7 +118,8 @@ src/tools/
 ├── exitPlanMode/
 ├── task/
 ├── skill/
-└── saveMemory/
+├── saveMemory/
+└── forgetMemory/
 ```
 
 ## Checklist
@@ -151,6 +153,7 @@ src/tools/
 ### Phase 5 — Skills, worktrees, notebooks
 - [x] Skill (invokes a SKILL.md, blocking; loads instructions into context). Read-only — no permission prompt in NORMAL.
 - [x] SaveMemory (persists a memory note under the project memory dir; surfaces in auto-memory selection in later sessions)
+- [x] ForgetMemory (removes a memory: file plus `MEMORY.md` entry, so a wrong or throwaway note stops costing a selection slot)
 - [ ] EnterWorktree / ExitWorktree (git-worktree-backed isolation; auto-cleanup if no changes)
 - [ ] NotebookEdit (replace/insert/delete cell modes)
 
