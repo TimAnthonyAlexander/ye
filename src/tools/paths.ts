@@ -16,7 +16,8 @@ const PATH_ARG_TOOLS: ReadonlySet<string> = new Set(["Read", "Edit", "Write", "G
 
 // The permission gate and the tool must resolve a relative path identically, or
 // a deny rule could be evaluated against a different file than the one written.
-// Normalising once, before the gate, is what keeps them in agreement.
+// Normalising once, before the gate, is what keeps them in agreement. It runs
+// after applyArgAliases, so `file_path` is already `path` by this point.
 export const normalizePathArg = <T extends { readonly name: string; readonly args: unknown }>(
     call: T,
     cwd: string,

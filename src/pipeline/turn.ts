@@ -4,6 +4,7 @@ import { decide } from "../permissions/index.ts";
 import type { Message, Provider, ReasoningDetail, ToolCallRequest } from "../providers/index.ts";
 import type { SessionHandle } from "../storage/index.ts";
 import { assembleToolPool, getTool, type ToolResult, type TurnState } from "../tools/index.ts";
+import { applyArgAliases } from "../tools/argAliases.ts";
 import { narrowAllowedTools } from "../tools/pool.ts";
 import { normalizePathArg } from "../tools/paths.ts";
 import { clearSkillScope, getSkillScope } from "../skills/scope.ts";
@@ -321,10 +322,12 @@ export async function* runTurn(deps: TurnDeps): AsyncGenerator<Event, StopReason
     // runs in the sequential loop below. AskUserQuestion is read-only-annotated
     // but its result triggers an interactive userQuestion.prompt, so it stays
     // sequential.
-    // Resolve relative path args before anything reads them, so the gate, the
-    // tool and the transcript all name the same file. History keeps the model's
-    // verbatim arguments.
-    const gatedToolCalls = toolCalls.map((call) => normalizePathArg(call, state.projectRoot));
+    // Fold Claude Code's parameter names onto ours, then resolve relative path
+    // args, before anything reads them — so the gate, the tool and the transcript
+    // all name the same file. History keeps the model's verbatim arguments.
+    const gatedToolCalls = toolCalls.map((call) =>
+        normalizePathArg(applyArgAliases(call), state.projectRoot),
+    );
 
     const parallelIds = new Set<string>();
     for (const call of gatedToolCalls) {
