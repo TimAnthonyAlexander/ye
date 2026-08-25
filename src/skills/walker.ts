@@ -9,7 +9,11 @@ interface WalkResult {
     readonly errors: readonly SkillError[];
 }
 
-export const walkSkillsDir = async (dir: string, tier: SkillTier): Promise<WalkResult> => {
+export const walkSkillsDir = async (
+    dir: string,
+    tier: SkillTier,
+    nameFromDirectory = false,
+): Promise<WalkResult> => {
     if (!existsSync(dir)) {
         return { skills: [], errors: [] };
     }
@@ -45,7 +49,7 @@ export const walkSkillsDir = async (dir: string, tier: SkillTier): Promise<WalkR
         }
 
         const source: SkillSource = { tier, path: skillFile, directory: dirPath };
-        const result = parseSkillFile({ text, source, directoryName: entry });
+        const result = parseSkillFile({ text, source, directoryName: entry, nameFromDirectory });
         if (result instanceof SkillError) {
             errors.push(result);
             continue;

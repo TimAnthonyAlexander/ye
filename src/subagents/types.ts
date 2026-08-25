@@ -8,7 +8,7 @@ export type BuiltinKind = (typeof BUILTIN_KINDS)[number];
 // string; every entry point validates it against the live catalogue.
 export type SubagentKind = string;
 
-export type AgentSource = "builtin" | "project" | "user";
+export type AgentSource = "builtin" | "project" | "user" | "claude-project" | "claude-user";
 
 export type ExploreThoroughness = "quick" | "medium" | "very_thorough";
 

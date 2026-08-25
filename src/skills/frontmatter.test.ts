@@ -214,6 +214,39 @@ describe("registry: user-invocable: false", () => {
         expect(model).not.toContain("zz-degenerate-skill");
         expect(registry.all.has("zz-degenerate-skill")).toBe(true);
     });
+
+    test("a .claude/skills project skill loads under its directory name", async () => {
+        const root = mkdtempSync(join(tmpdir(), "ye-skills-"));
+        const dir = join(root, ".claude", "skills", "zz-deploy");
+        mkdirSync(dir, { recursive: true });
+        // Frontmatter name deliberately differs from the directory — Claude Code
+        // identifies the skill by directory, and so must we.
+        writeFileSync(
+            join(dir, "SKILL.md"),
+            "---\nname: Deploy Helper\ndescription: A deploy skill.\n---\n\nBody.\n",
+        );
+
+        const registry = await loadSkillRegistry({ projectRoot: root });
+        const skill = registry.all.get("zz-deploy");
+        expect(skill).toBeDefined();
+        expect(skill?.source.tier).toBe("claude-project");
+    });
+
+    test("the .ye project tier overrides a .claude skill of the same name", async () => {
+        const root = mkdtempSync(join(tmpdir(), "ye-skills-"));
+        const claudeDir = join(root, ".claude", "skills", "zz-shared");
+        mkdirSync(claudeDir, { recursive: true });
+        writeFileSync(
+            join(claudeDir, "SKILL.md"),
+            "---\nname: zz-shared\ndescription: Claude copy.\n---\n\nClaude body.\n",
+        );
+        writeSkill(root, "zz-shared", "");
+
+        const registry = await loadSkillRegistry({ projectRoot: root });
+        const skill = registry.all.get("zz-shared");
+        expect(skill?.source.tier).toBe("project");
+        expect(skill?.manifest.description).toBe("zz-shared skill.");
+    });
 });
 
 describe("resolveSkillModel", () => {

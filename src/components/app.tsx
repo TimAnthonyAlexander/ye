@@ -1456,7 +1456,6 @@ export const App = ({
                     .catch(() => {});
                 loadSkillRegistry({
                     projectRoot: state.projectRoot,
-                    enableClaudeInterop: cfgRef.current.skills?.enableClaudeInterop === true,
                 })
                     .then((registry) => {
                         if (cancelled) return;

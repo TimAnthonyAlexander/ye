@@ -14,7 +14,7 @@ Phase 2 + 3 shipped: **Explore, General-purpose, Verification**. Phase 5: Status
 | General-purpose | Multi-step research / open-ended task. | Full toolset; runs in AUTO inside the subagent. | shipped |
 | Verification | Verifies completion against the original plan. Adversarial — does not trust the implementer. | narrow (read + verification ops) | shipped |
 | Statusline-setup | Help configure Ye's status line. | minimal | Phase 5 |
-| Custom | `.ye/agents/*.md` with YAML frontmatter — same shape as Claude Code's `.claude/agents/`. | per-frontmatter | Phase 5 (low priority — solo project) |
+| Custom | `.ye/agents/*.md` and `.claude/agents/*.md` (user + project) with YAML frontmatter — Claude Code's `.claude/agents/` dirs are read unconditionally, and there an agent is identified by its frontmatter `name` (filename need not match). | per-frontmatter | shipped |
 
 > **PLAN-the-mode lives in `src/permissions/`. Plan-the-subagent is intentionally absent.** Planning is the user's primary mode flip via Shift+Tab; a separate Plan subagent preset would duplicate that responsibility with a worse UX.
 

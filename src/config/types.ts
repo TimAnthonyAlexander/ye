@@ -128,17 +128,9 @@ export interface WebToolsConfig {
     readonly searchFallback?: WebSearchFallback;
 }
 
-// Reserved shape for the Skills system. enableClaudeInterop is a placeholder for
-// a future opt-in that walks ~/.claude/skills/ alongside ~/.ye/skills/ — the key
-// is shipped now (validated, default false) so adding the walker later does not
-// require a config-shape migration.
 export interface GitStatusConfig {
     readonly enabled: boolean;
     readonly maxLines: number;
-}
-
-export interface SkillsConfig {
-    readonly enableClaudeInterop?: boolean;
 }
 
 export interface FormatConfig {
@@ -211,7 +203,6 @@ export interface Config {
     // Cheaper model for auxiliary calls. Same shape as recovery.fallbackModel.
     readonly cheapModel?: RecoveryFallbackModel;
     readonly gitStatus?: GitStatusConfig;
-    readonly skills?: SkillsConfig;
     readonly hooks?: HooksConfig;
     readonly format?: FormatConfig;
     readonly verify?: VerifyConfig;

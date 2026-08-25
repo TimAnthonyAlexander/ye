@@ -9,6 +9,11 @@ interface ParseInput {
     readonly text: string;
     readonly source: SkillSource;
     readonly directoryName: string | null;
+    // Claude Code derives a skill's identity from its directory name; the
+    // frontmatter `name` is an optional display label that need not match. For
+    // ~/.claude and .claude sources we follow that rule so a SKILL.md written
+    // for Claude Code loads unchanged instead of being dropped on a mismatch.
+    readonly nameFromDirectory?: boolean;
 }
 
 const stripQuotes = (raw: string): string => {
@@ -122,7 +127,13 @@ export const parseSkillFile = (input: ParseInput): Skill | SkillError => {
         return new SkillError(input.source.path, parsed.error);
     }
 
-    const name = parsed.fields.get("name");
+    // Claude Code sources: identity is the directory name, `name` is an
+    // optional label. Ye sources: `name` is required and must match the
+    // directory.
+    const name =
+        input.nameFromDirectory === true
+            ? (input.directoryName ?? parsed.fields.get("name"))
+            : parsed.fields.get("name");
     const description = parsed.fields.get("description");
 
     if (!name || name.length === 0) {
@@ -144,7 +155,11 @@ export const parseSkillFile = (input: ParseInput): Skill | SkillError => {
         return new SkillError(input.source.path, "frontmatter 'description' exceeds 1024 chars");
     }
 
-    if (input.directoryName !== null && input.directoryName !== name) {
+    if (
+        input.nameFromDirectory !== true &&
+        input.directoryName !== null &&
+        input.directoryName !== name
+    ) {
         return new SkillError(
             input.source.path,
             `directory name '${input.directoryName}' does not match frontmatter name '${name}'`,

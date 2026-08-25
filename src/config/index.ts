@@ -32,7 +32,6 @@ export type {
     RecoveryConfig,
     RecoveryFallbackModel,
     RoutingStrategy,
-    SkillsConfig,
     WebSearchFallback,
     WebToolsConfig,
 } from "./types.ts";

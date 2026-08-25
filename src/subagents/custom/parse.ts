@@ -17,6 +17,10 @@ export interface ParseAgentInput {
     readonly path: string;
     readonly fileName: string;
     readonly source: AgentSource;
+    // Claude Code identifies an agent by its frontmatter `name` alone; the
+    // filename need not match. For .claude sources we follow that so an agent
+    // file written for Claude Code loads unchanged instead of being dropped.
+    readonly nameFromFrontmatter?: boolean;
 }
 
 const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
@@ -84,7 +88,7 @@ export const parseAgentFile = (input: ParseAgentInput): CustomAgent | null => {
     const description = parsed.fields.get("description");
     if (!name || !NAME_PATTERN.test(name) || name.length > 64) return null;
     if (!description || description.length === 0 || description.length > 1024) return null;
-    if (name !== input.fileName) return null;
+    if (input.nameFromFrontmatter !== true && name !== input.fileName) return null;
 
     const body = lines
         .slice(endIdx + 1)

@@ -9,7 +9,7 @@ import {
     resolveAgent,
     unknownKindError,
 } from "./index.ts";
-import { loadAgentsFrom } from "./custom/load.ts";
+import { loadCustomAgents } from "./custom/load.ts";
 import { GENERAL_TOOLS } from "./kinds/general.ts";
 import { VERIFICATION_TOOLS } from "./kinds/verification.ts";
 
@@ -87,19 +87,29 @@ describe("custom agents", () => {
         expect(resolved.systemPrompt).toContain(root);
     });
 
-    test("project beats user on a name conflict", async () => {
-        const userDir = await mkdtemp(join(tmpdir(), "ye-user-agents-"));
+    test("the .ye project dir beats the .claude project dir on a name conflict", async () => {
         await writeAgent(
-            userDir,
+            join(root, ".claude", "agents"),
             "reviewer",
-            agentFile("name: reviewer\ndescription: The user copy.", "User body."),
+            agentFile("name: reviewer\ndescription: The claude copy.", "Claude body."),
         );
         await writeAgent(projectAgentsDir(), "reviewer", REVIEWER);
 
-        const loaded = loadAgentsFrom(userDir, projectAgentsDir());
+        const loaded = loadCustomAgents(root);
         expect(loaded).toHaveLength(1);
         expect(loaded[0]?.source).toBe("project");
         expect(loaded[0]?.description).toBe("Reviews a diff.");
+    });
+
+    test("a .claude agent loads and its name need not match the filename", async () => {
+        await writeAgent(
+            join(root, ".claude", "agents"),
+            "any-filename",
+            agentFile("name: cc-reviewer\ndescription: Claude Code agent.", "Review it."),
+        );
+        const entry = buildAgentCatalogue(root).byName.get("cc-reviewer");
+        expect(entry?.source).toBe("claude-project");
+        expect(entry?.description).toBe("Claude Code agent.");
     });
 
     test("a built-in kind beats a markdown file of the same name", async () => {

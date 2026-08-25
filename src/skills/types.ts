@@ -1,4 +1,4 @@
-export type SkillTier = "builtin" | "managed" | "claude" | "user" | "project";
+export type SkillTier = "builtin" | "managed" | "claude" | "user" | "claude-project" | "project";
 
 export interface SkillSource {
     readonly tier: SkillTier;

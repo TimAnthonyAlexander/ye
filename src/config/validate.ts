@@ -19,7 +19,6 @@ import type {
     RecoveryConfig,
     RecoveryFallbackModel,
     RoutingStrategy,
-    SkillsConfig,
     SuggestionsConfig,
     VerifyConfig,
     WebSearchFallback,
@@ -565,20 +564,6 @@ const validateHooksConfig = (value: unknown): HooksConfig => {
     return out;
 };
 
-const validateSkillsConfig = (value: unknown): SkillsConfig => {
-    if (!isObject(value)) {
-        throw new ConfigValidationError("skills must be an object");
-    }
-    const out: { enableClaudeInterop?: boolean } = {};
-    if (value.enableClaudeInterop !== undefined) {
-        if (typeof value.enableClaudeInterop !== "boolean") {
-            throw new ConfigValidationError("skills.enableClaudeInterop must be a boolean");
-        }
-        out.enableClaudeInterop = value.enableClaudeInterop;
-    }
-    return out;
-};
-
 const validateGitStatusConfig = (value: unknown): GitStatusConfig => {
     if (!isObject(value)) {
         throw new ConfigValidationError("gitStatus must be an object");
@@ -733,7 +718,6 @@ export const validateConfig = (raw: unknown): Config => {
         ...(raw.cheapModel !== undefined
             ? { cheapModel: validateModelRef("cheapModel", raw.cheapModel) }
             : {}),
-        ...(raw.skills !== undefined ? { skills: validateSkillsConfig(raw.skills) } : {}),
         ...(raw.hooks !== undefined ? { hooks: validateHooksConfig(raw.hooks) } : {}),
         ...(raw.gitStatus !== undefined
             ? { gitStatus: validateGitStatusConfig(raw.gitStatus) }

@@ -38,7 +38,6 @@ export const SECTION_ORDER: readonly string[] = [
     "suggestions",
     "maxTurns",
     "gitStatus",
-    "skills",
     "hooks",
     "autoDetect",
 ];
@@ -412,15 +411,6 @@ export const CONFIG_FIELDS: readonly ConfigField[] = [
         description: "Lines of git status before it is truncated.",
         spec: int(5, 500, 5),
         defaultValue: 30,
-    },
-
-    {
-        path: "skills.enableClaudeInterop",
-        section: "skills",
-        label: "enableClaudeInterop",
-        description: "Reserved: also walk ~/.claude/skills.",
-        spec: bool(),
-        defaultValue: false,
     },
 
     {

@@ -2,6 +2,7 @@ import {
     CLAUDE_SKILLS_DIR,
     MANAGED_SKILLS_DIR,
     USER_SKILLS_DIR,
+    getClaudeProjectSkillsDir,
     getProjectSkillsDir,
 } from "../storage/skillsPaths.ts";
 import { loadBuiltinSkills } from "./builtin.ts";
@@ -10,20 +11,21 @@ import { walkSkillsDir } from "./walker.ts";
 
 export interface LoadRegistryInput {
     readonly projectRoot: string;
-    // Opt-in: also walk ~/.claude/skills/ so SKILL.md files written for Claude
-    // Code drop in unchanged. Default off — explicit opt-in keeps cross-agent
-    // bleed out of users who don't want it.
-    readonly enableClaudeInterop?: boolean;
 }
 
 export const loadSkillRegistry = async (input: LoadRegistryInput): Promise<SkillRegistry> => {
+    // Claude Code's skill directories (~/.claude/skills and <project>/.claude/
+    // skills) are read unconditionally — most Ye users came from Claude Code and
+    // their skills should just work. Ye's own tiers override on name collision,
+    // and project beats user. Claude sources derive identity from the directory
+    // name (nameFromDirectory), matching how Claude Code resolves them.
     const tiers: ReadonlyArray<readonly Skill[]> = [
         loadBuiltinSkills(),
         (await walkSkillsDir(MANAGED_SKILLS_DIR, "managed")).skills,
-        input.enableClaudeInterop === true
-            ? (await walkSkillsDir(CLAUDE_SKILLS_DIR, "claude")).skills
-            : [],
+        (await walkSkillsDir(CLAUDE_SKILLS_DIR, "claude", true)).skills,
         (await walkSkillsDir(USER_SKILLS_DIR, "user")).skills,
+        (await walkSkillsDir(getClaudeProjectSkillsDir(input.projectRoot), "claude-project", true))
+            .skills,
         (await walkSkillsDir(getProjectSkillsDir(input.projectRoot), "project")).skills,
     ];
 

@@ -61,15 +61,16 @@ Aim for under ~500 lines. Anything longer should move to `references/some-doc.md
 
 ## Filesystem tiers
 
-Ye walks five tiers at session start, in increasing priority:
+Ye walks six tiers at session start, in increasing priority:
 
 1. **Builtin** — embedded in the binary at compile time. Today: `frontend-design` and `project-init`. Lowest priority — every other tier can shadow them by name.
 2. **Managed** — `/etc/ye/skills/<name>/SKILL.md`. For multi-user installs.
-3. **Claude interop** — `~/.claude/skills/<name>/SKILL.md`. Walked only when `skills.enableClaudeInterop: true` in `~/.ye/config.json`. Default off.
+3. **Claude user** — `~/.claude/skills/<name>/SKILL.md`. Read unconditionally so skills authored for Claude Code work in Ye without moving them.
 4. **User** — `~/.ye/skills/<name>/SKILL.md`. Personal, available across every project.
-5. **Project** — `<project>/.ye/skills/<name>/SKILL.md`. Committed to git, shared with the team.
+5. **Claude project** — `<project>/.claude/skills/<name>/SKILL.md`. A repo's committed Claude Code skills, read unconditionally.
+6. **Project** — `<project>/.ye/skills/<name>/SKILL.md`. Committed to git, shared with the team.
 
-A skill is identified by its `name`. Higher tiers shadow lower tiers entirely — there is no merge inside a skill, the higher SKILL.md replaces the lower one.
+A skill is identified by its `name`. Higher tiers shadow lower tiers entirely — there is no merge inside a skill, the higher SKILL.md replaces the lower one. For the two Claude tiers the identity is the **directory name** (matching Claude Code), so the frontmatter `name` acts only as a display label there and need not match.
 
 ### Overriding a builtin
 
@@ -85,15 +86,7 @@ Per-project overrides go under `<project>/.ye/skills/`.
 
 ### Open-standard interop
 
-To share skills with Claude Code (or any agent that reads `~/.claude/skills/`), set in `~/.ye/config.json`:
-
-```json
-{
-  "skills": { "enableClaudeInterop": true }
-}
-```
-
-Default off. When enabled, Ye walks `~/.claude/skills/` between the managed and user tiers — Ye-native user skills override Claude skills of the same name. The format is identical (open Agent Skills standard); the same SKILL.md works in both agents without modification.
+Skills authored for Claude Code work in Ye with no configuration. Ye reads `~/.claude/skills/` and `<project>/.claude/skills/` unconditionally, alongside its own `~/.ye/skills/` and `<project>/.ye/skills/`. Ye-native tiers override Claude skills of the same name (user beats Claude-user, project beats Claude-project). The format is identical (open Agent Skills standard); the same SKILL.md works in both agents without modification.
 
 ## Invocation
 
@@ -202,7 +195,6 @@ Ye reads the relevant files, distills the pattern into a SKILL.md, and writes it
 
 - **`ye skills` CLI.** `list / show / new <name>` subcommands for managing skills from outside a session. Pure convenience.
 - **Subagent access.** The general subagent does not currently get the `Skill` tool. Skills can be added to the subagent toolset when a real use case appears.
-- **`~/.claude/skills/` interop.** Walker not yet shipped; config flag `skills.enableClaudeInterop` reserved.
 - **`disable-model-invocation: true` slash entry hiding.** Today, all skills appear in the slash picker. A future flag may hide such skills from `/<name>` discovery as well.
 - **Hot reload.** Edit a SKILL.md mid-session, Ye won't notice until restart. Matches the `loadFileIndex` lifecycle.
 

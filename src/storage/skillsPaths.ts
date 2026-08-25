@@ -8,3 +8,6 @@ export const CLAUDE_SKILLS_DIR = join(homedir(), ".claude", "skills");
 
 export const getProjectSkillsDir = (projectRoot: string): string =>
     join(projectRoot, ".ye", "skills");
+
+export const getClaudeProjectSkillsDir = (projectRoot: string): string =>
+    join(projectRoot, ".claude", "skills");
