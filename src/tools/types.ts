@@ -6,7 +6,6 @@ export type ToolResult<T = unknown> =
     | { readonly ok: false; readonly error: string };
 
 export interface TodoItem {
-    readonly id: string;
     readonly content: string;
     readonly status: "pending" | "in_progress" | "completed";
 }

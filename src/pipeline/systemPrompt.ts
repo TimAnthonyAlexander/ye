@@ -391,8 +391,7 @@ Notes:
 Replaces the current session's todo list. The todos render as a persistent panel above the input box.
 
 Schema:
-- \`todos\` (array, required) — each item is \`{ id, content, status }\`
-  - \`id\` (string)
+- \`todos\` (array, required) — each item is \`{ content, status }\`
   - \`content\` (string)
   - \`status\` — one of \`"pending"\`, \`"in_progress"\`, \`"completed"\`
 
@@ -860,7 +859,7 @@ Language-server navigation: real symbol resolution, not name matching. \`line\` 
 ## Diagnostics { paths?, check? }
 Runs the project's configured check (\`verify.typecheck\` / \`verify.lint\` in config) and reports its output. \`check\`: \`"typecheck"\` (default) or \`"lint"\`. An unconfigured check returns a message naming the config key — a missing setting, not a failure of your work. \`paths\` filters the reported LINES, not the command: the whole check always runs, so omitting \`paths\` can surface pre-existing problems in files you never touched. **Empty result = no diagnostics, nothing to fix.** **Diagnostics after an edit do NOT mean the edit failed** — it already applied; fix what they say, never re-apply the same edit. Read-only.
 
-## TodoWrite { todos: [{ id, content, status }] }
+## TodoWrite { todos: [{ content, status }] }
 Status: \`"pending" | "in_progress" | "completed"\`. Exactly ONE \`in_progress\` at a time — a list with two or more \`in_progress\` errors; complete the current task before promoting the next. Mark \`completed\` as soon as work is done — don't batch. Empty array clears the panel. Prompted in NORMAL.
 
 ## ExitPlanMode { plan }

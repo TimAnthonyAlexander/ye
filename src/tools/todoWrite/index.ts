@@ -3,7 +3,6 @@ import { validateArgs } from "../validate.ts";
 
 interface TodoWriteArgs {
     readonly todos: ReadonlyArray<{
-        readonly id: string;
         readonly content: string;
         readonly status: "pending" | "in_progress" | "completed";
     }>;
@@ -22,7 +21,6 @@ const execute = async (
     }
 
     ctx.turnState.todos = v.value.todos.map<TodoItem>((t) => ({
-        id: t.id,
         content: t.content,
         status: t.status,
     }));
@@ -32,7 +30,7 @@ const execute = async (
 export const TodoWriteTool: Tool = {
     name: "TodoWrite",
     description:
-        "Replace the current todo list. Each todo has id, content, and status (pending/in_progress/completed). " +
+        "Replace the current todo list. Each todo has content and status (pending/in_progress/completed). " +
         "At most one todo may be in_progress at a time.",
     annotations: { readOnlyHint: false },
     schema: {
@@ -43,9 +41,8 @@ export const TodoWriteTool: Tool = {
                 type: "array",
                 items: {
                     type: "object",
-                    required: ["id", "content", "status"],
+                    required: ["content", "status"],
                     properties: {
-                        id: { type: "string" },
                         content: { type: "string" },
                         status: {
                             type: "string",
