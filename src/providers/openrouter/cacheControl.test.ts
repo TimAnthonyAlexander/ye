@@ -86,6 +86,17 @@ describe("applyCacheControl", () => {
         expect(markedIndexes(out)).toEqual([0]);
     });
 
+    // Upstream treats "   " exactly like "": a marked whitespace-only block is
+    // the same non-retryable "cache_control cannot be set for empty text
+    // blocks" 400.
+    test("whitespace-only content is never marked", () => {
+        const out = applyCacheControl("anthropic/claude-sonnet-4.6", [
+            { role: "user", content: "hi" },
+            { role: "user", content: "  \n\t " },
+        ]);
+        expect(markedIndexes(out)).toEqual([0]);
+    });
+
     test("no markable message — returned verbatim", () => {
         const messages: readonly Message[] = [{ role: "assistant", content: "only me" }];
         expect(applyCacheControl("anthropic/claude-sonnet-4.6", messages)).toBe(messages);

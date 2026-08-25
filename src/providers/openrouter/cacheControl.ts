@@ -27,11 +27,14 @@ export const needsExplicitCacheBreakpoints = (model: string): boolean =>
 // and an assistant message is never the tail of a request Ye sends.
 const MARKABLE: ReadonlySet<Role> = new Set<Role>(["system", "user", "tool"]);
 
+// Whitespace-only counts as empty upstream: Anthropic answers a marked "   "
+// with the same non-retryable "cache_control cannot be set for empty text
+// blocks" 400 it answers "" with.
 const isMarkable = (m: Message | undefined): m is Message =>
     m !== undefined &&
     MARKABLE.has(m.role) &&
     typeof m.content === "string" &&
-    m.content.length > 0;
+    m.content.trim().length > 0;
 
 const findLastIndex = (
     messages: readonly Message[],

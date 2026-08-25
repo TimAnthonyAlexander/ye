@@ -1,8 +1,9 @@
 import type { Config } from "../../config/index.ts";
 import { createAnthropicProvider } from "../anthropic/index.ts";
 import { resolveApiKey } from "../apiKey.ts";
-import type { Provider } from "../types.ts";
+import type { Message, Provider, ProviderEvent, ProviderInput } from "../types.ts";
 import { DARIO_CONTEXT_SIZES } from "./models.ts";
+import { rewriteReminders } from "./reminders.ts";
 
 export const DARIO_PROVIDER_ID = "dario";
 export const DARIO_BASE_URL = "http://localhost:3456";
@@ -18,7 +19,7 @@ export const buildDarioFromConfig = (config: Config): Provider => {
     if (!provCfg) {
         throw new Error("dario provider missing from config.providers");
     }
-    return createAnthropicProvider({
+    const inner = createAnthropicProvider({
         apiKey: resolveApiKey(provCfg) ?? PLACEHOLDER_KEY,
         baseUrl: provCfg.baseUrl,
         id: DARIO_PROVIDER_ID,
@@ -32,4 +33,19 @@ export const buildDarioFromConfig = (config: Config): Provider => {
             serverSideWebSearch: false,
         },
     });
+
+    // The one place dario's wire format differs from Anthropic's in a way the
+    // shared adapter cannot see: the proxy deletes `<system-reminder>` blocks
+    // on the way out. Rename them here, before the adapter builds the body, so
+    // every reminder Ye injects survives the hop. See ./reminders.ts.
+    return {
+        id: inner.id,
+        capabilities: inner.capabilities,
+        stream: (input: ProviderInput): AsyncIterable<ProviderEvent> =>
+            inner.stream({ ...input, messages: rewriteReminders(input.messages) }),
+        getContextSize: (model: string) => inner.getContextSize(model),
+        ...(inner.countTokens
+            ? { countTokens: (messages: readonly Message[]) => inner.countTokens!(messages) }
+            : {}),
+    };
 };

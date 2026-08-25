@@ -148,6 +148,134 @@ describe("buildRequestBody — cache_control breakpoints", () => {
     });
 });
 
+// Anthropic answers a cache_control on an empty text block with a
+// non-retryable 400 — "messages.N.content.0.text: cache_control cannot be set
+// for empty text blocks" — which ends the turn outright. Verified against the
+// live API: whitespace-only counts as empty, and the block only has to be the
+// one carrying the marker.
+describe("buildRequestBody — empty text blocks", () => {
+    const markedBlocks = (body: ReturnType<typeof buildRequestBody>) =>
+        body.messages.flatMap((m) =>
+            Array.isArray(m.content)
+                ? m.content.filter((b) => (b as { cache_control?: unknown }).cache_control)
+                : [],
+        );
+
+    test("an empty trailing user message never carries a cache breakpoint", () => {
+        const body = buildRequestBody(
+            baseInput([
+                { role: "user", content: "first" },
+                { role: "assistant", content: "answer" },
+                { role: "user", content: "" },
+            ]),
+        );
+        for (const block of markedBlocks(body)) {
+            expect((block as { text?: string }).text?.trim().length ?? 0).toBeGreaterThan(0);
+        }
+    });
+
+    test("a whitespace-only trailing user message never carries a cache breakpoint", () => {
+        const body = buildRequestBody(
+            baseInput([
+                { role: "user", content: "first" },
+                { role: "assistant", content: "answer" },
+                { role: "user", content: "   \n  " },
+            ]),
+        );
+        for (const block of markedBlocks(body)) {
+            expect((block as { text?: string }).text?.trim().length ?? 0).toBeGreaterThan(0);
+        }
+    });
+
+    test("a null-content user message never becomes an empty text block", () => {
+        const body = buildRequestBody(
+            baseInput([
+                { role: "user", content: "first" },
+                { role: "assistant", content: "answer" },
+                { role: "user", content: null },
+            ]),
+        );
+        for (const m of body.messages) {
+            if (!Array.isArray(m.content)) continue;
+            for (const block of m.content) {
+                if (block.type !== "text") continue;
+                expect(block.text.trim().length).toBeGreaterThan(0);
+            }
+        }
+    });
+
+    test("empty user messages are dropped, not sent as empty blocks", () => {
+        const body = buildRequestBody(
+            baseInput([
+                { role: "user", content: "" },
+                { role: "user", content: "real question" },
+            ]),
+        );
+        expect(body.messages).toHaveLength(1);
+        const content = body.messages[0]?.content as Array<{ text?: string }>;
+        expect(content[0]?.text).toBe("real question");
+    });
+
+    test("the breakpoint walks back past an empty trailing block to the last real one", () => {
+        const body = buildRequestBody(
+            baseInput([
+                { role: "assistant", content: null, tool_calls: [] },
+                { role: "tool", tool_call_id: "t1", content: "tool output" },
+                { role: "user", content: "" },
+            ]),
+        );
+        const marked = markedBlocks(body);
+        expect(marked).toHaveLength(1);
+        expect(marked[0]?.type).toBe("tool_result");
+    });
+
+    // Dropping the tail is only half the job: Anthropic rejects a request that
+    // ends on an assistant message ("does not support assistant message
+    // prefill") and a request with no messages at all.
+    test("dropping an empty tail never leaves the request ending on an assistant message", () => {
+        const body = buildRequestBody(
+            baseInput([
+                { role: "user", content: "do the thing" },
+                { role: "assistant", content: "on it" },
+                { role: "user", content: "" },
+            ]),
+        );
+        expect(body.messages[body.messages.length - 1]?.role).toBe("user");
+        expect(markedBlocks(body)).toHaveLength(1);
+    });
+
+    test("a lone empty user message still produces a valid single-message request", () => {
+        const body = buildRequestBody(baseInput([{ role: "user", content: "" }]));
+        expect(body.messages).toHaveLength(1);
+        expect(body.messages[0]?.role).toBe("user");
+        const content = body.messages[0]?.content as Array<{ text?: string }>;
+        expect(content[0]?.text?.trim().length ?? 0).toBeGreaterThan(0);
+    });
+
+    test("an ordinary user tail is left alone — no marker is appended", () => {
+        const body = buildRequestBody(
+            baseInput([
+                { role: "user", content: "first" },
+                { role: "assistant", content: "answer" },
+                { role: "user", content: "second" },
+            ]),
+        );
+        expect(body.messages).toHaveLength(3);
+        const content = body.messages[2]?.content as Array<{ text?: string }>;
+        expect(content[0]?.text).toBe("second");
+    });
+
+    test("a whitespace-only system prompt is not sent as a marked system block", () => {
+        const body = buildRequestBody(
+            baseInput([
+                { role: "system", content: "  " },
+                { role: "user", content: "hi" },
+            ]),
+        );
+        expect(body.system).toBeUndefined();
+    });
+});
+
 describe("buildRequestBody — temperature stripping", () => {
     test("does not include temperature for Claude Opus 4.7", () => {
         const body = buildRequestBody(

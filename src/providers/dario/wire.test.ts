@@ -91,6 +91,32 @@ describe("dario wire compatibility", () => {
         expect(events.at(-1)).toMatchObject({ type: "stop", reason: "tool_use" });
     });
 
+    // dario deletes `<system-reminder>` blocks from every outbound request, so
+    // a reminder that leaves Ye under that name never reaches the model — and a
+    // message that was only a reminder reaches Anthropic as an empty text block
+    // carrying Ye's cache breakpoint, which is a non-retryable 400.
+    test("no system-reminder tag survives to the wire", async () => {
+        const provider = buildDarioFromConfig(configAt(server.url.origin));
+        for await (const _ of provider.stream({
+            model: "claude-opus-4-8",
+            messages: [
+                { role: "user", content: "go" },
+                { role: "assistant", content: "waiting on the build" },
+                { role: "user", content: "<system-reminder>Nothing is running.</system-reminder>" },
+            ],
+            tools: [],
+            maxTokens: 16,
+        })) {
+            // drain
+        }
+
+        const wire = JSON.stringify(captured.body);
+        expect(wire).not.toContain("system-reminder");
+        // The text itself still has to arrive — renaming the tag, not dropping it.
+        expect(wire).toContain("Nothing is running.");
+        expect(wire).toContain("system-note");
+    });
+
     test("a configured key overrides the placeholder", async () => {
         const cfg = configAt(server.url.origin);
         const provider = buildDarioFromConfig({

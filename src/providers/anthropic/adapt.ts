@@ -59,6 +59,13 @@ interface AnthropicRequestBody {
 
 const DEFAULT_MAX_TOKENS = 4096;
 
+// Anthropic rejects a text block whose text is empty *or* whitespace-only.
+// Ye's history legitimately holds both — `Message.content` is `string | null`,
+// and several pushes build their text from data — so the adapter is where they
+// get dropped, not every producer upstream of it.
+const hasText = (content: string | null | undefined): content is string =>
+    typeof content === "string" && content.trim().length > 0;
+
 const safeParseJson = (raw: string): unknown => {
     if (raw.length === 0) return {};
     try {
@@ -96,7 +103,7 @@ const splitSystem = (messages: readonly Message[]): SplitResult => {
 
 const buildAssistantContent = (msg: Message): AnthropicContentBlock[] => {
     const blocks: AnthropicContentBlock[] = [];
-    if (typeof msg.content === "string" && msg.content.length > 0) {
+    if (hasText(msg.content)) {
         blocks.push({ type: "text", text: msg.content });
     }
     for (const tc of msg.tool_calls ?? []) {
@@ -119,12 +126,12 @@ const convertMessages = (rest: readonly Message[]): AnthropicMessage[] => {
     const out: AnthropicMessage[] = [];
     for (const m of rest) {
         if (m.role === "user") {
-            const text = typeof m.content === "string" ? m.content : "";
+            if (!hasText(m.content)) continue;
             const last = out[out.length - 1];
             if (last && last.role === "user" && Array.isArray(last.content)) {
-                last.content.push({ type: "text", text });
+                last.content.push({ type: "text", text: m.content });
             } else {
-                out.push({ role: "user", content: text });
+                out.push({ role: "user", content: m.content });
             }
             continue;
         }
@@ -152,11 +159,38 @@ const convertMessages = (rest: readonly Message[]): AnthropicMessage[] => {
     return out;
 };
 
+// Anthropic reads a request that ends on an assistant message as a prefill to
+// continue, which Opus 4.7+ and the whole 5 family reject outright ("This model
+// does not support assistant message prefill"). Ye never means that — every
+// request it sends opens a fresh agent turn. The only way to land here is an
+// empty trailing user message that `convertMessages` dropped, so the marker
+// states exactly that instead of inventing a prompt. It also covers a history
+// that emptied out completely, since a zero-message request is a 400 too.
+//
+// Deliberately plain text: dario shares this adapter and deletes tags like
+// `<system-reminder>` on the way out, which would empty the block right back
+// out again (see providers/dario/reminders.ts).
+const CONTINUATION_MARKER =
+    "(The turn continues. The message that belongs here carried no content.)";
+
+const ensureUserTail = (messages: AnthropicMessage[]): void => {
+    const last = messages[messages.length - 1];
+    if (last && last.role !== "assistant") return;
+    messages.push({ role: "user", content: CONTINUATION_MARKER });
+};
+
 // Single cache marker on the system prompt. The whole system body becomes a
 // cacheable prefix — typically the largest static segment of the request.
 const buildSystem = (text: string): AnthropicSystemBlock[] | undefined => {
-    if (text.length === 0) return undefined;
+    if (!hasText(text)) return undefined;
     return [{ type: "text", text, cache_control: { type: "ephemeral" } }];
+};
+
+const isMarkable = (block: AnthropicContentBlock | undefined): boolean => {
+    if (!block) return false;
+    if (block.type === "text") return hasText(block.text);
+    if (block.type === "tool_result") return block.content.length > 0;
+    return false;
 };
 
 // Mark the last content block of the last message as a cache breakpoint. Each
@@ -165,23 +199,33 @@ const buildSystem = (text: string): AnthropicSystemBlock[] | undefined => {
 // agentic pattern — see Anthropic's prompt-caching docs ("Caching messages").
 // String content gets converted to a single-block text array so we have a
 // concrete object to set cache_control on.
+//
+// The marker never lands on an empty block: Anthropic answers
+// "cache_control cannot be set for empty text blocks" with a non-retryable 400,
+// which kills the turn outright. Walk back to the newest block that carries
+// something, and mark nothing at all if the message has none.
 const markLastMessageCacheable = (messages: AnthropicMessage[]): void => {
     const last = messages[messages.length - 1];
     if (!last) return;
     if (typeof last.content === "string") {
+        if (!hasText(last.content)) return;
         last.content = [{ type: "text", text: last.content, cache_control: { type: "ephemeral" } }];
         return;
     }
-    const lastBlock = last.content[last.content.length - 1];
-    if (!lastBlock) return;
-    if (lastBlock.type === "text" || lastBlock.type === "tool_result") {
-        lastBlock.cache_control = { type: "ephemeral" };
+    for (let i = last.content.length - 1; i >= 0; i--) {
+        const block = last.content[i];
+        if (!isMarkable(block)) continue;
+        (block as AnthropicTextBlock | AnthropicToolResultBlock).cache_control = {
+            type: "ephemeral",
+        };
+        return;
     }
 };
 
 export const buildRequestBody = (input: ProviderInput): AnthropicRequestBody => {
     const { systemText, rest } = splitSystem(input.messages);
     const messages = convertMessages(rest);
+    ensureUserTail(messages);
     markLastMessageCacheable(messages);
     const system = buildSystem(systemText);
 
