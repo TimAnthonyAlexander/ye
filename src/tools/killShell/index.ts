@@ -10,16 +10,25 @@ const execute = async (rawArgs: unknown, ctx: ToolContext): Promise<ToolResult<s
     const v = validateArgs<KillShellArgs>(rawArgs, KillShellTool.schema);
     if (!v.ok) return v;
 
+    const id = v.value.bash_id;
     const mgr = getBackgroundManager(ctx.sessionId);
-    const killed = mgr.kill(v.value.bash_id);
-    if (!killed) {
-        return { ok: false, error: `no running background task with id "${v.value.bash_id}"` };
+    const task = mgr.poll(id);
+    if (!task) {
+        return { ok: false, error: `no background task with id "${id}" in this session` };
+    }
+    // A task that finished between the model reading its output and killing it
+    // is the ordinary race, and the tool's contract is "no effect on completed
+    // tasks". Reporting that as a failure sends the model looking for a bug
+    // that isn't there; naming the status it found ends it in one line.
+    if (task.status !== "running") {
+        return {
+            ok: true,
+            value: `Background task ${id} already ${task.status}; nothing to kill.`,
+        };
     }
 
-    return {
-        ok: true,
-        value: `Killed background task ${v.value.bash_id}.`,
-    };
+    mgr.kill(id);
+    return { ok: true, value: `Killed background task ${id}.` };
 };
 
 export const KillShellTool: Tool = {
