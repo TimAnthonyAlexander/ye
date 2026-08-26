@@ -12,6 +12,7 @@ interface RecordOverrides {
     readonly inputTokens?: number;
     readonly outputTokens?: number;
     readonly cacheReadTokens?: number;
+    readonly cacheCreationTokens?: number;
     readonly costUsd?: number;
 }
 
@@ -25,6 +26,7 @@ const record = (over: RecordOverrides = {}): string =>
         inputTokens: over.inputTokens ?? 1000,
         outputTokens: over.outputTokens ?? 200,
         cacheReadTokens: over.cacheReadTokens ?? 0,
+        cacheCreationTokens: over.cacheCreationTokens ?? 0,
         costUsd: over.costUsd ?? 0.5,
         callKind: "turn",
     });
@@ -169,5 +171,28 @@ describe("usageLines", () => {
     it("shows a total line carrying the call count", () => {
         const text = usageLines(aggregateUsageWindows(jsonl(record(), record()), NOW)).join("\n");
         expect(text).toContain("total (2 calls)");
+    });
+
+    // Anthropic puts a cache write outside `input_tokens`, and Ye's own tail
+    // breakpoint sits on the user's newest message, so a real turn reports
+    // input_tokens: 2 with the whole prompt in cache_creation. Rendering
+    // inputTokens alone showed ↑2 for a 58k request.
+    it("counts cache-creation tokens as sent, not as cache hits", () => {
+        const text = usageLines(
+            aggregateUsageWindows(
+                jsonl(
+                    record({
+                        provider: "dario",
+                        model: "claude-opus-4-8",
+                        inputTokens: 2,
+                        cacheCreationTokens: 58_500,
+                        cacheReadTokens: 0,
+                    }),
+                ),
+                NOW,
+            ),
+        ).join("\n");
+        expect(text).toContain("↑   59K");
+        expect(text).not.toContain("↑     2");
     });
 });

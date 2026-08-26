@@ -1,6 +1,11 @@
 import { formatK, formatUsd } from "../components/statusBar.tsx";
 import { DARIO_PROVIDER_ID } from "../providers/dario/index.ts";
-import { loadSessionUsage, loadUsageTotals, type CallKindTotals } from "../storage/index.ts";
+import {
+    billableInputTokens,
+    loadSessionUsage,
+    loadUsageTotals,
+    type CallKindTotals,
+} from "../storage/index.ts";
 import type { SlashCommand, SlashCommandContext, SlashCommandResult } from "./types.ts";
 
 const KIND_ORDER: readonly string[] = [
@@ -19,9 +24,11 @@ const orderKinds = (kinds: readonly string[]): readonly string[] => {
 };
 
 const formatLine = (label: string, t: CallKindTotals): string =>
-    `  ${label.padEnd(12)}↑${formatK(t.inputTokens)} ↓${formatK(t.outputTokens)} ↻${formatK(
-        t.cacheReadTokens,
-    )}  ${formatUsd(t.costUsd)}  (${t.calls} call${t.calls === 1 ? "" : "s"})`;
+    `  ${label.padEnd(12)}↑${formatK(billableInputTokens(t))} ↓${formatK(
+        t.outputTokens,
+    )} ↻${formatK(t.cacheReadTokens)}  ${formatUsd(t.costUsd)}  (${t.calls} call${
+        t.calls === 1 ? "" : "s"
+    })`;
 
 export const CostCommand: SlashCommand = {
     name: "cost",
@@ -45,7 +52,7 @@ export const CostCommand: SlashCommand = {
 
         lines.push("", "All time");
         lines.push(
-            `  ${"total".padEnd(12)}↑${formatK(lifetime.inputTokens)} ↓${formatK(
+            `  ${"total".padEnd(12)}↑${formatK(billableInputTokens(lifetime))} ↓${formatK(
                 lifetime.outputTokens,
             )} ↻${formatK(lifetime.cacheReadTokens)}  ${formatUsd(lifetime.costUsd)}`,
         );

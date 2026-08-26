@@ -83,6 +83,7 @@ import { stripAllReasoningDetails } from "../providers/openrouter/reasoningPolic
 import { clearPinnedUpstreams } from "../pipeline/routing.ts";
 import {
     appendHistory,
+    billableInputTokens,
     generateSessionTitle,
     getProjectId,
     listProjectSessions,
@@ -486,7 +487,7 @@ export const App = ({
             .then((totals) => {
                 if (cancelled) return;
                 setTokenUsage({
-                    input: totals.inputTokens,
+                    input: billableInputTokens(totals),
                     output: totals.outputTokens,
                     cached: totals.cacheReadTokens,
                     costUsd: totals.costUsd,
@@ -1772,16 +1773,18 @@ export const App = ({
                     }
                     case "model.usage": {
                         const dCost = evt.usage.costUsd ?? 0;
+                        const dIn = evt.usage.inputTokens + (evt.usage.cacheCreationTokens ?? 0);
+                        const dCached = evt.usage.cacheReadTokens ?? 0;
                         setTokenUsage((prev) => ({
-                            input: prev.input + evt.usage.inputTokens,
+                            input: prev.input + dIn,
                             output: prev.output + evt.usage.outputTokens,
-                            cached: prev.cached + (evt.usage.cacheReadTokens ?? 0),
+                            cached: prev.cached + dCached,
                             costUsd: prev.costUsd + dCost,
                         }));
                         setSessionTokenUsage((prev) => ({
-                            input: prev.input + evt.usage.inputTokens,
+                            input: prev.input + dIn,
                             output: prev.output + evt.usage.outputTokens,
-                            cached: prev.cached + (evt.usage.cacheReadTokens ?? 0),
+                            cached: prev.cached + dCached,
                             costUsd: prev.costUsd + dCost,
                         }));
                         break;

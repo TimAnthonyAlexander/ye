@@ -1,5 +1,6 @@
 import { formatK, formatUsd } from "../components/statusBar.tsx";
 import {
+    billableInputTokens,
     loadUsageWindows,
     type ProviderModelTotals,
     type UsageTotals,
@@ -27,15 +28,18 @@ const asBreakdown = (totals: UsageTotals): ProviderModelTotals => ({
     inputTokens: totals.inputTokens,
     outputTokens: totals.outputTokens,
     cacheReadTokens: totals.cacheReadTokens,
+    cacheCreationTokens: totals.cacheCreationTokens,
     costUsd: totals.costUsd,
 });
 
 const cell = (n: number): string => formatK(n).padStart(6);
 
 const formatRow = (row: Row, width: number, indent: string): string =>
-    `${`${indent}${row.label}`.padEnd(width + 4)}  ↑${cell(row.totals.inputTokens)} ↓${cell(
-        row.totals.outputTokens,
-    )} ↻${cell(row.totals.cacheReadTokens)}  ${formatUsd(row.totals.costUsd).padStart(9)}`;
+    `${`${indent}${row.label}`.padEnd(width + 4)}  ↑${cell(
+        billableInputTokens(row.totals),
+    )} ↓${cell(row.totals.outputTokens)} ↻${cell(row.totals.cacheReadTokens)}  ${formatUsd(
+        row.totals.costUsd,
+    ).padStart(9)}`;
 
 const section = (title: string, rows: readonly Row[], width: number): readonly string[] => {
     if (rows.length === 0) return [];

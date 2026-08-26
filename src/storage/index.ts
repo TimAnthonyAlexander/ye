@@ -29,6 +29,7 @@ export { appendHistory, loadHistory } from "./history.ts";
 export {
     aggregateUsageWindows,
     appendUsageRecord,
+    billableInputTokens,
     loadSessionUsage,
     loadUsageTotals,
     loadUsageWindows,

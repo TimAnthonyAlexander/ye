@@ -30,8 +30,17 @@ export interface ProviderModelTotals {
     readonly inputTokens: number;
     readonly outputTokens: number;
     readonly cacheReadTokens: number;
+    readonly cacheCreationTokens: number;
     readonly costUsd: number;
 }
+
+// A cache write is billed input — Anthropic charges it above the base input
+// rate — but reports it outside `input_tokens`, so `inputTokens` alone is not
+// what went up the wire. Every ↑ on every surface goes through this.
+export const billableInputTokens = (t: {
+    readonly inputTokens: number;
+    readonly cacheCreationTokens: number;
+}): number => t.inputTokens + t.cacheCreationTokens;
 
 export interface UsageTotals {
     readonly inputTokens: number;
@@ -171,11 +180,18 @@ const addKeyed = (
     rec: ParsedRecord,
 ): void => {
     if (key.length === 0) return;
-    const cur = map[key] ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0 };
+    const cur = map[key] ?? {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUsd: 0,
+    };
     map[key] = {
         inputTokens: cur.inputTokens + rec.inputTokens,
         outputTokens: cur.outputTokens + rec.outputTokens,
         cacheReadTokens: cur.cacheReadTokens + rec.cacheReadTokens,
+        cacheCreationTokens: cur.cacheCreationTokens + rec.cacheCreationTokens,
         costUsd: cur.costUsd + rec.costUsd,
     };
 };

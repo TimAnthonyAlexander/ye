@@ -17,7 +17,7 @@ import {
     replaySessionFile,
     type SessionHandle,
 } from "../storage/index.ts";
-import { loadSessionUsage } from "../storage/usage.ts";
+import { billableInputTokens, loadSessionUsage } from "../storage/usage.ts";
 import { getProvider, isMissingKeyError, type Provider } from "../providers/index.ts";
 import { destroyBackgroundManager } from "../tools/bash/background.ts";
 import { destroyBackgroundSubagentManager } from "../subagents/background.ts";
@@ -61,9 +61,9 @@ export const runHeadless = async (
         if (sessionId.length > 0) {
             const totals = (await loadSessionUsage(sessionId)).totals;
             usage = {
-                inputTokens: totals.inputTokens,
+                inputTokens: billableInputTokens(totals),
                 outputTokens: totals.outputTokens,
-                cachedTokens: totals.cacheReadTokens + totals.cacheCreationTokens,
+                cachedTokens: totals.cacheReadTokens,
                 costUsd: totals.costUsd,
             };
         }
