@@ -1,5 +1,5 @@
 import { Box, Static, Text } from "ink";
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { ContextSnapshot } from "../context/snapshot.ts";
 import { ChatBanner } from "./chatBanner.tsx";
 import { ContextPanel } from "./contextPanel.tsx";
@@ -241,18 +241,30 @@ const RenderUnitView = ({ unit, expanded, interactive }: RenderUnitProps) => {
     );
 };
 
-export const Chat = ({ items, streamingText, streaming, committedCount, verbose }: ChatProps) => {
+const ChatInner = ({ items, streamingText, streaming, committedCount, verbose }: ChatProps) => {
     // Stable commit boundary: items[0..committedCount) are eligible for Ink's
     // <Static> (scrollback). Static is append-only — re-rendering a previously
     // rendered item is a no-op — so we hold the boundary back until the
     // streaming session ends. That lets consecutive Read/Glob/Grep entries
     // continue merging into a single group as they arrive without breaking
     // Static's invariant.
-    const committedItems = items.slice(0, committedCount);
-    const dynamicItems = items.slice(committedCount);
-
-    const committedUnits = groupItems(committedItems);
-    const dynamicUnits = groupItems(dynamicItems);
+    //
+    // A keystroke re-renders App (the input buffer is App state) but leaves
+    // items/committedCount referentially identical, so the grouping is memoized
+    // on exactly those inputs: recomputing groupItems over the whole committed
+    // transcript on every keypress was O(transcript) wasted work per character,
+    // and it handed <Static> and the memoized item views fresh identities each
+    // time, defeating their bail-out. Stable inputs → stable units → the slow
+    // per-frame redraw that made long transcripts flicker goes away.
+    const committedUnits = useMemo(
+        () => groupItems(items.slice(0, committedCount)),
+        [items, committedCount],
+    );
+    const dynamicUnits = useMemo(
+        () => groupItems(items.slice(committedCount)),
+        [items, committedCount],
+    );
+    const dynamicItems = useMemo(() => items.slice(committedCount), [items, committedCount]);
 
     // While a tool is mid-execution, its own running indicator (and progress
     // panel for Task) signals liveness — the generic Thinking spinner becomes
@@ -293,3 +305,11 @@ export const Chat = ({ items, streamingText, streaming, committedCount, verbose 
         </>
     );
 };
+
+// Wrapped so a keystroke that only changes App's input buffer — leaving Chat's
+// props (items, committedCount, streamingText, streaming, verbose) referentially
+// unchanged — skips this subtree entirely instead of re-running the grouping and
+// reconciling the whole committed transcript. Props are all stable references
+// from App's useState, so the default shallow compare bails out correctly.
+export const Chat = memo(ChatInner);
+Chat.displayName = "Chat";
