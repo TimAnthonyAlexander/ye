@@ -96,6 +96,32 @@ describe("question vs. work order", () => {
     });
 });
 
+describe("output register", () => {
+    const variants = () => [
+        buildSystemPrompt(env({ providerId: "openrouter", model: "gpt-5-codex" })),
+        buildSystemPrompt(env({ providerId: "openrouter", model: "gpt-5-codex", mode: "PLAN" })),
+        buildSmallSystemPrompt(env({ providerId: "ollama", model: "llama3.1:70b" })),
+    ];
+
+    // The renderer parses `**bold**` and backticks only (components/markdown.tsx),
+    // so a single asterisk reaches the terminal as a literal asterisk. The prompt
+    // used to model `*italic*` 19 times while banning it once, and the models
+    // copied the prompt rather than the rule.
+    test("R21 no prompt variant uses single-asterisk italics", () => {
+        for (const out of variants()) {
+            const bare = out.replace(/`[^`]*`/g, "").replaceAll("**", "");
+            expect(bare).not.toContain("*");
+        }
+    });
+
+    test("R22 both variants separate the progress-line register from the answer", () => {
+        for (const out of variants()) {
+            expect(out).toContain("Two registers");
+            expect(out).toMatch(/unverified explanation in a progress line/i);
+        }
+    });
+});
+
 describe("PLAN plan.md override", () => {
     const TEMPLATE_MARKER = "## Required plan template";
     const SKELETON_MARKER = "This is the user's planning style. Follow it exactly:";
